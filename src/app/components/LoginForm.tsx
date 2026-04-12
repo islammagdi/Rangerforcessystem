@@ -56,7 +56,7 @@ export function LoginForm() {
         <EgyptEmblem />
 
         <h1
-          className="text-center text-[#1f3d97]"
+          className="text-center text-[#344736]"
           style={{
             fontFamily: "'Almarai', sans-serif",
             fontWeight: 800,
@@ -68,7 +68,7 @@ export function LoginForm() {
         </h1>
 
         <p
-          className="text-center text-[#1f3d97]"
+          className="text-center text-[#344736]"
           style={{
             fontFamily: "'Almarai', sans-serif",
             fontWeight: 700,
