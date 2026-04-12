@@ -1,0 +1,162 @@
+import { useEffect } from "react";
+
+// SVG paths from the Figma import
+const CLOSE_PATH =
+  "M8.14298 6.96147L13.813 1.29147C13.9404 1.14268 14.007 0.951284 13.9994 0.755536C13.9919 0.559788 13.9107 0.374102 13.7722 0.235584C13.6337 0.097066 13.448 0.0159182 13.2522 0.00835727C13.0565 0.000796371 12.8651 0.0673792 12.7163 0.1948L7.04631 5.8648L1.37631 0.187022C1.22752 0.0596013 1.03613 -0.00698084 0.840382 0.000580055C0.644633 0.00814095 0.458948 0.089288 0.32043 0.227806C0.181912 0.366324 0.100764 0.55201 0.093203 0.747758C0.0856421 0.943506 0.152225 1.1349 0.279645 1.28369L5.94965 6.96147L0.271868 12.6315C0.190448 12.7012 0.124321 12.787 0.0776367 12.8835C0.0309519 12.98 0.00471697 13.0851 0.000579584 13.1922C-0.0035578 13.2993 0.0144913 13.4061 0.0535937 13.5059C0.0926962 13.6057 0.152008 13.6964 0.227806 13.7722C0.303604 13.848 0.394252 13.9073 0.494061 13.9464C0.593869 13.9855 0.700683 14.0036 0.807798 13.9994C0.914913 13.9953 1.02002 13.969 1.11651 13.9224C1.21301 13.8757 1.29881 13.8096 1.36853 13.7281L7.04631 8.05813L12.7163 13.7281C12.8651 13.8556 13.0565 13.9221 13.2522 13.9146C13.448 13.907 13.6337 13.8259 13.7722 13.6873C13.9107 13.5488 13.9919 13.3631 13.9994 13.1674C14.007 12.9716 13.9404 12.7803 13.813 12.6315L8.14298 6.96147Z";
+
+const ALERT_PATH =
+  "M17.9562 11.9189L11.5645 1.31885C11.306 0.914533 10.95 0.581789 10.5291 0.351301C10.1082 0.120813 9.63604 0 9.15617 0C8.6763 0 8.20416 0.120813 7.78327 0.351301C7.36238 0.581789 7.00629 0.914533 6.74784 1.31885L0.356171 11.9189C0.130382 12.2952 0.00766138 12.7244 0.000347233 13.1633C-0.00696691 13.6021 0.101383 14.0352 0.314504 14.4189C0.560903 14.8507 0.917553 15.2095 1.34801 15.4584C1.77846 15.7073 2.26727 15.8374 2.7645 15.8355H15.5478C16.0418 15.8408 16.5284 15.7157 16.9586 15.4728C17.3887 15.2299 17.7472 14.8779 17.9978 14.4522C18.2172 14.0645 18.329 13.6252 18.3217 13.1798C18.3144 12.7345 18.1882 12.2991 17.9562 11.9189ZM9.15617 12.5022C8.99135 12.5022 8.83024 12.4533 8.69319 12.3617C8.55615 12.2702 8.44934 12.14 8.38627 11.9878C8.3232 11.8355 8.30669 11.6679 8.33885 11.5063C8.371 11.3446 8.45037 11.1961 8.56691 11.0796C8.68346 10.9631 8.83194 10.8837 8.99359 10.8515C9.15525 10.8194 9.3228 10.8359 9.47507 10.899C9.62734 10.962 9.75749 11.0688 9.84906 11.2059C9.94063 11.3429 9.9895 11.504 9.9895 11.6689C9.9895 11.8899 9.90171 12.1018 9.74543 12.2581C9.58914 12.4144 9.37718 12.5022 9.15617 12.5022ZM9.9895 9.16885C9.9895 9.38987 9.90171 9.60183 9.74543 9.75811C9.58914 9.91439 9.37718 10.0022 9.15617 10.0022C8.93516 10.0022 8.72319 9.91439 8.56691 9.75811C8.41063 9.60183 8.32284 9.38987 8.32284 9.16885V5.83552C8.32284 5.61451 8.41063 5.40254 8.56691 5.24626C8.72319 5.08998 8.93516 5.00219 9.15617 5.00219C9.37718 5.00219 9.58914 5.08998 9.74543 5.24626C9.90171 5.40254 9.9895 5.61451 9.9895 5.83552V9.16885Z";
+
+interface DeleteConfirmDialogProps {
+  /** Whether the dialog is visible */
+  open: boolean;
+  /** Called when the user cancels or closes */
+  onCancel: () => void;
+  /** Called when the user confirms deletion */
+  onConfirm: () => void;
+}
+
+export function DeleteConfirmDialog({
+  open,
+  onCancel,
+  onConfirm,
+}: DeleteConfirmDialogProps) {
+  // Close on Escape key
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open, onCancel]);
+
+  // Prevent body scroll while open
+  useEffect(() => {
+    document.body.style.overflow = open ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    /* ── Backdrop ─────────────────────────────────────────────────────── */
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="dialog-title"
+      className="fixed inset-0 z-[9999] flex items-center justify-center"
+      dir="rtl"
+    >
+      {/* Dimmed overlay */}
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity"
+        onClick={onCancel}
+      />
+
+      {/* ── Dialog card ──────────────────────────────────────────────── */}
+      <div
+        className="relative z-10 bg-white rounded-[16px] p-5 flex flex-col gap-[15px] w-[320px] max-w-[90vw] shadow-2xl"
+        style={{ animation: "dialogIn 0.18s ease" }}
+      >
+        {/* ── Header ─────────────────────────────────────────────────── */}
+        <div className="flex items-center gap-2.5 w-full">
+          {/* Close × button (right side in RTL = left visually) */}
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label="إغلاق"
+            className="shrink-0 w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d={CLOSE_PATH} fill="#CCCCCC" />
+            </svg>
+          </button>
+
+          {/* Title */}
+          <p
+            id="dialog-title"
+            className="flex-1 text-right"
+            style={{
+              fontFamily: "'Almarai', sans-serif",
+              fontWeight: 700,
+              fontSize: "18px",
+              color: "#333",
+              lineHeight: 1.5,
+            }}
+          >
+            تحذير
+          </p>
+
+          {/* Alert icon */}
+          <div className="shrink-0 w-5 h-5 relative">
+            <svg
+              className="absolute block w-full h-full"
+              viewBox="0 0 18.322 15.8357"
+              fill="none"
+              style={{ inset: "8.33% 4.22% 12.49% 4.17%", position: "absolute", width: "91.56%", height: "79.18%", top: "8.33%", right: "4.22%" }}
+            >
+              <path d={ALERT_PATH} fill="#D44848" />
+            </svg>
+          </div>
+        </div>
+
+        {/* ── Body ───────────────────────────────────────────────────── */}
+        <div className="w-full">
+          <p
+            className="text-right w-full"
+            style={{
+              fontFamily: "'Almarai', sans-serif",
+              fontSize: "16px",
+              color: "#333",
+              lineHeight: 1.5,
+            }}
+          >
+            هل انت متأكد من حذف الفرد من قاعدة البيانات؟
+          </p>
+        </div>
+
+        {/* ── Footer ─────────────────────────────────────────────────── */}
+        <div className="flex items-center gap-2 w-full">
+          {/* Cancel */}
+          <button
+            type="button"
+            onClick={onCancel}
+            className="h-[42px] px-4 py-2 rounded-[42px] flex items-center justify-center transition-colors hover:bg-gray-100"
+            style={{
+              fontFamily: "'Almarai', sans-serif",
+              fontWeight: 700,
+              fontSize: "16px",
+              color: "#888",
+            }}
+          >
+            الغاء
+          </button>
+
+          {/* Delete confirm */}
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="min-h-[44px] px-4 py-2 rounded-[8px] flex items-center justify-center gap-1 transition-opacity hover:opacity-90 active:opacity-80"
+            style={{
+              backgroundColor: "#e3282c",
+              fontFamily: "'Almarai', sans-serif",
+              fontSize: "16px",
+              color: "#f5f5f5",
+            }}
+          >
+            حذف الفرد
+          </button>
+        </div>
+      </div>
+
+      {/* Keyframe animation */}
+      <style>{`
+        @keyframes dialogIn {
+          from { opacity: 0; transform: scale(0.93) translateY(8px); }
+          to   { opacity: 1; transform: scale(1)    translateY(0);   }
+        }
+      `}</style>
+    </div>
+  );
+}
