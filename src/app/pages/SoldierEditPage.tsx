@@ -139,6 +139,7 @@ export function SoldierEditPage() {
   const [rank,     setRank]     = useState(soldier?.rank     ?? "جندي");
   const [category, setCategory] = useState(soldier?.category ?? "مجند");
   const [unit,     setUnit]     = useState(soldier?.unit     ?? "");
+  const [unitError, setUnitError] = useState("");
 
   if (!soldier) {
     return (
@@ -150,6 +151,11 @@ export function SoldierEditPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!unit.trim()) {
+      setUnitError("الوحدة الأساسية مطلوبة");
+      return;
+    }
+    setUnitError("");
     // Persist changes to the in-memory store
     updateSoldier(soldier!.id, { rank, category, unit });
     // Navigate back to the detail page
@@ -189,7 +195,7 @@ export function SoldierEditPage() {
                 />
               }
               right={
-                <ReadonlyInput value={soldier.militaryId} blurred />
+                <ReadonlyInput value={soldier.militaryId} />
               }
             />
 
@@ -203,19 +209,23 @@ export function SoldierEditPage() {
                 />
               }
               right={
-                <ReadonlyInput value={soldier.name} blurred />
+                <ReadonlyInput value={soldier.name} />
               }
             />
 
             {/* Row 3: الوحدة الأساسية | الموقف الخدمي (readonly with note) */}
             <FieldPair
               left={
-                <EditDropdown
-                  options={UNIT_OPTIONS}
-                  value={unit}
-                  onChange={setUnit}
-                  blurred={!!unit}
-                />
+                <div className="flex flex-col gap-1 w-full">
+                  <EditDropdown
+                    options={UNIT_OPTIONS}
+                    value={unit}
+                    onChange={(v) => { setUnit(v); setUnitError(""); }}
+                  />
+                  {unitError && (
+                    <p className="text-right" style={{ ...FONT, fontSize: 12, color: "#ef4444", lineHeight: 1.5 }}>{unitError}</p>
+                  )}
+                </div>
               }
               right={
                 <ReadonlyInput
@@ -239,7 +249,6 @@ export function SoldierEditPage() {
               right={
                 <ReadonlyInput
                   value={soldier.dischargeDate}
-                  blurred
                   hasCalendar
                 />
               }

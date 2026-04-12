@@ -12,7 +12,7 @@ export interface SoldierData {
   id: string;
   militaryId: string;
   rank: string;
-  category: string;
+  category: "مجند";
   name: string;
   unit: string;
   serviceStatus: string;
@@ -24,14 +24,14 @@ export interface SoldierData {
 export const SOLDIERS: SoldierData[] = [
   {
     id: "1",
-    militaryId: "٢٠٢٤٤٢٧٧٠٠٢٦٥",
+    militaryId: "2024427700265",
     rank: "جندي",
     category: "مجند",
-    name: "اسلام مجدى عبدالستار السيد حجاج",
-    unit: "مج العمليات الخاصة",
-    serviceStatus: "قوة الوحده",
-    attachmentPlace: "لا يوجد",
-    dischargeDate: "٢٠٢٥ - ٣ - ١",
+    name: "اسلام مجدي عبدالستار",
+    unit: "ك ١١٣ صع",
+    serviceStatus: "ملحق",
+    attachmentPlace: "فرع العمليات",
+    dischargeDate: "2025 - 3 - 1",
     letters: [
       {
         id: "l1",
@@ -53,26 +53,26 @@ export const SOLDIERS: SoldierData[] = [
   },
   {
     id: "2",
-    militaryId: "٣٤٥٦٧٨٩٠١",
-    rank: "عريف",
+    militaryId: "2024159308527",
+    rank: "جندي",
     category: "مجند",
     name: "احمد عادل عبدالستار",
-    unit: "مج العمليات الخاصة",
+    unit: "مع العمليات الخاصة",
     serviceStatus: "منتهي خدمته",
     attachmentPlace: "لا يوجد",
-    dischargeDate: "٢٠٢٤ - ١ - ١٥",
+    dischargeDate: "2024 - 1 - 15",
     letters: [],
   },
   {
     id: "3",
-    militaryId: "٤٥٦٧٨٩٠١٢",
-    rank: "جندي",
+    militaryId: "2024964213580",
+    rank: "مساعد أ",
     category: "مجند",
-    name: "محمود سمير حسن",
+    name: "محمود اسلام عبدالله",
     unit: "س ١٤٥ اشارة",
     serviceStatus: "علي القوة",
     attachmentPlace: "لا يوجد",
-    dischargeDate: "٢٠٢٦ - ٦ - ١",
+    dischargeDate: "2026 - 6 - 1",
     letters: [],
   },
 ];

@@ -84,21 +84,10 @@ function Stepper() {
 }
 
 // ─── Info Row ─────────────────────────────────────────────────────────────────
-function InfoRow({
-  label,
-  value,
-  blurred = false,
-}: {
-  label: string;
-  value: string;
-  blurred?: boolean;
-}) {
+function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-start gap-2 justify-end flex-1 min-w-0">
-      <span
-        className={blurred ? "blur-[7px] select-none" : ""}
-        style={{ ...F, fontSize: 18, color: "#2d3648", whiteSpace: "nowrap" }}
-      >
+      <span style={{ ...F, fontSize: 18, color: "#2d3648", whiteSpace: "nowrap" }}>
         {value}
       </span>
       <span style={{ ...F, fontSize: 18, color: "#172e78" }}>:</span>
@@ -115,25 +104,19 @@ function AuditStrip() {
     <div className="flex flex-col gap-2 items-end w-full" dir="rtl">
       <p style={{ ...F, fontSize: 14, color: "#4a5468" }}>المستخدم الحالي</p>
       <div className="flex items-center gap-3 border border-[#e7e7e7] rounded-[12px] px-3 py-3 flex-wrap">
-        {/* Time */}
         <div className="flex items-center gap-1">
           <span style={{ ...F, fontSize: 14, color: "#4a5468", whiteSpace: "nowrap" }}>10 : 30 ص</span>
           <Clock size={18} className="text-[#a0abc0]" />
         </div>
         <div className="h-3 w-px bg-[#cbd2e0]" />
-        {/* Date */}
         <div className="flex items-center gap-1">
           <span style={{ ...F, fontSize: 14, color: "#4a5468", whiteSpace: "nowrap" }}>2025 - 08 - 20</span>
           <CalendarDays size={18} className="text-[#a0abc0]" />
         </div>
         <div className="h-3 w-px bg-[#cbd2e0]" />
-        {/* User */}
         <div className="flex items-center gap-1">
-          <span
-            className="blur-[7px] select-none"
-            style={{ ...F, fontSize: 14, color: "#4a5468", whiteSpace: "nowrap" }}
-          >
-            جندي / اسلام مجدى عبدالستار
+          <span style={{ ...F, fontSize: 14, color: "#4a5468", whiteSpace: "nowrap" }}>
+            جندي / اسلام مجدي عبدالستار
           </span>
           <User size={18} className="text-[#a0abc0]" />
         </div>
@@ -148,13 +131,13 @@ export function SuccessSoldierPage() {
   const navigate  = useNavigate();
 
   const form = (location.state as SoldierState | null) ?? {
-    name:       "اسلام مجدى عبدالستار السيد حجاج",
+    name:       "اسلام مجدي عبدالستار",
     rank:       "جندي",
     milId:      "2024427700265",
     category:   "مجند",
-    unit:       "مج العمليات الخاصة",
-    status:     "قوة الوحده",
-    attachment: "لا يوجد",
+    unit:       "ك ١١٣ صع",
+    status:     "ملحق",
+    attachment: "فرع العمليات",
     discharge:  "2025 - 3 - 1",
   };
 
@@ -194,7 +177,6 @@ export function SuccessSoldierPage() {
               className="absolute inset-0 w-full object-cover"
               style={{ height: "103.47%" }}
             />
-            {/* Green check circle badge over the image */}
             <div className="relative z-10 mb-1">
               <svg width="96" height="96" viewBox="0 0 96 96" fill="none">
                 <defs>
@@ -217,29 +199,26 @@ export function SuccessSoldierPage() {
 
           {/* ── Data table card ──────────────────────────────────────── */}
           <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full">
-            <div
-              className="flex flex-col gap-3 px-6 py-4"
-              style={{ ...F, fontSize: 18 }}
-            >
+            <div className="flex flex-col gap-3 px-6 py-4" style={{ ...F, fontSize: 18 }}>
               {/* Row 1 */}
               <div className="flex flex-wrap gap-6">
                 <InfoRow label="الدرجة"          value={form.rank} />
-                <InfoRow label="الرقم العسكـري"  value={form.milId}     blurred />
+                <InfoRow label="الرقم العسكـري"  value={form.milId} />
               </div>
               {/* Row 2 */}
               <div className="flex flex-wrap gap-6">
                 <InfoRow label="فئة الفرد"        value={form.category} />
-                <InfoRow label="الاسم"             value={form.name}      blurred />
+                <InfoRow label="الاسم"             value={form.name} />
               </div>
               {/* Row 3 */}
               <div className="flex flex-wrap gap-6">
-                <InfoRow label="الوحدة الاساسية"  value={form.unit}      blurred />
+                <InfoRow label="الوحدة الاساسية"  value={form.unit} />
                 <InfoRow label="الموقف الخدمي"    value={form.status} />
               </div>
               {/* Row 4 */}
               <div className="flex flex-wrap gap-6">
                 <InfoRow label="جهة الالحاق"      value={form.attachment} />
-                <InfoRow label="تاريخ التسريح"    value={form.discharge}  blurred />
+                <InfoRow label="تاريخ التسريح"    value={form.discharge} />
               </div>
             </div>
           </div>
@@ -249,27 +228,20 @@ export function SuccessSoldierPage() {
 
           {/* ── Action buttons ───────────────────────────────────────── */}
           <div className="flex flex-wrap gap-3 items-center w-full">
-            {/* اصدار خطاب — text link style */}
             <button
               onClick={() => navigate("/dashboard")}
               className="flex items-center justify-center min-h-[44px] px-4 rounded-[8px] transition-opacity hover:opacity-80"
             >
-              <span
-                style={{ ...F, fontSize: 16, color: "#172e78", textDecoration: "underline" }}
-              >
+              <span style={{ ...F, fontSize: 16, color: "#172e78", textDecoration: "underline" }}>
                 اصدار خطاب
               </span>
             </button>
-
-            {/* الموقف العام — light blue bg */}
             <button
               onClick={() => navigate("/dashboard")}
               className="flex items-center justify-center min-h-[44px] px-5 rounded-[8px] bg-[#ebedfd] transition-opacity hover:opacity-90 active:opacity-80"
             >
               <span style={{ ...F, fontSize: 16, color: "#2d3648" }}>الموقف العام</span>
             </button>
-
-            {/* اضافة فرد اخري — green gradient */}
             <button
               onClick={() => navigate("/dashboard/add-soldier")}
               className="flex items-center justify-center min-h-[44px] px-5 rounded-[8px] transition-opacity hover:opacity-90 active:opacity-80"

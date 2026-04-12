@@ -98,13 +98,13 @@ function LettersTable({ soldier }: { soldier: SoldierData }) {
                 </td>
                 {/* الجهة الصادر إليها */}
                 <td className={tdClass}>
-                  <span className="blur-[6px] select-none" style={{ ...FONT, fontSize: 16, color: "#2d3648" }}>
+                  <span style={{ ...FONT, fontSize: 16, color: "#2d3648" }}>
                     {letter.destination}
                   </span>
                 </td>
                 {/* السبب */}
                 <td className={tdClass}>
-                  <span className="blur-[6px] select-none" style={{ ...FONT, fontSize: 16, color: "#2d3648" }}>
+                  <span style={{ ...FONT, fontSize: 16, color: "#2d3648" }}>
                     {letter.reason}
                   </span>
                 </td>
@@ -208,22 +208,22 @@ export function SoldierDetailPage() {
         <div className="flex flex-col gap-4 px-6 py-5">
           {/* Row 1: الرقم العسكري | الدرجة */}
           <div className="flex flex-wrap gap-4">
-            <InfoRow label="الرقم العسكــري"  value={soldier.militaryId}    blurred />
+            <InfoRow label="الرقم العسكري"  value={soldier.militaryId} />
             <InfoRow label="الدرجة"            value={soldier.rank} />
           </div>
           {/* Row 2: الاسم | فئة الفرد */}
           <div className="flex flex-wrap gap-4">
-            <InfoRow label="الاسم"             value={soldier.name}          blurred />
+            <InfoRow label="الاسم"             value={soldier.name} />
             <InfoRow label="فئة الفرد"         value={soldier.category} />
           </div>
           {/* Row 3: الوحدة الأساسية | الموقف الخدمي */}
           <div className="flex flex-wrap gap-4">
-            <InfoRow label="الوحدة الاساسية"  value={soldier.unit}          blurred />
+            <InfoRow label="الوحدة الاساسية"  value={soldier.unit} />
             <InfoRow label="الموقف الخدمي"    value={soldier.serviceStatus} highlight />
           </div>
           {/* Row 4: تاريخ التسريح | جهة الالحاق */}
           <div className="flex flex-wrap gap-4">
-            <InfoRow label="تاريخ التسريح"    value={soldier.dischargeDate} blurred />
+            <InfoRow label="تاريخ التسريح"    value={soldier.dischargeDate} />
             <InfoRow label="جهة الالحاق"      value={soldier.attachmentPlace} />
           </div>
         </div>

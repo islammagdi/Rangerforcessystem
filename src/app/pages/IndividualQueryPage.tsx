@@ -48,27 +48,27 @@ function toRecord(s: SoldierData): SoldierRecord {
 const MOCK_RESULTS: SoldierRecord[] = [
   {
     id: "1",
-    militaryId: "٢٣٤٥٦٧٨٩٠",
+    militaryId: "2024427700265",
     rank: "جندي",
-    name: "اسلام مجدى عبدالستار",
+    name: "اسلام مجدي عبدالستار",
     unit: "ك ١١٣ صع",
     attachmentPlace: "فرع العمليات",
     status: "ملحق",
   },
   {
     id: "2",
-    militaryId: "٣٤٥٦٧٨٩٠٢",
-    rank: "عريف",
+    militaryId: "2024159308527",
+    rank: "جندي",
     name: "احمد عادل عبدالستار",
-    unit: "مج العمليات الخاصة",
+    unit: "مع العمليات الخاصة",
     attachmentPlace: "لا يوجد",
     status: "منتهي خدمته",
   },
   {
     id: "3",
-    militaryId: "٤٥٦٧٨٩٠٢٣",
-    rank: "جندي",
-    name: "محمود سمير حسن",
+    militaryId: "2024964213580",
+    rank: "مساعد أ",
+    name: "محمود اسلام عبدالله",
     unit: "س ١٤٥ اشارة",
     attachmentPlace: "لا يوجد",
     status: "علي القوة",
@@ -450,28 +450,28 @@ function ResultsTable({
 
                 {/* رقم عسكري — blurred */}
                 <td className={cellClass}>
-                  <span style={{ ...cellTextStyle, filter: "blur(5px)", userSelect: "none" }}>
+                  <span style={{ ...cellTextStyle }}>
                     {rec.militaryId}
                   </span>
                 </td>
 
                 {/* درجة */}
                 <td className={cellClass}>
-                  <span style={{ ...cellTextStyle, filter: "blur(5px)", userSelect: "none" }}>
+                  <span style={{ ...cellTextStyle }}>
                     {rec.rank}
                   </span>
                 </td>
 
                 {/* اسم — blurred */}
                 <td className={cellClass}>
-                  <span style={{ ...cellTextStyle, filter: "blur(5px)", userSelect: "none" }}>
+                  <span style={{ ...cellTextStyle }}>
                     {rec.name}
                   </span>
                 </td>
 
                 {/* الوحدة — blurred */}
                 <td className={cellClass}>
-                  <span style={{ ...cellTextStyle, filter: "blur(5px)", userSelect: "none" }}>
+                  <span style={{ ...cellTextStyle }}>
                     {rec.unit}
                   </span>
                 </td>
@@ -510,6 +510,7 @@ export function IndividualQueryPage() {
   const [selectedCategory, setSelectedCategory] = useState("جميع الفئات");
   const [queryBasis, setQueryBasis] = useState("رقم عسكري");
   const [queryText, setQueryText] = useState("");
+  const [queryTextError, setQueryTextError] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
   const [results, setResults] = useState<SoldierRecord[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -520,6 +521,11 @@ export function IndividualQueryPage() {
   // ── Search ──────────────────────────────────────────────────────────────
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
+    if (!queryText.trim()) {
+      setQueryTextError("يرجى إدخال بيانات الاستعلام أولاً");
+      return;
+    }
+    setQueryTextError("");
     // Simulate finding results (frontend only)
     setResults(MOCK_RESULTS);
     setHasSearched(true);
@@ -598,10 +604,65 @@ export function IndividualQueryPage() {
       {/* ── Search form ─────────────────────────────────────────────────── */}
       <form onSubmit={handleSearch} className="flex flex-col gap-6 items-end">
 
-        {/* ── Row: button + fields ──────────────────────────────────────── */}
-        <div className="flex flex-col-reverse sm:flex-row gap-5 w-full items-end justify-end">
+        {/* ── Row: Dropdown → Input → Button ───────────────────────────── */}
+        <div className="flex flex-col sm:flex-row gap-5 w-full items-end">
 
-          {/* استعلام button */}
+          {/* 1 - أساس الاستعلام (Dropdown) — rightmost in RTL */}
+          <div className="flex flex-col gap-1.5 flex-1 min-w-0 w-full">
+            <label
+              style={{
+                fontFamily: "'Almarai', sans-serif",
+                fontWeight: 700,
+                fontSize: "16px",
+                color: "#2d3648",
+                textAlign: "right",
+                display: "block",
+              }}
+            >
+              أساس الاستعلام
+            </label>
+            <Dropdown
+              options={QUERY_BASIS_OPTIONS}
+              value={queryBasis}
+              onChange={setQueryBasis}
+            />
+          </div>
+
+          {/* 2 - البيان (Input) */}
+          <div className="flex flex-col gap-1.5 flex-1 min-w-0 w-full">
+            <label
+              style={{
+                fontFamily: "'Almarai', sans-serif",
+                fontWeight: 700,
+                fontSize: "16px",
+                color: "#2d3648",
+                textAlign: "right",
+                display: "block",
+              }}
+            >
+              البيان
+            </label>
+            <input
+              type="text"
+              value={queryText}
+              onChange={(e) => { setQueryText(e.target.value); if (queryTextError) setQueryTextError(""); }}
+              placeholder="بيانات الاستعلام"
+              className={["w-full h-[54px] bg-white border rounded-[8px] px-3 text-right outline-none focus:border-[#1f3d97] transition-colors", queryTextError ? "border-[#ef4444]" : "border-[#e2e7f0]"].join(" ")}
+              style={{
+                fontFamily: "'Almarai', sans-serif",
+                fontSize: "18px",
+                color: "#4a5468",
+              }}
+              dir="rtl"
+            />
+            {queryTextError && (
+              <p className="text-right" style={{ fontFamily: "'Almarai', sans-serif", fontSize: "13px", color: "#ef4444", lineHeight: 1.4 }}>
+                {queryTextError}
+              </p>
+            )}
+          </div>
+
+          {/* 3 - زر الاستعلام — leftmost in RTL */}
           <button
             type="submit"
             className="shrink-0 w-full sm:w-[150px] h-[52px] rounded-[8px] flex items-center justify-center transition-opacity hover:opacity-90 active:opacity-80"
@@ -614,60 +675,6 @@ export function IndividualQueryPage() {
           >
             استعلام
           </button>
-
-          {/* Input fields */}
-          <div className="flex flex-col sm:flex-row gap-4 flex-1 w-full items-end">
-
-            {/* أساس الاستعلام */}
-            <div className="flex flex-col gap-1.5 flex-1 min-w-0 w-full">
-              <label
-                style={{
-                  fontFamily: "'Almarai', sans-serif",
-                  fontWeight: 700,
-                  fontSize: "16px",
-                  color: "#2d3648",
-                  textAlign: "right",
-                  display: "block",
-                }}
-              >
-                أساس الاستعلام
-              </label>
-              <Dropdown
-                options={QUERY_BASIS_OPTIONS}
-                value={queryBasis}
-                onChange={setQueryBasis}
-              />
-            </div>
-
-            {/* البيان */}
-            <div className="flex flex-col gap-1.5 flex-1 min-w-0 w-full">
-              <label
-                style={{
-                  fontFamily: "'Almarai', sans-serif",
-                  fontWeight: 700,
-                  fontSize: "16px",
-                  color: "#2d3648",
-                  textAlign: "right",
-                  display: "block",
-                }}
-              >
-                البيان
-              </label>
-              <input
-                type="text"
-                value={queryText}
-                onChange={(e) => setQueryText(e.target.value)}
-                placeholder="بيانات الاستعلام"
-                className="w-full h-[54px] bg-white border border-[#e2e7f0] rounded-[8px] px-3 text-right outline-none focus:border-[#1f3d97] transition-colors"
-                style={{
-                  fontFamily: "'Almarai', sans-serif",
-                  fontSize: "18px",
-                  color: "#4a5468",
-                }}
-                dir="rtl"
-              />
-            </div>
-          </div>
         </div>
 
         {/* ── فئة الفرد ────────────────────────────────────────────────── */}
@@ -683,7 +690,7 @@ export function IndividualQueryPage() {
           >
             فئة الفرد
           </p>
-          <div className="flex flex-wrap gap-4 justify-end w-full">
+          <div className="flex flex-wrap gap-4 justify-start w-full">
             {CATEGORIES.map((cat) => (
               <RadioCard
                 key={cat.id}

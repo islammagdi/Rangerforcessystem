@@ -173,22 +173,22 @@ export function ReviewSoldierPage() {
           {/* Row 1 */}
           <div className="flex flex-wrap gap-6">
             <InfoRow label="الدرجة"          value={form.rank} />
-            <InfoRow label="الرقم العسكري"   value={form.milId}     blurred />
+            <InfoRow label="الرقم العسكري"   value={form.milId} />
           </div>
           {/* Row 2 */}
           <div className="flex flex-wrap gap-6">
             <InfoRow label="فئة الفرد"       value={form.category} />
-            <InfoRow label="الاسم"            value={form.name}      blurred />
+            <InfoRow label="الاسم"            value={form.name} />
           </div>
           {/* Row 3 */}
           <div className="flex flex-wrap gap-6">
             <InfoRow label="الموقف الخدمي"   value={form.status}    bold />
-            <InfoRow label="الوحدة الاساسية" value={form.unit}      blurred />
+            <InfoRow label="الوحدة الاساسية" value={form.unit} />
           </div>
           {/* Row 4 */}
           <div className="flex flex-wrap gap-6">
             <InfoRow label="جهة الالحاق"     value={form.attachment} />
-            <InfoRow label="تاريخ التسريح"   value={form.discharge}  blurred />
+            <InfoRow label="تاريخ التسريح"   value={form.discharge} />
           </div>
 
           {/* ── اعتماد القيد button ──────────────────────────────────── */}

@@ -108,49 +108,58 @@ function CategoryToggle({ value, onChange }: { value: SoldierCategory; onChange:
 }
 
 // ─── Reusable Dropdown ────────────────────────────────────────────────────────
-function FormDropdown({ placeholder, options, value, onChange }: { placeholder: string; options: string[]; value: string; onChange: (v: string) => void }) {
+function FormDropdown({ placeholder, options, value, onChange, error }: { placeholder: string; options: string[]; value: string; onChange: (v: string) => void; error?: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="relative w-full">
-      <button type="button" onClick={() => setOpen((o) => !o)}
-        className="w-full h-[54px] bg-white border border-[#e2e7f0] rounded-[8px] flex items-center gap-3 px-3 hover:border-[#a0aec0] transition-colors">
-        <ChevronDown size={20} className={`shrink-0 text-[#2d3648] transition-transform ${open ? "rotate-180" : ""}`} />
-        <span className="flex-1 text-right" style={{ ...F, fontSize: 18, color: "#4a5468" }}>{value || placeholder}</span>
-      </button>
-      {open && (
-        <ul className="absolute z-50 top-full mt-1 w-full bg-white border border-[#e2e7f0] rounded-[8px] shadow-lg overflow-hidden">
-          {options.map((opt) => (
-            <li key={opt}>
-              <button type="button" onClick={() => { onChange(opt); setOpen(false); }}
-                className={["w-full text-right px-4 py-3 transition-colors", opt === value ? "bg-[#f0f2fd] text-[#1f3d97]" : "hover:bg-[#f5f6fb] text-[#2d3648]"].join(" ")}
-                style={{ ...F, fontSize: 16 }}>{opt}</button>
-            </li>
-          ))}
-        </ul>
-      )}
+    <div className="flex flex-col gap-1 w-full">
+      <div className="relative w-full">
+        <button type="button" onClick={() => setOpen((o) => !o)}
+          className={["w-full h-[54px] bg-white border rounded-[8px] flex items-center gap-3 px-3 hover:border-[#a0aec0] transition-colors", error ? "border-[#ef4444]" : "border-[#e2e7f0]"].join(" ")}>
+          <ChevronDown size={20} className={`shrink-0 text-[#2d3648] transition-transform ${open ? "rotate-180" : ""}`} />
+          <span className="flex-1 text-right" style={{ ...F, fontSize: 18, color: "##4a5468" }}>{value || placeholder}</span>
+        </button>
+        {open && (
+          <ul className="absolute z-50 top-full mt-1 w-full bg-white border border-[#e2e7f0] rounded-[8px] shadow-lg overflow-hidden">
+            {options.map((opt) => (
+              <li key={opt}>
+                <button type="button" onClick={() => { onChange(opt); setOpen(false); }}
+                  className={["w-full text-right px-4 py-3 transition-colors", opt === value ? "bg-[#f0f2fd] text-[#1f3d97]" : "hover:bg-[#f5f6fb] text-[#2d3648]"].join(" ")}
+                  style={{ ...F, fontSize: 16 }}>{opt}</button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {error && <p className="text-right px-1" style={{ ...F, fontSize: 13, color: "#ef4444", lineHeight: 1.4 }}>{error}</p>}
     </div>
   );
 }
 
 // ─── Reusable Text Input ──────────────────────────────────────────────────────
-function FormInput({ placeholder, value, onChange }: { placeholder: string; value: string; onChange: (v: string) => void }) {
+function FormInput({ placeholder, value, onChange, error }: { placeholder: string; value: string; onChange: (v: string) => void; error?: string }) {
   return (
-    <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} dir="rtl"
-      className="w-full h-[54px] bg-white border border-[#e2e7f0] rounded-[8px] px-3 text-right outline-none focus:border-[#1f3d97] transition-colors"
-      style={{ ...F, fontSize: 18, color: "#4a5468" }} />
+    <div className="flex flex-col gap-1 w-full">
+      <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} dir="rtl"
+        className={["w-full h-[54px] bg-white border rounded-[8px] px-3 text-right outline-none focus:border-[#1f3d97] transition-colors", error ? "border-[#ef4444]" : "border-[#e2e7f0]"].join(" ")}
+        style={{ ...F, fontSize: 18, color: "#4a5468" }} />
+      {error && <p className="text-right px-1" style={{ ...F, fontSize: 13, color: "#ef4444", lineHeight: 1.4 }}>{error}</p>}
+    </div>
   );
 }
 
 // ─── Date Input ───────────────────────────────────────────────────────────────
-function DateInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function DateInput({ value, onChange, error }: { value: string; onChange: (v: string) => void; error?: string }) {
   return (
-    <div className="relative w-full">
-      <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
-        <CalendarDays size={20} style={{ color: "#294dbb" }} />
+    <div className="flex flex-col gap-1 w-full">
+      <div className="relative w-full">
+        <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+          <CalendarDays size={20} style={{ color: "#294dbb" }} />
+        </div>
+        <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder="DD-MM-YYYY" dir="rtl"
+          className={["w-full h-[54px] bg-white border rounded-[8px] pr-10 pl-3 text-right outline-none focus:border-[#294dbb] transition-colors", error ? "border-[#ef4444]" : "border-[#e2e7f0]"].join(" ")}
+          style={{ ...F, fontSize: 18, color: "#4a5468" }} />
       </div>
-      <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder="DD-MM-YYYY" dir="rtl"
-        className="w-full h-[54px] bg-white border border-[#e2e7f0] rounded-[8px] pr-10 pl-3 text-right outline-none focus:border-[#294dbb] transition-colors"
-        style={{ ...F, fontSize: 18, color: "#4a5468" }} />
+      {error && <p className="text-right px-1" style={{ ...F, fontSize: 13, color: "#ef4444", lineHeight: 1.4 }}>{error}</p>}
     </div>
   );
 }
@@ -327,7 +336,7 @@ function GroupUploadSection({ onSubmit }: { onSubmit: () => void }) {
 
             {/* File info */}
             <div className="flex flex-col items-end flex-1 min-w-0 gap-0.5">
-              <p className="blur-[7px] select-none w-full text-right truncate" style={{ ...F, fontWeight: 700, fontSize: 12, color: "#2d3648" }}>
+              <p className="w-full text-right truncate" style={{ ...F, fontWeight: 700, fontSize: 12, color: "#2d3648" }}>
                 {uploadedFile.name}
               </p>
               <p className="w-full text-right" style={{ ...F, fontSize: 12, color: "#a0abc0" }}>
@@ -374,14 +383,29 @@ export function AddNewSoldierPage() {
   const [unit,       setUnit]       = useState("");
   const [status,     setStatus]     = useState("ملحق علي القوة");
   const [attachment, setAttachment] = useState("");
+  const [errors,     setErrors]     = useState<Record<string, string>>({});
 
   const RANKS  = ["جندي", "عريف", "وكيل رقيب", "رقيب", "رقيب أول", "مساعد أول"];
   const UNITS  = ["مج العمليات الخاصة", "ك ١١٣ صع", "س ١٤٥ اشارة", "فرع العمليات", "قيادة المنطقة"];
   const STATUS = ["ملحق علي القوة", "قوة الوحده", "منتهي خدمته", "إجازة", "غائب"];
   const ATTACH = ["لا يوجد", "فرع العمليات", "قيادة المنطقة", "وحدة الدعم"];
 
+  function validate() {
+    const e: Record<string, string> = {};
+    if (!name.trim())       e.name       = "الاسم مطلوب";
+    if (!rank.trim())       e.rank       = "الدرجة مطلوبة";
+    if (!milId.trim())      e.milId      = "الرقم العسكري مطلوب";
+    if (!discharge.trim())  e.discharge  = "تاريخ التسريح مطلوب";
+    if (!unit.trim())       e.unit       = "الوحدة الاساسية مطلوبة";
+    if (!attachment.trim()) e.attachment = "جهة الالحاق مطلوبة";
+    return e;
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const errs = validate();
+    if (Object.keys(errs).length > 0) { setErrors(errs); return; }
+    setErrors({});
     navigate("/dashboard/add-soldier/review", {
       state: { name, rank, milId, category, unit, status, attachment, discharge },
     });
@@ -453,19 +477,19 @@ export function AddNewSoldierPage() {
 
               <div className="flex flex-col sm:flex-row gap-4">
                 <FieldGroup label="الاسم">
-                  <FormInput placeholder="اسم الفرد" value={name} onChange={setName} />
+                  <FormInput placeholder="اسم الفرد" value={name} onChange={(v) => { setName(v); setErrors((p) => ({ ...p, name: undefined })); }} error={errors.name} />
                 </FieldGroup>
                 <FieldGroup label="الدرجة">
-                  <FormDropdown placeholder="اختيار الدرجة" options={RANKS} value={rank} onChange={setRank} />
+                  <FormDropdown placeholder="اختيار الدرجة" options={RANKS} value={rank} onChange={(v) => { setRank(v); setErrors((p) => ({ ...p, rank: undefined })); }} error={errors.rank} />
                 </FieldGroup>
                 <FieldGroup label="الرقم العسكري">
-                  <FormInput placeholder="ادخل الرقم العسكري" value={milId} onChange={setMilId} />
+                  <FormInput placeholder="ادخل الرقم العسكري" value={milId} onChange={(v) => { setMilId(v); setErrors((p) => ({ ...p, milId: undefined })); }} error={errors.milId} />
                 </FieldGroup>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-4">
                 <FieldGroup label="تاريخ التسريح" labelColor="#294dbb">
-                  <DateInput value={discharge} onChange={setDischarge} />
+                  <DateInput value={discharge} onChange={(v) => { setDischarge(v); setErrors((p) => ({ ...p, discharge: undefined })); }} error={errors.discharge} />
                 </FieldGroup>
                 <div className="flex-1 hidden sm:block" />
                 <div className="flex-1 hidden sm:block" />
@@ -475,13 +499,13 @@ export function AddNewSoldierPage() {
 
               <div className="flex flex-col sm:flex-row gap-4">
                 <FieldGroup label="جهة الالحاق">
-                  <FormInput placeholder="اختر الوحدة" value={attachment} onChange={setAttachment} />
+                  <FormInput placeholder="اختر الوحدة" value={attachment} onChange={(v) => { setAttachment(v); setErrors((p) => ({ ...p, attachment: undefined })); }} error={errors.attachment} />
                 </FieldGroup>
                 <FieldGroup label="موقف الفرد">
                   <FormDropdown placeholder="اختر الموقف" options={STATUS} value={status} onChange={setStatus} />
                 </FieldGroup>
                 <FieldGroup label="الوحدة الاساسية">
-                  <FormDropdown placeholder="اختار الوحدة" options={UNITS} value={unit} onChange={setUnit} />
+                  <FormDropdown placeholder="اختار الوحدة" options={UNITS} value={unit} onChange={(v) => { setUnit(v); setErrors((p) => ({ ...p, unit: undefined })); }} error={errors.unit} />
                 </FieldGroup>
               </div>
 

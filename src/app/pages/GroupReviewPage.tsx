@@ -169,18 +169,18 @@ interface SoldierRow {
 
 const INITIAL_ROWS: SoldierRow[] = [
   {
-    id: 1, milId: "2024427700265", rank: "جنـ", name: "اسلام مجدى عبدالستار",
-    serviceType: "مجند", unit: "مج العمليات", distributionStatus: "على القوة",
-    attachment: "فرع العمليت", rowStatus: "بيان جديد", rowBg: undefined, checked: true,
+    id: 1, milId: "2024427700265", rank: "جندي", name: "اسلام مجدي عبدالستار",
+    serviceType: "مجند", unit: "ك ١١٣ صع", distributionStatus: "ملحق",
+    attachment: "فرع العمليات", rowStatus: "بيان جديد", rowBg: undefined, checked: true,
   },
   {
-    id: 2, milId: "2024427700266", rank: "جنـ", name: "محمد احمد السيد",
-    serviceType: "مجند", unit: "ك ١١٣ صع", distributionStatus: "ملحق",
+    id: 2, milId: "2024159308527", rank: "جندي", name: "احمد عادل عبدالستار",
+    serviceType: "مجند", unit: "مع العمليات الخاصة", distributionStatus: "منتهي خدمته",
     attachment: "لا يوجد", rowStatus: "تحديث", rowBg: "#e9f9ff", checked: true,
   },
   {
-    id: 3, milId: "2024427700267", rank: "جنـ", name: "عمرو خالد محمود",
-    serviceType: "مجند", unit: "س ١٤٥ اشارة", distributionStatus: "منتهي خدمته",
+    id: 3, milId: "2024964213580", rank: "مساعد أ", name: "محمود اسلام عبدالله",
+    serviceType: "مجند", unit: "س ١٤٥ اشارة", distributionStatus: "علي القوة",
     attachment: "لا يوجد", rowStatus: "خطأ بالوحدة", rowBg: "#fce8f1", checked: true,
   },
 ];
@@ -278,15 +278,15 @@ function SoldierTable({ rows, onCheck, onDelete, onEdit }: {
               </td>
               {/* رقم عسكري */}
               <td className="px-4 py-3">
-                <span className="blur-[7px] select-none" style={{ ...F, fontSize: 14, color: "#2d3648", whiteSpace: "nowrap" }}>{row.milId}</span>
+                <span style={{ ...F, fontSize: 14, color: "#2d3648", whiteSpace: "nowrap" }}>{row.milId}</span>
               </td>
               {/* درجة */}
               <td className="px-4 py-3">
-                <span className="blur-[7px] select-none" style={{ ...F, fontSize: 14, color: "#2d3648" }}>{row.rank}</span>
+                <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>{row.rank}</span>
               </td>
               {/* اسم */}
               <td className="px-4 py-3">
-                <span className="blur-[7px] select-none" style={{ ...F, fontSize: 14, color: "#2d3648", whiteSpace: "nowrap" }}>{row.name}</span>
+                <span style={{ ...F, fontSize: 14, color: "#2d3648", whiteSpace: "nowrap" }}>{row.name}</span>
               </td>
               {/* نوع الخدمة */}
               <td className="px-4 py-3">
@@ -294,16 +294,19 @@ function SoldierTable({ rows, onCheck, onDelete, onEdit }: {
               </td>
               {/* الوحدة */}
               <td className="px-4 py-3">
-                <span className="blur-[7px] select-none" style={{ ...F, fontSize: 14, color: "#2d3648", whiteSpace: "nowrap" }}>{row.unit}</span>
+                <span style={{ ...F, fontSize: 14, color: "#2d3648", whiteSpace: "nowrap" }}>{row.unit}</span>
               </td>
               {/* حالة التوزيع */}
               <td className="px-4 py-3">
-                <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>{row.distributionStatus}</span>
+                <span
+                  style={{ ...F, fontSize: 14, color: "#2d3648", whiteSpace: "nowrap" }}
+                >
+                  {row.distributionStatus}
+                </span>
               </td>
               {/* مكان الالحاق */}
               <td className="px-4 py-3">
                 <span
-                  className={row.id === 1 ? "blur-[7px] select-none" : ""}
                   style={{ ...F, fontSize: 14, color: "#2d3648", whiteSpace: "nowrap" }}
                 >
                   {row.attachment}
