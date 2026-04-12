@@ -138,7 +138,7 @@ export function LoginInput({
           "border transition-all duration-150",
           error
             ? "border-red-400 ring-2 ring-red-200"
-            : "border-[#e2e7f0] focus-within:border-[#1f3d97] focus-within:ring-2 focus-within:ring-[#1f3d97]/20",
+            : "border-[#e2e7f0] focus-within:border-[#769D7B] focus-within:ring-2 focus-within:ring-[#769D7B]/20",
           disabled ? "opacity-60 cursor-not-allowed" : "",
         ].join(" ")}
       >
