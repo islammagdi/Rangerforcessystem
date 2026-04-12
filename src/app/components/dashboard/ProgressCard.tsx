@@ -28,21 +28,31 @@ export function ProgressCard({
   return (
     <div className="bg-white flex-1 rounded-[20px] border border-[#eff0f6] flex flex-col justify-center px-6 py-4 gap-3 min-w-0 transition-shadow hover:shadow-sm">
       {/* Top row: icon + value + label */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3 flex-row-reverse">
         <div className="shrink-0 w-[30px] h-[30px] flex items-center justify-center">
           {icon}
         </div>
-        <div className="flex-1 flex flex-col gap-1 items-end text-right">
+        <div className="flex-1 flex flex-col gap-1 items-start text-right">
           <div className="leading-tight">
             <span
-              style={{ color: "#2d3648", fontFamily: "'Almarai', sans-serif", fontWeight: 700, fontSize: "24px" }}
+              style={{
+                color: "#2d3648",
+                fontFamily: "'Almarai', sans-serif",
+                fontWeight: 700,
+                fontSize: "24px",
+              }}
             >
               {value}
             </span>
             {subValue && (
               <span
                 className="ms-1"
-                style={{ color: "#717d96", fontFamily: "'Almarai', sans-serif", fontWeight: 700, fontSize: "18px" }}
+                style={{
+                  color: "#717d96",
+                  fontFamily: "'Almarai', sans-serif",
+                  fontWeight: 700,
+                  fontSize: "18px",
+                }}
               >
                 {subValue}
               </span>
@@ -50,7 +60,12 @@ export function ProgressCard({
           </div>
           <span
             className="whitespace-nowrap"
-            style={{ color: "#717d96", fontFamily: "'Almarai', sans-serif", fontWeight: 400, fontSize: "14px" }}
+            style={{
+              color: "#717d96",
+              fontFamily: "'Almarai', sans-serif",
+              fontWeight: 400,
+              fontSize: "14px",
+            }}
           >
             {label}
           </span>
@@ -61,7 +76,12 @@ export function ProgressCard({
       <div className="flex flex-col gap-1">
         {percentLabel && (
           <span
-            style={{ color: "#717d96", fontFamily: "'Almarai', sans-serif", fontWeight: 700, fontSize: "12px" }}
+            style={{
+              color: "#717d96",
+              fontFamily: "'Almarai', sans-serif",
+              fontWeight: 700,
+              fontSize: "12px",
+            }}
           >
             {percentLabel}
           </span>
@@ -71,7 +91,8 @@ export function ProgressCard({
             className="h-full rounded-full transition-all duration-500"
             style={{
               width: `${clampedPct}%`,
-              background: "linear-gradient(to bottom, #00b867, #00522e)",
+              background:
+                "linear-gradient(to bottom, #00b867, #00522e)",
             }}
           />
         </div>
