@@ -15,6 +15,8 @@ import { UnitDetailPage } from "./pages/UnitDetailPage";
 import { UnitSoldiersPage } from "./pages/UnitSoldiersPage";
 import { IssueLetterPage } from "./pages/IssueLetterPage";
 import { SelectSoldiersPage } from "./pages/SelectSoldiersPage";
+import { LetterDataPage } from "./pages/LetterDataPage";
+import { LetterReviewPage } from "./pages/LetterReviewPage";
 
 export const router = createBrowserRouter([
   {
@@ -25,20 +27,22 @@ export const router = createBrowserRouter([
     path: "/dashboard",
     Component: DashboardLayout,
     children: [
-      { index: true, Component: DashboardHome },
-      { path: "individual-query",                    Component: IndividualQueryPage },
-      { path: "individual-query/soldier/:id",         Component: SoldierDetailPage },
-      { path: "individual-query/soldier/:id/edit",    Component: SoldierEditPage },
-      { path: "add-soldier",                          Component: AddNewSoldierPage },
-      { path: "add-soldier/review",                   Component: ReviewSoldierPage },
-      { path: "add-soldier/group-review",             Component: GroupReviewPage },
-      { path: "add-soldier/success",                  Component: SuccessSoldierPage },
-      { path: "add-soldier/group-success",            Component: GroupSuccessPage },
-      { path: "units-report",                         Component: UnitsReportPage },
-      { path: "units-report/:id",                     Component: UnitDetailPage },
-      { path: "units-report/:id/soldiers",            Component: UnitSoldiersPage },
-      { path: "issue-letter",                         Component: IssueLetterPage },
-      { path: "issue-letter/soldiers",                Component: SelectSoldiersPage },
+      { index: true,                                    Component: DashboardHome },
+      { path: "individual-query",                       Component: IndividualQueryPage },
+      { path: "individual-query/soldier/:id",           Component: SoldierDetailPage },
+      { path: "individual-query/soldier/:id/edit",      Component: SoldierEditPage },
+      { path: "add-soldier",                            Component: AddNewSoldierPage },
+      { path: "add-soldier/review",                     Component: ReviewSoldierPage },
+      { path: "add-soldier/group-review",               Component: GroupReviewPage },
+      { path: "add-soldier/success",                    Component: SuccessSoldierPage },
+      { path: "add-soldier/group-success",              Component: GroupSuccessPage },
+      { path: "units-report",                           Component: UnitsReportPage },
+      { path: "units-report/:id",                       Component: UnitDetailPage },
+      { path: "units-report/:id/soldiers",              Component: UnitSoldiersPage },
+      { path: "issue-letter",                           Component: IssueLetterPage },
+      { path: "issue-letter/soldiers",                  Component: SelectSoldiersPage },
+      { path: "issue-letter/letter-data",               Component: LetterDataPage },
+      { path: "issue-letter/review",                    Component: LetterReviewPage },
     ],
   },
 ]);

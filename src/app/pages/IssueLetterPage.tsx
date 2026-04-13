@@ -135,7 +135,7 @@ export function IssueLetterPage() {
       </h1>
 
       {/* ── Stepper ─────────────────────────────────────────── */}
-      <div className="flex items-start justify-center gap-0" dir="rtl">
+      <div className="flex items-start justify-center gap-0 flex-wrap" dir="rtl">
         {/* Step 01 — active */}
         <Step number="01" label="تحديد نوع الخطاب" active />
         <StepConnector />
