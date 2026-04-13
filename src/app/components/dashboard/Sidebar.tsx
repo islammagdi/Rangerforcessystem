@@ -179,6 +179,9 @@ export function Sidebar({
           : undefined) ??
         (activePath.includes("/issue-letter")
           ? "إصدار خطاب"
+          : undefined) ??
+        (activePath.includes("/letters-archive")
+          ? "سجل الخطابات"
           : undefined))) ??
     "الموقف العام";
 

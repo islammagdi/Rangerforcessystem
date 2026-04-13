@@ -17,6 +17,8 @@ import { IssueLetterPage } from "./pages/IssueLetterPage";
 import { SelectSoldiersPage } from "./pages/SelectSoldiersPage";
 import { LetterDataPage } from "./pages/LetterDataPage";
 import { LetterReviewPage } from "./pages/LetterReviewPage";
+import { LettersArchivePage } from "./pages/LettersArchivePage";
+import { LetterDetailPage } from "./pages/LetterDetailPage";
 
 export const router = createBrowserRouter([
   {
@@ -43,6 +45,8 @@ export const router = createBrowserRouter([
       { path: "issue-letter/soldiers",                  Component: SelectSoldiersPage },
       { path: "issue-letter/letter-data",               Component: LetterDataPage },
       { path: "issue-letter/review",                    Component: LetterReviewPage },
+      { path: "letters-archive",                        Component: LettersArchivePage },
+      { path: "letters-archive/:id",                    Component: LetterDetailPage },
     ],
   },
 ]);
