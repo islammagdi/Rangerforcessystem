@@ -182,6 +182,12 @@ export function Sidebar({
           : undefined) ??
         (activePath.includes("/letters-archive")
           ? "سجل الخطابات"
+          : undefined) ??
+        (activePath.includes("/daily-reports")
+          ? "اليوميات"
+          : undefined) ??
+        (activePath.includes("/reserve-batches")
+          ? "دفعات الرديف"
           : undefined))) ??
     "الموقف العام";
 

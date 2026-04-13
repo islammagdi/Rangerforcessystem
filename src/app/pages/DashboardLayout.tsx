@@ -17,6 +17,8 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/issue-letter/soldiers":     "إصدار خطاب",
   "/dashboard/issue-letter/letter-data":  "إصدار خطاب",
   "/dashboard/letters-archive":           "سجل الخطابات",
+  "/dashboard/daily-reports":             "اليوميات",
+  "/dashboard/reserve-batches":           "دفعات الرديف",
 };
 
 function resolvePageTitle(pathname: string): string {
@@ -27,6 +29,8 @@ function resolvePageTitle(pathname: string): string {
   if (pathname.match(/\/dashboard\/units-report\/\d+/)) return "بيان الوحدات / بيانات الوحدة";
   if (pathname.includes("/issue-letter")) return "إصدار خطاب";
   if (pathname.includes("/letters-archive")) return "سجل الخطابات";
+  if (pathname.includes("/daily-reports"))   return "اليوميات";
+  if (pathname.includes("/reserve-batches")) return "دفعات الرديف";
   return "الموقف العام";
 }
 
@@ -50,6 +54,10 @@ export function DashboardLayout() {
       navigate("/dashboard/issue-letter");
     } else if (label === "سجل الخطابات") {
       navigate("/dashboard/letters-archive");
+    } else if (label === "اليوميات") {
+      navigate("/dashboard/daily-reports");
+    } else if (label === "دفعات الرديف") {
+      navigate("/dashboard/reserve-batches");
     }
     // other items can be wired up later
   }
