@@ -212,7 +212,13 @@ export function LetterDataPage() {
     if (errors.attachmentPlace) setErrors((p) => ({ ...p, attachmentPlace: undefined }));
   }
 
+  const isEndAttachment = letterType === "end-attachment";
+
+  // For end-attachment: pre-fill وحدة الالحاق from soldier.attachmentPlace or soldier.unit
   function getAttachmentUnit(soldier: SoldierData): string {
+    if (isEndAttachment) {
+      return overrides[soldier.id] ?? soldier.attachmentPlace ?? soldier.unit;
+    }
     return overrides[soldier.id] ?? attachmentPlace ?? soldier.unit;
   }
 
@@ -231,8 +237,8 @@ export function LetterDataPage() {
   function validate() {
     const e: Record<string, string> = {};
     if (!destination.trim()) e.destination = "جهة الخطاب مطلوبة";
-    if (!attachmentPlace.trim()) e.attachmentPlace = "مكان الالحاق مطلوب";
-    if (!reason.trim()) e.reason = "سبب الالحاق مطلوب";
+    if (!isEndAttachment && !attachmentPlace.trim()) e.attachmentPlace = "مكان الالحاق مطلوب";
+    if (!reason.trim()) e.reason = isEndAttachment ? "سبب إنهاء الالحاق مطلوب" : "سبب الالحاق مطلوب";
     return e;
   }
 
@@ -286,10 +292,10 @@ export function LetterDataPage() {
       <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full">
         <div className="flex flex-col gap-5 px-6 py-5">
 
-          {/* Row 1: جهة الخطاب + مكان الالحاق */}
-          <div className="flex flex-col sm:flex-row gap-4 w-full">
-            {/* Right: جهة الخطاب */}
-            <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+          {/* Row 1: dropdowns */}
+          {isEndAttachment ? (
+            /* End-attachment: single full-width جهة الخطاب dropdown */
+            <div className="flex flex-col gap-1.5 w-full">
               <label style={{ ...F, fontWeight: 700, fontSize: 15, color: "#2d3648" }}>جهة الخطاب</label>
               <FormDropdown
                 placeholder="اختر الجهة"
@@ -299,27 +305,44 @@ export function LetterDataPage() {
                 error={errors.destination}
               />
             </div>
-            {/* Left: مكان الالحاق */}
-            <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-              <label style={{ ...F, fontWeight: 700, fontSize: 15, color: "#2d3648" }}>مكان الالحاق</label>
-              <FormDropdown
-                placeholder="اختر مكان الالحاق"
-                options={ATTACHMENT_OPTIONS}
-                value={attachmentPlace}
-                onChange={handleAttachmentPlaceChange}
-                error={errors.attachmentPlace}
-              />
-              <p style={{ ...F, fontSize: 12, color: "#717d96", lineHeight: 1.5 }}>
-                سيتم تطبيق وحدة الالحاق على جميع الافراد ولكن يمكنك تعديل كل فرد من خلال جدول الافراد
-              </p>
+          ) : (
+            /* Attachment: two dropdowns side by side */
+            <div className="flex flex-col sm:flex-row gap-4 w-full">
+              {/* Right: جهة الخطاب */}
+              <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                <label style={{ ...F, fontWeight: 700, fontSize: 15, color: "#2d3648" }}>جهة الخطاب</label>
+                <FormDropdown
+                  placeholder="اختر الجهة"
+                  options={DESTINATION_OPTIONS}
+                  value={destination}
+                  onChange={(v) => { setDestination(v); if (errors.destination) setErrors((p) => ({ ...p, destination: undefined })); }}
+                  error={errors.destination}
+                />
+              </div>
+              {/* Left: مكان الالحاق */}
+              <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                <label style={{ ...F, fontWeight: 700, fontSize: 15, color: "#2d3648" }}>مكان الالحاق</label>
+                <FormDropdown
+                  placeholder="اختر مكان الالحاق"
+                  options={ATTACHMENT_OPTIONS}
+                  value={attachmentPlace}
+                  onChange={handleAttachmentPlaceChange}
+                  error={errors.attachmentPlace}
+                />
+                <p style={{ ...F, fontSize: 12, color: "#717d96", lineHeight: 1.5 }}>
+                  سيتم تطبيق وحدة الالحاق على جميع الافراد ولكن يمكنك تعديل كل فرد من خلال جدول الافراد
+                </p>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="w-full h-px bg-[#eff0f6]" />
 
-          {/* سبب الالحاق */}
+          {/* سبب الالحاق / سبب انهاء الالحاق */}
           <div className="flex flex-col gap-1.5 w-full">
-            <label style={{ ...F, fontWeight: 700, fontSize: 15, color: "#2d3648" }}>سبب الالحاق</label>
+            <label style={{ ...F, fontWeight: 700, fontSize: 15, color: "#2d3648" }}>
+              {isEndAttachment ? "سبب انهاء الالحاق" : "سبب الالحاق"}
+            </label>
             <textarea
               value={reason}
               onChange={(e) => { setReason(e.target.value); if (errors.reason) setErrors((p) => ({ ...p, reason: undefined })); }}
