@@ -120,7 +120,7 @@ function InfoRow({
   bold?: boolean;
 }) {
   return (
-    <div className="flex items-start gap-2 justify-end flex-1 min-w-0">
+    <div className="flex items-start gap-2 justify-start flex-1 min-w-0">
       <span
         className="w-[130px] shrink-0 text-right"
         style={{ ...F, fontSize: 18, color: "#717d96" }}
@@ -216,7 +216,7 @@ export function ReviewSoldierPage() {
       <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full">
         <div className="flex flex-col gap-6 px-6 py-5">
           {/* Card header */}
-          <div className="flex flex-col gap-3 items-end w-full">
+          <div className="flex flex-col gap-3 items-start w-full">
             <p
               className="text-right w-full"
               style={{
