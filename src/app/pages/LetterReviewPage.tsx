@@ -268,10 +268,10 @@ function LetterPreview({
 // ─── Info Row ─────────────────────────────────────────────────────────────────
 function InfoPair({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center gap-2 justify-end min-w-0">
-      <span style={{ ...F, fontSize: 15, color: "#2d3648" }}>{value}</span>
-      <span style={{ ...F, fontSize: 15, color: "#172e78" }}>:</span>
+    <div className="flex items-center gap-2 justify-start min-w-0">
       <span style={{ ...F, fontSize: 15, color: "#717d96", whiteSpace: "nowrap" }}>{label}</span>
+      <span style={{ ...F, fontSize: 15, color: "#172e78" }}>:</span>
+      <span style={{ ...F, fontSize: 15, color: "#2d3648" }}>{value}</span>
     </div>
   );
 }
