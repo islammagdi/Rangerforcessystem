@@ -227,7 +227,7 @@ function UnitBarChart({ data }: { data: UnitData["chartData"] }) {
         </div>
       </div>
 
-      {/* Chart — no <Cell> inside <Bar> to avoid Recharts null-key duplicates */}
+      {/* Chart — explicit Cell keys to prevent Recharts null-key duplicate warning */}
       <ResponsiveContainer width="100%" height={180}>
         <BarChart data={data} barCategoryGap="30%" barGap={3}
           margin={{ top: 4, right: 0, bottom: 4, left: 0 }}>
@@ -242,8 +242,16 @@ function UnitBarChart({ data }: { data: UnitData["chartData"] }) {
             axisLine={false} tickLine={false}
             width={45} orientation="right"
           />
-          <Bar dataKey="outside"   name="الخارج"  fill="#00B867" radius={[4, 4, 0, 0]} maxBarSize={22} />
-          <Bar dataKey="remaining" name="المتبقي" fill="#abb5f5" radius={[4, 4, 0, 0]} maxBarSize={22} />
+          <Bar dataKey="outside" name="الخارج" fill="#00B867" radius={[4, 4, 0, 0]} maxBarSize={22} isAnimationActive={false}>
+            {data.map((_, i) => (
+              <Cell key={`outside-${i}`} fill="#00B867" />
+            ))}
+          </Bar>
+          <Bar dataKey="remaining" name="المتبقي" fill="#abb5f5" radius={[4, 4, 0, 0]} maxBarSize={22} isAnimationActive={false}>
+            {data.map((_, i) => (
+              <Cell key={`remaining-${i}`} fill="#abb5f5" />
+            ))}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -333,7 +341,11 @@ export function UnitDetailPage() {
       <section className="flex flex-col gap-3 w-full">
         {/* Row: title + print btn */}
         <div className="flex items-center justify-between w-full">
-          {/* Print button — left side (in RTL = visual left = LTR right) */}
+          {/* Section title — right side in RTL */}
+          <h2 style={{ ...F, fontWeight: 700, fontSize: 24, color: "#2d3648" }}>
+            إحصائيات الوحدة
+          </h2>
+          {/* Print button — left side in RTL */}
           <button type="button"
             className="flex items-center gap-1.5 bg-[#ebedfd] rounded-[8px] px-3 py-2 hover:opacity-80 transition-opacity">
             <svg width="16" height="16" viewBox="0 0 13.3333 13.3333" fill="none">
@@ -343,22 +355,14 @@ export function UnitDetailPage() {
               طباعة احصائية الوحده
             </span>
           </button>
-          {/* Section title */}
-          <h2 style={{ ...F, fontWeight: 700, fontSize: 24, color: "#2d3648" }}>
-            إحصائيات الوحدة
-          </h2>
         </div>
 
         {/* 4 stat cards */}
         <div className="flex flex-wrap gap-4 w-full">
           {STATS.map((s) => (
             <div key={s.label}
-              className="flex-1 min-w-[120px] bg-white rounded-[16px] border border-[#eff0f6] px-6 py-4 flex items-center gap-3 justify-end">
-              {/* icon on left (RTL: visually right side) */}
-              <div className="flex items-center justify-center rotate-180 shrink-0">
-                {s.icon}
-              </div>
-              {/* text */}
+              className="flex-1 min-w-[120px] bg-white rounded-[16px] border border-[#eff0f6] px-6 py-4 flex items-center gap-3 justify-between">
+              {/* text — first in HTML = right side in RTL */}
               <div className="flex flex-col items-end gap-2">
                 <span style={{ ...F, fontWeight: 700, fontSize: 24, color: "#2d3648", lineHeight: 1.5 }}>
                   {s.value}
@@ -366,6 +370,10 @@ export function UnitDetailPage() {
                 <span style={{ ...F, fontSize: 14, color: "#717d96", whiteSpace: "nowrap" }}>
                   {s.label}
                 </span>
+              </div>
+              {/* icon — second in HTML = left side in RTL */}
+              <div className="flex items-center justify-center shrink-0">
+                {s.icon}
               </div>
             </div>
           ))}
