@@ -1,8 +1,7 @@
 /**
- * UnitBarChart — pure SVG implementation (no Recharts BarChart).
- * Recharts BarChart + custom shape prop causes duplicate-key warnings in the
- * SVG layer that cannot be resolved externally, so we draw the chart ourselves.
+ * UnitBarChart — pure SVG implementation with hover tooltips.
  */
+import { useState } from "react";
 
 const chartData = [
   { name: "س 680 اشارة",     value: 432,  active: false },
@@ -17,9 +16,9 @@ const chartData = [
 // ── Layout constants ────────────────────────────────────────────────────────
 const SVG_W   = 600;
 const SVG_H   = 280;
-const PAD_TOP = 60;   // room for tooltip bubble
-const PAD_BOT = 40;   // room for x-axis labels
-const PAD_L   = 44;   // y-axis labels
+const PAD_TOP = 60;
+const PAD_BOT = 40;
+const PAD_L   = 44;
 const PAD_R   = 16;
 
 const CHART_W = SVG_W - PAD_L - PAD_R;
@@ -28,7 +27,7 @@ const CHART_H = SVG_H - PAD_TOP - PAD_BOT;
 const MAX_VAL = 800;
 const Y_TICKS = [0, 200, 400, 800];
 
-const BAR_GAP_RATIO = 0.35; // fraction of slot used as gap
+const BAR_GAP_RATIO = 0.35;
 const n             = chartData.length;
 const SLOT_W        = CHART_W / n;
 const BAR_W         = SLOT_W * (1 - BAR_GAP_RATIO);
@@ -37,7 +36,6 @@ function valueToY(v: number) {
   return PAD_TOP + CHART_H - (v / MAX_VAL) * CHART_H;
 }
 
-// ── Rounded-top rectangle path ──────────────────────────────────────────────
 function roundedTopPath(x: number, y: number, w: number, h: number, r: number) {
   if (h <= 0) return "";
   r = Math.min(r, w / 2, h);
@@ -53,13 +51,55 @@ function roundedTopPath(x: number, y: number, w: number, h: number, r: number) {
   ].join(" ");
 }
 
-// ── Truncate long Arabic label ───────────────────────────────────────────────
 function truncate(text: string, max = 9) {
   return text.length > max ? text.slice(0, max) + "…" : text;
 }
 
+// ── Tooltip bubble (drawn in SVG coords) ────────────────────────────────────
+function TooltipBubble({ cx, barY, value }: { cx: number; barY: number; value: number }) {
+  const label   = value.toLocaleString();
+  const bubbleW = Math.max(label.length * 9, 56);
+  const bubbleH = 34;
+  const bx      = cx - bubbleW / 2;
+  const by      = barY - bubbleH - 14;
+
+  return (
+    <g style={{ pointerEvents: "none" }}>
+      {/* Shadow rect */}
+      <rect
+        x={bx + 2}
+        y={by + 3}
+        width={bubbleW}
+        height={bubbleH}
+        rx={8}
+        fill="rgba(0,0,0,0.08)"
+      />
+      {/* Bubble */}
+      <rect x={bx} y={by} width={bubbleW} height={bubbleH} rx={8} fill="#00B867" />
+      {/* Arrow */}
+      <polygon
+        points={`${cx - 6},${barY - 14} ${cx + 6},${barY - 14} ${cx},${barY - 4}`}
+        fill="#00B867"
+      />
+      {/* Value text */}
+      <text
+        x={cx}
+        y={by + bubbleH / 2 + 5}
+        textAnchor="middle"
+        fill="#fff"
+        fontSize={13}
+        fontFamily="'Almarai', sans-serif"
+      >
+        {label}
+      </text>
+    </g>
+  );
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 export function UnitBarChart() {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
   return (
     <div className="bg-white flex-1 rounded-[20px] border border-[#eff0f6] flex flex-col p-6 gap-4 min-w-0 overflow-hidden">
       {/* Title */}
@@ -75,35 +115,28 @@ export function UnitBarChart() {
         توزيع الخوارج على الوحدات
       </p>
 
-      {/* SVG chart — ltr so geometry is left→right */}
+      {/* SVG chart */}
       <div dir="ltr" style={{ width: "100%", overflow: "hidden" }}>
         <svg
           viewBox={`0 0 ${SVG_W} ${SVG_H}`}
           width="100%"
           preserveAspectRatio="xMidYMid meet"
           aria-label="توزيع الخوارج على الوحدات"
+          style={{ overflow: "visible" }}
         >
-          {/* ── Y-axis grid lines & labels ─────────────────────────────── */}
+          {/* ── Y-axis grid lines & labels ───────────────────────────────── */}
           {Y_TICKS.map((tick) => {
             const ty = valueToY(tick);
             return (
               <g key={`ytick-${tick}`}>
                 <line
-                  x1={PAD_L}
-                  y1={ty}
-                  x2={SVG_W - PAD_R}
-                  y2={ty}
-                  stroke="#E5E5EF"
-                  strokeDasharray="4 7"
-                  strokeWidth={1}
+                  x1={PAD_L} y1={ty} x2={SVG_W - PAD_R} y2={ty}
+                  stroke="#E5E5EF" strokeDasharray="4 7" strokeWidth={1}
                 />
                 <text
-                  x={PAD_L - 6}
-                  y={ty + 4}
-                  textAnchor="end"
-                  fill="#615e83"
-                  fontSize={12}
-                  fontFamily="'Almarai', sans-serif"
+                  x={PAD_L - 6} y={ty + 4}
+                  textAnchor="end" fill="#615e83"
+                  fontSize={12} fontFamily="'Almarai', sans-serif"
                 >
                   {tick}
                 </text>
@@ -111,63 +144,55 @@ export function UnitBarChart() {
             );
           })}
 
-          {/* ── Bars ───────────────────────────────────────────────────── */}
+          {/* ── Bars ─────────────────────────────────────────────────────── */}
           {chartData.map((entry, i) => {
-            const slotX  = PAD_L + i * SLOT_W;
-            const barX   = slotX + (SLOT_W - BAR_W) / 2;
-            const barY   = valueToY(entry.value);
-            const barH   = PAD_TOP + CHART_H - barY;
-            const cx     = barX + BAR_W / 2;
-            const fill   = entry.active ? "#00a35a" : "#abb5f5";
-            const path   = roundedTopPath(barX, barY, BAR_W, barH, 7);
-
-            // X-axis label — split into two lines if long
-            const label  = truncate(entry.name);
-            const labelY = PAD_TOP + CHART_H + 16;
+            const slotX   = PAD_L + i * SLOT_W;
+            const barX    = slotX + (SLOT_W - BAR_W) / 2;
+            const barY    = valueToY(entry.value);
+            const barH    = PAD_TOP + CHART_H - barY;
+            const cx      = barX + BAR_W / 2;
+            const isHovered = hoveredIndex === i;
+            const fill    = isHovered
+              ? "#00B867"
+              : "#93C199";
+            const path    = roundedTopPath(barX, barY, BAR_W, barH, 7);
+            const labelY  = PAD_TOP + CHART_H + 16;
 
             return (
-              <g key={`bar-${entry.name}`}>
-                {/* Bar */}
-                <path d={path} fill={fill} />
+              <g
+                key={`bar-${entry.name}`}
+                style={{ cursor: "pointer" }}
+                onMouseEnter={() => setHoveredIndex(i)}
+                onMouseLeave={() => setHoveredIndex(null)}
+              >
+                {/* Invisible wider hit area */}
+                <rect
+                  x={slotX}
+                  y={PAD_TOP}
+                  width={SLOT_W}
+                  height={CHART_H}
+                  fill="transparent"
+                />
 
-                {/* Active tooltip bubble */}
-                {entry.active && (
-                  <>
-                    <rect
-                      x={cx - 36}
-                      y={barY - 46}
-                      width={72}
-                      height={34}
-                      rx={8}
-                      fill="#294DBB"
-                    />
-                    <polygon
-                      points={`${cx - 6},${barY - 14} ${cx + 6},${barY - 14} ${cx},${barY - 4}`}
-                      fill="#294DBB"
-                    />
-                    <text
-                      x={cx}
-                      y={barY - 24}
-                      textAnchor="middle"
-                      fill="#f5f5f5"
-                      fontSize={13}
-                      fontFamily="'Almarai', sans-serif"
-                    >
-                      2,313
-                    </text>
-                  </>
+                {/* Bar */}
+                <path
+                  d={path}
+                  fill={fill}
+                  style={{ transition: "fill 0.15s ease" }}
+                />
+
+                {/* Hover tooltip */}
+                {isHovered && (
+                  <TooltipBubble cx={cx} barY={barY} value={entry.value} />
                 )}
 
                 {/* X-axis label */}
                 <text
-                  x={cx}
-                  y={labelY}
-                  textAnchor="middle"
-                  fill="#615e83"
-                  fontSize={11}
-                  fontFamily="'Almarai', sans-serif"
+                  x={cx} y={labelY}
+                  textAnchor="middle" fill="#615e83"
+                  fontSize={11} fontFamily="'Almarai', sans-serif"
                 >
-                  {label}
+                  {truncate(entry.name)}
                 </text>
               </g>
             );
