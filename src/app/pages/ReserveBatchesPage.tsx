@@ -41,8 +41,8 @@ function BatchDropdown({ value, options, onChange }: {
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub?: string }) {
   return (
-    <div className="bg-white flex-1 min-w-[180px] rounded-[20px] border border-[#eff0f6] px-5 py-4 flex items-center gap-3 justify-end" dir="rtl">
-      <div className="flex flex-col gap-1 items-end flex-1">
+    <div className="bg-white flex-1 min-w-[180px] rounded-[20px] border border-[#eff0f6] px-5 py-4 flex items-center gap-3" dir="rtl">
+      <div className="flex flex-col gap-1 items-start flex-1">
         <p style={{ ...F, fontSize: 22, color: "#2d3648", fontWeight: 700 }}>{value}</p>
         <p style={{ ...F, fontSize: 13, color: "#717d96" }}>{label}</p>
         {sub && <p style={{ ...F, fontSize: 12, color: "#a1aebe" }}>{sub}</p>}
@@ -61,8 +61,8 @@ function ProgressCard({ icon, label, current, total }: {
   const pct = Math.round((current / total) * 100);
   return (
     <div className="bg-white flex-1 min-w-[200px] rounded-[20px] border border-[#eff0f6] px-5 py-4" dir="rtl">
-      <div className="flex items-start gap-3 justify-end">
-        <div className="flex flex-col gap-1.5 items-end flex-1">
+      <div className="flex items-start gap-3">
+        <div className="flex flex-col gap-1.5 items-start flex-1">
           <p style={{ ...F, fontSize: 18, color: "#2d3648", fontWeight: 700 }}>
             {current.toLocaleString("ar-EG")} <span style={{ fontSize: 14, color: "#717d96" }}>من {total.toLocaleString("ar-EG")}</span>
           </p>
@@ -270,7 +270,11 @@ export function ReserveBatchesPage() {
       </h1>
 
       {/* Batch selector row */}
-      <div className="flex flex-wrap items-center gap-3 justify-end">
+      <div className="flex flex-wrap items-center gap-3 justify-start">
+        <div className="flex flex-col gap-1.5 flex-1 min-w-[200px] max-w-xs">
+          <label style={{ ...F, fontSize: 14, color: "#717d96" }}>اختر تاريخ التسريح</label>
+          <BatchDropdown value={selectedBatch} options={DISCHARGE_BATCHES} onChange={setSelectedBatch} />
+        </div>
         <button
           type="button"
           onClick={() => setShowResults(true)}
@@ -279,10 +283,6 @@ export function ReserveBatchesPage() {
         >
           عرض الافراد
         </button>
-        <div className="flex flex-col gap-1.5 flex-1 min-w-[200px] max-w-xs">
-          <label style={{ ...F, fontSize: 14, color: "#717d96" }}>اختر تاريخ التسريح</label>
-          <BatchDropdown value={selectedBatch} options={DISCHARGE_BATCHES} onChange={setSelectedBatch} />
-        </div>
       </div>
 
       {/* Success toast */}

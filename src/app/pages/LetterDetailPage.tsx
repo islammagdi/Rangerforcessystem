@@ -39,10 +39,10 @@ function SortIcon() {
 // ─── Info Pair ─────────────────────────────────────────────────────────────────
 function InfoPair({ label, value, badge }: { label: string; value?: string; badge?: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2 justify-end" dir="rtl">
-      {badge ?? <span style={{ ...F, fontSize: 16, color: "#2d3648" }}>{value}</span>}
-      <span style={{ ...F, fontSize: 16, color: "#172e78" }}>:</span>
+    <div className="flex items-center gap-2 justify-start" dir="rtl">
       <span style={{ ...F, fontSize: 16, color: "#717d96", minWidth: 100, textAlign: "right" }}>{label}</span>
+      <span style={{ ...F, fontSize: 16, color: "#172e78" }}>:</span>
+      {badge ?? <span style={{ ...F, fontSize: 16, color: "#2d3648" }}>{value}</span>}
     </div>
   );
 }
