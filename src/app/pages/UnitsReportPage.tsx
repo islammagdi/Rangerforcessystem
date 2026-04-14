@@ -503,7 +503,7 @@ export function UnitsReportPage() {
       {/* ── Controls ──────────────────────────────────────────── */}
       <section className="flex flex-col gap-4 w-full">
         {/* Top row: category tabs + sort */}
-        <div className="flex flex-wrap items-end gap-6 justify-end w-full">
+        <div className="flex flex-wrap items-start gap-6 justify-start w-full">
           {/* Sort */}
           <div className="flex flex-col gap-1.5 w-[200px] min-w-[160px]">
             <label
