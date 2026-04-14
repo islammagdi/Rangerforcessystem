@@ -399,7 +399,7 @@ export function LettersArchivePage() {
       </h1>
 
       {/* بحث حسب label + tabs */}
-      <div className="flex flex-col gap-3 items-end w-full">
+      <div className="flex flex-col gap-3 items-start w-full">
         <p style={{ ...F, fontSize: 16, color: "#2d3648" }}>بحث حسب</p>
         <div className="flex items-center gap-3">
           <button
