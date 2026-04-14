@@ -71,9 +71,9 @@ function StepDots({ color = "#2d3648" }: { color?: string }) {
 
 function Stepper() {
   const steps = [
-    { id: "s1", label: "اعتماد النهائي" },
-    { id: "s2", label: "المراجعة" },
     { id: "s3", label: "ادخال البيانات" },
+    { id: "s2", label: "المراجعة" },
+    { id: "s1", label: "اعتماد النهائي" },
   ];
 
   return (

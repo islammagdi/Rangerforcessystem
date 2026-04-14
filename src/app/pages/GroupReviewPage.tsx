@@ -66,28 +66,26 @@ function StepDots({ color = "#A1AEBE" }: { color?: string }) {
 function Stepper() {
   return (
     <div className="flex items-start justify-center" dir="rtl">
-      {/* Step 03 — الحفظ النهائي (inactive) */}
+      {/* Step 01 — رفع البيانات (completed) */}
       <div className="flex flex-col items-center gap-2">
-        <div className="w-8 h-8 rounded-full flex items-center justify-center border-2 border-[#a1aebe] bg-white">
-          <span
-            style={{ ...F, fontSize: 14, color: "#2d3648" }}
-          >
-            03
-          </span>
-        </div>
+        <GreenCheckCircle id="step01" />
         <span
           style={{
             ...F,
             fontSize: 14,
-            color: "#465668",
+            fontWeight: 700,
             whiteSpace: "nowrap",
+            background:
+              "linear-gradient(to bottom, #00b867, #00522e)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
           }}
         >
-          الحفظ النهائي
+          رفع البيانات
         </span>
       </div>
 
-      <StepDots color="#A1AEBE" />
+      <StepDots color="#2d3648" />
 
       {/* Step 02 — المراجعة (active) */}
       <div className="flex flex-col items-center gap-2">
@@ -110,24 +108,26 @@ function Stepper() {
         </span>
       </div>
 
-      <StepDots color="#2d3648" />
+      <StepDots color="#A1AEBE" />
 
-      {/* Step 01 — رفع البيانات (completed) */}
+      {/* Step 03 — الحفظ النهائي (inactive) */}
       <div className="flex flex-col items-center gap-2">
-        <GreenCheckCircle id="step01" />
+        <div className="w-8 h-8 rounded-full flex items-center justify-center border-2 border-[#a1aebe] bg-white">
+          <span
+            style={{ ...F, fontSize: 14, color: "#2d3648" }}
+          >
+            03
+          </span>
+        </div>
         <span
           style={{
             ...F,
             fontSize: 14,
-            fontWeight: 700,
+            color: "#465668",
             whiteSpace: "nowrap",
-            background:
-              "linear-gradient(to bottom, #00b867, #00522e)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
           }}
         >
-          رفع البيانات
+          الحفظ النهائي
         </span>
       </div>
     </div>

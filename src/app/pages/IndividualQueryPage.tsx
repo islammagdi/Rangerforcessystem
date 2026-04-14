@@ -9,7 +9,10 @@ import {
   Minus,
 } from "lucide-react";
 import { DeleteConfirmDialog } from "../components/dashboard/DeleteConfirmDialog";
-import { getSoldiers, deleteSoldier } from "../data/soldiersData";
+import {
+  getSoldiers,
+  deleteSoldier,
+} from "../data/soldiersData";
 import type { SoldierData } from "../data/soldiersData";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -28,19 +31,19 @@ interface SoldierRecord {
 // Map SoldierData → SoldierRecord for table display
 function toRecord(s: SoldierData): SoldierRecord {
   const statusMap: Record<string, DistributionStatus> = {
-    "قوة الوحده":     "ملحق",
-    "منتهي خدمته":   "منتهي خدمته",
-    "علي القوة":      "علي القوة",
-    "ملحق":           "ملحق",
+    "قوة الوحده": "ملحق",
+    "منتهي خدمته": "منتهي خدمته",
+    "علي القوة": "علي القوة",
+    ملحق: "ملحق",
   };
   return {
-    id:              s.id,
-    militaryId:      s.militaryId,
-    rank:            s.rank,
-    name:            s.name,
-    unit:            s.unit,
+    id: s.id,
+    militaryId: s.militaryId,
+    rank: s.rank,
+    name: s.name,
+    unit: s.unit,
     attachmentPlace: s.attachmentPlace,
-    status:          statusMap[s.serviceStatus] ?? "علي القوة",
+    status: statusMap[s.serviceStatus] ?? "علي القوة",
   };
 }
 
@@ -76,7 +79,12 @@ const MOCK_RESULTS: SoldierRecord[] = [
 ];
 
 // ─── Query basis options ─────────────────────────────────────────────────────
-const QUERY_BASIS_OPTIONS = ["رقم عسكري", "الاسم", "الرقم القومي", "رقم الوحدة"];
+const QUERY_BASIS_OPTIONS = [
+  "رقم عسكري",
+  "الاسم",
+  "الرقم القومي",
+  "رقم الوحدة",
+];
 
 // ─── Category options ────────────────────────────────────────────────────────
 const CATEGORIES = [
@@ -90,9 +98,17 @@ const STATUS_STYLES: Record<
   DistributionStatus,
   { bg: string; text: string; dot: string }
 > = {
-  ملحق:         { bg: "#ebfaea", text: "#26861d", dot: "#35C128" },
-  "منتهي خدمته": { bg: "#fce9ea", text: "#c5481b", dot: "#E37032" },
-  "علي القوة":  { bg: "#e9f9ff", text: "#146d7c", dot: "#29BBD4" },
+  ملحق: { bg: "#ebfaea", text: "#26861d", dot: "#35C128" },
+  "منتهي خدمته": {
+    bg: "#fce9ea",
+    text: "#c5481b",
+    dot: "#E37032",
+  },
+  "علي القوة": {
+    bg: "#e9f9ff",
+    text: "#146d7c",
+    dot: "#29BBD4",
+  },
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -116,14 +132,14 @@ function RadioCard({
       className={[
         "flex items-center gap-3 px-4 py-4 rounded-[12px] border transition-colors text-right w-full sm:w-[200px] shrink-0",
         checked
-          ? "border-[#1f3d97] bg-[#f0f2fd]"
+          ? "border-[#4BFF62] bg-[#f0f2fd]"
           : "border-[#e2e7f0] bg-white hover:border-[#a0aec0]",
       ].join(" ")}
     >
-      <span
-        className="shrink-0 w-5 h-5 rounded-full border-[1.5px] border-[#1f3d97] flex items-center justify-center"
-      >
-        {checked && <span className="w-2.5 h-2.5 rounded-full bg-[#1f3d97]" />}
+      <span className="shrink-0 w-5 h-5 rounded-full border-[1.5px] border-[#4BFF62] flex items-center justify-center">
+        {checked && (
+          <span className="w-2.5 h-2.5 rounded-full bg-[#4BFF62]" />
+        )}
       </span>
       <span
         style={{
@@ -162,7 +178,11 @@ function Dropdown({
         />
         <span
           className="flex-1 text-right"
-          style={{ fontFamily: "'Almarai', sans-serif", fontSize: "18px", color: "#4a5468" }}
+          style={{
+            fontFamily: "'Almarai', sans-serif",
+            fontSize: "18px",
+            color: "#4a5468",
+          }}
         >
           {value}
         </span>
@@ -173,12 +193,20 @@ function Dropdown({
             <li key={opt}>
               <button
                 type="button"
-                onClick={() => { onChange(opt); setOpen(false); }}
+                onClick={() => {
+                  onChange(opt);
+                  setOpen(false);
+                }}
                 className={[
                   "w-full text-right px-4 py-3 hover:bg-[#f5f6fb] transition-colors",
-                  opt === value ? "bg-[#f0f2fd] text-[#1f3d97]" : "text-[#2d3648]",
+                  opt === value
+                    ? "bg-[#f0f2fd] text-[#4BFF62]"
+                    : "text-[#2d3648]",
                 ].join(" ")}
-                style={{ fontFamily: "'Almarai', sans-serif", fontSize: "16px" }}
+                style={{
+                  fontFamily: "'Almarai', sans-serif",
+                  fontSize: "16px",
+                }}
               >
                 {opt}
               </button>
@@ -191,7 +219,11 @@ function Dropdown({
 }
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
-function StatusBadge({ status }: { status: DistributionStatus }) {
+function StatusBadge({
+  status,
+}: {
+  status: DistributionStatus;
+}) {
   const s = STATUS_STYLES[status];
   return (
     <span
@@ -234,18 +266,31 @@ function NotifBadge({
       style={{ backgroundColor: bg }}
     >
       <span
-        style={{ fontFamily: "'Almarai', sans-serif", fontWeight: 700, fontSize: "14px", color: text }}
+        style={{
+          fontFamily: "'Almarai', sans-serif",
+          fontWeight: 700,
+          fontSize: "14px",
+          color: text,
+        }}
       >
         {label}
       </span>
-      <span className="shrink-0 w-2 h-2 rounded-full" style={{ backgroundColor: dot }} />
+      <span
+        className="shrink-0 w-2 h-2 rounded-full"
+        style={{ backgroundColor: dot }}
+      />
     </span>
   );
 }
 
 // ─── Table Sort Arrow ─────────────────────────────────────────────────────────
 function SortArrow() {
-  return <ArrowDownUp size={14} className="text-[#a0abc0] shrink-0" />;
+  return (
+    <ArrowDownUp
+      size={14}
+      className="text-[#a0abc0] shrink-0"
+    />
+  );
 }
 
 // ─── Checkbox ────────────────────────────────────────────────────────────────
@@ -265,15 +310,26 @@ function Checkbox({
       className={[
         "w-5 h-5 rounded-[4px] border-2 flex items-center justify-center transition-colors shrink-0",
         checked || indeterminate
-          ? "bg-[#1f3d97] border-[#1f3d97]"
-          : "bg-white border-[#d4d8fa] hover:border-[#1f3d97]",
+          ? "bg-[#4BFF62] border-[#4BFF62]"
+          : "bg-white border-[#d4d8fa] hover:border-[#4BFF62]",
       ].join(" ")}
     >
       {indeterminate && !checked ? (
         <Minus size={10} className="text-white" />
       ) : checked ? (
-        <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-          <path d="M1 4L4 7L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <svg
+          width="10"
+          height="8"
+          viewBox="0 0 10 8"
+          fill="none"
+        >
+          <path
+            d="M1 4L4 7L9 1"
+            stroke="white"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
         </svg>
       ) : null}
     </button>
@@ -281,7 +337,13 @@ function Checkbox({
 }
 
 // ─── Action Buttons ───────────────────────────────────────────────────────────
-function ActionButtons({ onDelete, onView }: { onDelete: () => void; onView: () => void }) {
+function ActionButtons({
+  onDelete,
+  onView,
+}: {
+  onDelete: () => void;
+  onView: () => void;
+}) {
   return (
     <div className="flex items-center gap-2 justify-end">
       {/* Delete */}
@@ -313,7 +375,10 @@ function ActionButtons({ onDelete, onView }: { onDelete: () => void; onView: () 
         className="w-[40px] h-[30px] rounded-[4px] flex items-center justify-center transition-opacity hover:opacity-80"
         style={{ backgroundColor: "#f5f5f5" }}
       >
-        <ArrowLeftRight size={14} style={{ color: "#2D3648" }} />
+        <ArrowLeftRight
+          size={14}
+          style={{ color: "#2D3648" }}
+        />
       </button>
     </div>
   );
@@ -335,7 +400,8 @@ function ResultsTable({
   onDelete: (id: string) => void;
   onView: (id: string) => void;
 }) {
-  const allSelected = records.length > 0 && selectedIds.size === records.length;
+  const allSelected =
+    records.length > 0 && selectedIds.size === records.length;
   const someSelected = selectedIds.size > 0 && !allSelected;
 
   const headerCellClass = [
@@ -349,7 +415,8 @@ function ResultsTable({
     color: "#717d96",
   };
 
-  const cellClass = "px-5 py-3 text-right border-b border-[#eaecf0] whitespace-nowrap";
+  const cellClass =
+    "px-5 py-3 text-right border-b border-[#eaecf0] whitespace-nowrap";
   const cellTextStyle: React.CSSProperties = {
     fontFamily: "'Almarai', sans-serif",
     fontSize: "16px",
@@ -407,7 +474,9 @@ function ResultsTable({
             {/* مكان الالحاق */}
             <th className={headerCellClass}>
               <div className="flex items-center gap-1 justify-end">
-                <span style={headerTextStyle}>مكان الالحاق</span>
+                <span style={headerTextStyle}>
+                  مكان الالحاق
+                </span>
                 <SortArrow />
               </div>
             </th>
@@ -415,7 +484,9 @@ function ResultsTable({
             {/* حالة التوزيع */}
             <th className={headerCellClass}>
               <div className="flex items-center gap-1 justify-end">
-                <span style={headerTextStyle}>حالة التوزيع</span>
+                <span style={headerTextStyle}>
+                  حالة التوزيع
+                </span>
                 <SortArrow />
               </div>
             </th>
@@ -478,7 +549,9 @@ function ResultsTable({
 
                 {/* مكان الالحاق */}
                 <td className={cellClass}>
-                  <span style={cellTextStyle}>{rec.attachmentPlace}</span>
+                  <span style={cellTextStyle}>
+                    {rec.attachmentPlace}
+                  </span>
                 </td>
 
                 {/* حالة التوزيع */}
@@ -507,16 +580,21 @@ function ResultsTable({
 // ════════════════════════════════════════════════════════════════════════════
 export function IndividualQueryPage() {
   const navigate = useNavigate();
-  const [selectedCategory, setSelectedCategory] = useState("جميع الفئات");
+  const [selectedCategory, setSelectedCategory] =
+    useState("جميع الفئات");
   const [queryBasis, setQueryBasis] = useState("رقم عسكري");
   const [queryText, setQueryText] = useState("");
   const [queryTextError, setQueryTextError] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
   const [results, setResults] = useState<SoldierRecord[]>([]);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   // ── Delete dialog state ────────────────────────────────────────────────
-  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<
+    string | null
+  >(null);
 
   // ── Search ──────────────────────────────────────────────────────────────
   function handleSearch(e: React.FormEvent) {
@@ -556,7 +634,9 @@ export function IndividualQueryPage() {
 
   function confirmDelete() {
     if (deleteTargetId) {
-      setResults((prev) => prev.filter((r) => r.id !== deleteTargetId));
+      setResults((prev) =>
+        prev.filter((r) => r.id !== deleteTargetId),
+      );
       setSelectedIds((prev) => {
         const s = new Set(prev);
         s.delete(deleteTargetId);
@@ -575,11 +655,10 @@ export function IndividualQueryPage() {
   }
 
   const notFound = hasSearched && results.length === 0;
-  const found    = hasSearched && results.length > 0;
+  const found = hasSearched && results.length > 0;
 
   return (
     <div className="flex flex-col gap-6 w-full" dir="rtl">
-
       {/* ── Delete confirmation dialog (portal-style overlay) ─────────── */}
       <DeleteConfirmDialog
         open={deleteTargetId !== null}
@@ -602,11 +681,12 @@ export function IndividualQueryPage() {
       </h1>
 
       {/* ── Search form ─────────────────────────────────────────────────── */}
-      <form onSubmit={handleSearch} className="flex flex-col gap-6 items-end">
-
+      <form
+        onSubmit={handleSearch}
+        className="flex flex-col gap-6 items-end"
+      >
         {/* ── Row: Dropdown → Input → Button ───────────────────────────── */}
         <div className="flex flex-col sm:flex-row gap-5 w-full items-end">
-
           {/* 1 - أساس الاستعلام (Dropdown) — rightmost in RTL */}
           <div className="flex flex-col gap-1.5 flex-1 min-w-0 w-full">
             <label
@@ -645,9 +725,17 @@ export function IndividualQueryPage() {
             <input
               type="text"
               value={queryText}
-              onChange={(e) => { setQueryText(e.target.value); if (queryTextError) setQueryTextError(""); }}
+              onChange={(e) => {
+                setQueryText(e.target.value);
+                if (queryTextError) setQueryTextError("");
+              }}
               placeholder="بيانات الاستعلام"
-              className={["w-full h-[54px] bg-white border rounded-[8px] px-3 text-right outline-none focus:border-[#1f3d97] transition-colors", queryTextError ? "border-[#ef4444]" : "border-[#e2e7f0]"].join(" ")}
+              className={[
+                "w-full h-[54px] bg-white border rounded-[8px] px-3 text-right outline-none focus:border-[#4BFF62] transition-colors",
+                queryTextError
+                  ? "border-[#ef4444]"
+                  : "border-[#e2e7f0]",
+              ].join(" ")}
               style={{
                 fontFamily: "'Almarai', sans-serif",
                 fontSize: "18px",
@@ -656,7 +744,15 @@ export function IndividualQueryPage() {
               dir="rtl"
             />
             {queryTextError && (
-              <p className="text-right" style={{ fontFamily: "'Almarai', sans-serif", fontSize: "13px", color: "#ef4444", lineHeight: 1.4 }}>
+              <p
+                className="text-right"
+                style={{
+                  fontFamily: "'Almarai', sans-serif",
+                  fontSize: "13px",
+                  color: "#ef4444",
+                  lineHeight: 1.4,
+                }}
+              >
                 {queryTextError}
               </p>
             )}
@@ -667,7 +763,8 @@ export function IndividualQueryPage() {
             type="submit"
             className="shrink-0 w-full sm:w-[150px] h-[52px] rounded-[8px] flex items-center justify-center transition-opacity hover:opacity-90 active:opacity-80"
             style={{
-              background: "linear-gradient(to bottom, #00b867, #00522e)",
+              background:
+                "linear-gradient(to bottom, #00b867, #00522e)",
               fontFamily: "'Almarai', sans-serif",
               fontSize: "16px",
               color: "#f5f5f5",
@@ -706,10 +803,8 @@ export function IndividualQueryPage() {
       {/* ── Search result area ───────────────────────────────────────────── */}
       {hasSearched && (
         <div className="flex flex-col gap-4">
-
           {/* ── Status row ─────────────────────────────────────────────── */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-
             {/* Left: selected count */}
             <p
               style={{
@@ -719,7 +814,9 @@ export function IndividualQueryPage() {
                 color: "#172e78",
               }}
             >
-              {found ? `تم تحديد (${selectedIds.size}) افراد` : ""}
+              {found
+                ? `تم تحديد (${selectedIds.size}) افراد`
+                : ""}
             </p>
 
             {/* Right: notification badges */}
@@ -769,9 +866,7 @@ export function IndividualQueryPage() {
 
           {/* ── Empty state ─────────────────────────────────────────────── */}
           {notFound && (
-            <div
-              className="w-full py-16 flex flex-col items-center gap-3 bg-white rounded-[12px] border border-[#e2e7f0]"
-            >
+            <div className="w-full py-16 flex flex-col items-center gap-3 bg-white rounded-[12px] border border-[#e2e7f0]">
               <p
                 style={{
                   fontFamily: "'Almarai', sans-serif",

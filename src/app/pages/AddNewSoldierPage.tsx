@@ -18,9 +18,9 @@ const F: React.CSSProperties = {
 
 // ─── Stepper ─────────────────────────────────────────────────────────────────
 const STEPS = [
+  { num: "01", label: "رفع البيانات",  active: true  },
+  { num: "02", label: "المراجعة",      active: false },
   { num: "03", label: "الحفظ النهائي", active: false },
-  { num: "02", label: "المراجعة", active: false },
-  { num: "01", label: "رفع البيانات", active: true },
 ];
 
 function StepDots() {
@@ -44,9 +44,9 @@ function Stepper({
   const steps = groupMode
     ? STEPS
     : [
-        { num: "03", label: "اعتماد", active: false },
-        { num: "02", label: "المراجعة", active: false },
-        { num: "01", label: "ادخال البيانات", active: true },
+        { num: "01", label: "ادخال البيانات", active: true  },
+        { num: "02", label: "المراجعة",       active: false },
+        { num: "03", label: "اعتماد",         active: false },
       ];
 
   return (
@@ -230,12 +230,14 @@ function FormDropdown({
   value,
   onChange,
   error,
+  disabled,
 }: {
   placeholder: string;
   options: string[];
   value: string;
   onChange: (v: string) => void;
   error?: string;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -243,9 +245,12 @@ function FormDropdown({
       <div className="relative w-full">
         <button
           type="button"
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => !disabled && setOpen((o) => !o)}
           className={[
-            "w-full h-[54px] bg-white border rounded-[8px] flex items-center gap-3 px-3 hover:border-[#a0aec0] transition-colors",
+            "w-full h-[54px] bg-white border rounded-[8px] flex items-center gap-3 px-3 transition-colors",
+            disabled
+              ? "opacity-50 cursor-not-allowed border-[#e2e7f0]"
+              : "hover:border-[#a0aec0] cursor-pointer",
             error ? "border-[#ef4444]" : "border-[#e2e7f0]",
           ].join(" ")}
         >
@@ -308,11 +313,13 @@ function FormInput({
   value,
   onChange,
   error,
+  disabled,
 }: {
   placeholder: string;
   value: string;
   onChange: (v: string) => void;
   error?: string;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1 w-full">
@@ -321,9 +328,11 @@ function FormInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        disabled={disabled}
         dir="rtl"
         className={[
           "w-full h-[54px] bg-white border rounded-[8px] px-3 text-right outline-none focus:border-[#1f3d97] transition-colors",
+          disabled ? "opacity-50 cursor-not-allowed" : "",
           error ? "border-[#ef4444]" : "border-[#e2e7f0]",
         ].join(" ")}
         style={{ ...F, fontSize: 18, color: "#4a5468" }}
@@ -355,26 +364,48 @@ function DateInput({
   onChange: (v: string) => void;
   error?: string;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const openPicker = () => {
+    if (inputRef.current) {
+      try {
+        (inputRef.current as any).showPicker?.();
+      } catch {
+        inputRef.current.click();
+      }
+    }
+  };
+
   return (
     <div className="flex flex-col gap-1 w-full">
       <div className="relative w-full">
-        <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
-          <CalendarDays
-            size={20}
-            style={{ color: "#294dbb" }}
-          />
-        </div>
+        {/* Calendar icon — clickable to open picker */}
+        <button
+          type="button"
+          onClick={openPicker}
+          className="absolute inset-y-0 right-3 flex items-center z-10"
+          tabIndex={-1}
+        >
+          <CalendarDays size={20} style={{ color: "#294dbb" }} />
+        </button>
+
         <input
-          type="text"
+          ref={inputRef}
+          type="date"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="DD-MM-YYYY"
-          dir="rtl"
           className={[
-            "w-full h-[54px] bg-white border rounded-[8px] pr-10 pl-3 text-right outline-none focus:border-[#294dbb] transition-colors",
+            "w-full h-[54px] bg-white border rounded-[8px] pr-10 pl-3 outline-none focus:border-[#294dbb] transition-colors cursor-pointer",
             error ? "border-[#ef4444]" : "border-[#e2e7f0]",
           ].join(" ")}
-          style={{ ...F, fontSize: 18, color: "#4a5468" }}
+          style={{
+            ...F,
+            fontSize: 18,
+            color: value ? "#4a5468" : "#a0abc0",
+            colorScheme: "light",
+            direction: "ltr",
+            textAlign: "right",
+          }}
         />
       </div>
       {error && (
@@ -500,7 +531,7 @@ function ExcelIcon({ size = 28 }: { size?: number }) {
   );
 }
 
-// ─── Upload Icon ─────────────────────────────────────────────────────────────
+// ─── Upload Icon ────────────────────────────────────────────────────────────
 function UploadFolderIcon() {
   return (
     <svg width="42" height="42" viewBox="0 0 42 42" fill="none">
@@ -823,9 +854,11 @@ export function AddNewSoldierPage() {
     if (!name.trim()) e.name = "الاسم مطلوب";
     if (!rank.trim()) e.rank = "الدرجة مطلوبة";
     if (!milId.trim()) e.milId = "الرقم العسكري مطلوب";
-    if (!discharge.trim()) e.discharge = "تاريخ التسريح مطلوب";
+    // تاريخ التسريح غير مطلوب للمتطوع
+    if (category !== "متطوع" && !discharge.trim()) e.discharge = "تاريخ التسريح مطلوب";
     if (!unit.trim()) e.unit = "الوحدة الاساسية مطلوبة";
-    if (!attachment.trim()) e.attachment = "جهة الالحاق مطلوبة";
+    // جهة الالحاق غير مطلوبة عند "ملحق علي القوة"
+    if (status !== "ملحق علي القوة" && !attachment.trim()) e.attachment = "جهة الالحاق مطلوبة";
     return e;
   }
 
@@ -856,6 +889,7 @@ export function AddNewSoldierPage() {
   }
 
   const isGroup = method === "مجموعة افراد";
+  const isAttachmentDisabled = status === "ملحق علي القوة";
 
   return (
     <div className="flex flex-col gap-6 w-full" dir="rtl">
@@ -1009,6 +1043,8 @@ export function AddNewSoldierPage() {
                 </FieldGroup>
               </div>
 
+              {/* تاريخ التسريح — مخفي عند متطوع */}
+              {category !== "متطوع" && (
               <div className="flex flex-col sm:flex-row gap-4">
                 <FieldGroup
                   label="تاريخ التسريح"
@@ -1029,32 +1065,11 @@ export function AddNewSoldierPage() {
                 <div className="flex-1 hidden sm:block" />
                 <div className="flex-1 hidden sm:block" />
               </div>
+              )}
 
               <SubHeader>بيانات الوحدة والموقف</SubHeader>
 
               <div className="flex flex-col sm:flex-row gap-4">
-                <FieldGroup label="جهة الالحاق">
-                  <FormInput
-                    placeholder="اختر الوحدة"
-                    value={attachment}
-                    onChange={(v) => {
-                      setAttachment(v);
-                      setErrors((p) => ({
-                        ...p,
-                        attachment: undefined,
-                      }));
-                    }}
-                    error={errors.attachment}
-                  />
-                </FieldGroup>
-                <FieldGroup label="موقف الفرد">
-                  <FormDropdown
-                    placeholder="اختر الموقف"
-                    options={STATUS}
-                    value={status}
-                    onChange={setStatus}
-                  />
-                </FieldGroup>
                 <FieldGroup label="الوحدة الاساسية">
                   <FormDropdown
                     placeholder="اختار الوحدة"
@@ -1068,6 +1083,37 @@ export function AddNewSoldierPage() {
                       }));
                     }}
                     error={errors.unit}
+                  />
+                </FieldGroup>
+                <FieldGroup label="موقف الفرد">
+                  <FormDropdown
+                    placeholder="اختر الموقف"
+                    options={STATUS}
+                    value={status}
+                    onChange={(v) => {
+                      setStatus(v);
+                      // clear attachment when disabling
+                      if (v === "ملحق علي القوة") {
+                        setAttachment("");
+                        setErrors((p) => ({ ...p, attachment: undefined }));
+                      }
+                    }}
+                  />
+                </FieldGroup>
+                <FieldGroup label="جهة الالحاق">
+                  <FormDropdown
+                    placeholder={isAttachmentDisabled ? "غير متاح - ملحق علي القوة" : "اختر الوحدة"}
+                    options={ATTACH}
+                    value={attachment}
+                    disabled={isAttachmentDisabled}
+                    onChange={(v) => {
+                      setAttachment(v);
+                      setErrors((p) => ({
+                        ...p,
+                        attachment: undefined,
+                      }));
+                    }}
+                    error={isAttachmentDisabled ? undefined : errors.attachment}
                   />
                 </FieldGroup>
               </div>

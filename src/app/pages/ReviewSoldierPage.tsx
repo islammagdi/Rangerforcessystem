@@ -42,42 +42,6 @@ function Stepper() {
       className="flex items-start justify-center gap-0"
       dir="rtl"
     >
-      {/* Step 03 — اعتماد (inactive) */}
-      <div className="flex flex-col items-center gap-2">
-        <div className="w-8 h-8 rounded-full flex items-center justify-center border-2 border-[#a1aebe] bg-white">
-          <span
-            style={{ ...F, fontSize: 14, color: "#2d3648" }}
-          >
-            03
-          </span>
-        </div>
-        <span style={{ ...F, fontSize: 14, color: "#465668" }}>
-          اعتماد
-        </span>
-      </div>
-
-      <div className="mt-[14px]">
-        <StepDots />
-      </div>
-
-      {/* Step 02 — المراجعة (active) */}
-      <div className="flex flex-col items-center gap-2">
-        <div className="w-8 h-8 rounded-full flex items-center justify-center border-2 border-[#294dbb] bg-white">
-          <span
-            style={{ ...F, fontSize: 14, color: "#294dbb" }}
-          >
-            02
-          </span>
-        </div>
-        <span style={{ ...F, fontSize: 14, color: "#294dbb" }}>
-          المراجعة
-        </span>
-      </div>
-
-      <div className="mt-[14px]">
-        <StepDots color="#2d3648" />
-      </div>
-
       {/* Step 01 — ادخال البيانات (completed) */}
       <div className="flex flex-col items-center gap-2">
         <div
@@ -101,6 +65,42 @@ function Stepper() {
           }}
         >
           ادخال البيانات
+        </span>
+      </div>
+
+      <div className="mt-[14px]">
+        <StepDots color="#2d3648" />
+      </div>
+
+      {/* Step 02 — المراجعة (active) */}
+      <div className="flex flex-col items-center gap-2">
+        <div className="w-8 h-8 rounded-full flex items-center justify-center border-2 border-[#294dbb] bg-white">
+          <span
+            style={{ ...F, fontSize: 14, color: "#294dbb" }}
+          >
+            02
+          </span>
+        </div>
+        <span style={{ ...F, fontSize: 14, color: "#294dbb" }}>
+          المراجعة
+        </span>
+      </div>
+
+      <div className="mt-[14px]">
+        <StepDots />
+      </div>
+
+      {/* Step 03 — اعتماد (inactive) */}
+      <div className="flex flex-col items-center gap-2">
+        <div className="w-8 h-8 rounded-full flex items-center justify-center border-2 border-[#a1aebe] bg-white">
+          <span
+            style={{ ...F, fontSize: 14, color: "#2d3648" }}
+          >
+            03
+          </span>
+        </div>
+        <span style={{ ...F, fontSize: 14, color: "#465668" }}>
+          اعتماد
         </span>
       </div>
     </div>
