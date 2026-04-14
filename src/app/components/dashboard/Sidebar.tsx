@@ -188,6 +188,9 @@ export function Sidebar({
           : undefined) ??
         (activePath.includes("/reserve-batches")
           ? "دفعات الرديف"
+          : undefined) ??
+        (activePath.includes("/manage-units")
+          ? "ادارة الوحدات"
           : undefined))) ??
     "الموقف العام";
 

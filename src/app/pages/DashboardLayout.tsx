@@ -19,6 +19,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/letters-archive":           "سجل الخطابات",
   "/dashboard/daily-reports":             "اليوميات",
   "/dashboard/reserve-batches":           "دفعات الرديف",
+  "/dashboard/manage-units":              "ادارة الوحدات",
 };
 
 function resolvePageTitle(pathname: string): string {
@@ -31,6 +32,7 @@ function resolvePageTitle(pathname: string): string {
   if (pathname.includes("/letters-archive")) return "سجل الخطابات";
   if (pathname.includes("/daily-reports"))   return "اليوميات";
   if (pathname.includes("/reserve-batches")) return "دفعات الرديف";
+  if (pathname.includes("/manage-units"))    return "ادارة الوحدات";
   return "الموقف العام";
 }
 
@@ -58,6 +60,8 @@ export function DashboardLayout() {
       navigate("/dashboard/daily-reports");
     } else if (label === "دفعات الرديف") {
       navigate("/dashboard/reserve-batches");
+    } else if (label === "ادارة الوحدات") {
+      navigate("/dashboard/manage-units");
     }
     // other items can be wired up later
   }

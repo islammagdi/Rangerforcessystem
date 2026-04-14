@@ -21,6 +21,8 @@ import { LettersArchivePage } from "./pages/LettersArchivePage";
 import { LetterDetailPage } from "./pages/LetterDetailPage";
 import { DailyReportsPage } from "./pages/DailyReportsPage";
 import { ReserveBatchesPage } from "./pages/ReserveBatchesPage";
+import { ManageUnitsPage } from "./pages/ManageUnitsPage";
+import { UnitTreePage } from "./pages/UnitTreePage";
 
 export const router = createBrowserRouter([
   {
@@ -51,6 +53,8 @@ export const router = createBrowserRouter([
       { path: "letters-archive/:id",                    Component: LetterDetailPage },
       { path: "daily-reports",                          Component: DailyReportsPage },
       { path: "reserve-batches",                        Component: ReserveBatchesPage },
+      { path: "manage-units",                           Component: ManageUnitsPage },
+      { path: "manage-units/:id/tree",                  Component: UnitTreePage },
     ],
   },
 ]);
