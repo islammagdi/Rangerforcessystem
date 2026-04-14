@@ -191,7 +191,7 @@ function UnitCard({ unit }: { unit: Unit }) {
         </span>
         {/* Name — blurred for sensitivity */}
         <span
-          className="flex-1 min-w-0 text-right blur-[6px] select-none"
+          className="flex-1 min-w-0 text-right select-none"
           style={{
             ...F,
             fontWeight: 700,
