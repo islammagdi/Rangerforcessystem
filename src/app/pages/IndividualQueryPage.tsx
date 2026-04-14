@@ -678,7 +678,7 @@ export function IndividualQueryPage() {
         </div>
 
         {/* ── فئة الفرد ────────────────────────────────────────────────── */}
-        <div className="flex flex-col gap-3 items-end w-full">
+        <div className="flex flex-col gap-3 items-sart w-full">
           <p
             style={{
               fontFamily: "'Almarai', sans-serif",

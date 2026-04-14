@@ -26,19 +26,19 @@ function InfoRow({
   highlight?: boolean;
 }) {
   return (
-    <div className="flex items-start gap-2 justify-end flex-1 min-w-0">
-      <span
-        className={blurred ? "blur-[6px] select-none" : ""}
-        style={{ ...FONT, fontSize: 18, color: highlight ? "#172e78" : "#2d3648", whiteSpace: "nowrap" }}
-      >
-        {value}
-      </span>
-      <span style={{ ...FONT, fontSize: 18, color: "#172e78" }}>:</span>
+    <div className="flex items-end gap-2 justify-end flex-1 min-w-0">
       <span
         className="w-[130px] shrink-0 text-right"
         style={{ ...FONT, fontSize: 18, color: "#717d96" }}
       >
         {label}
+      </span>
+      <span style={{ ...FONT, fontSize: 18, color: "#172e78" }}>:</span>
+      <span
+        className={blurred ? "blur-[6px] select-none" : ""}
+        style={{ ...FONT, fontSize: 18, color: highlight ? "#172e78" : "#2d3648", whiteSpace: "nowrap" }}
+      >
+        {value}
       </span>
     </div>
   );

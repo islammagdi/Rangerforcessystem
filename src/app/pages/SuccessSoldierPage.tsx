@@ -87,12 +87,12 @@ function Stepper() {
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-start gap-2 justify-end flex-1 min-w-0">
-      <span style={{ ...F, fontSize: 18, color: "#2d3648", whiteSpace: "nowrap" }}>
-        {value}
-      </span>
-      <span style={{ ...F, fontSize: 18, color: "#172e78" }}>:</span>
       <span className="w-[130px] shrink-0 text-right" style={{ ...F, fontSize: 18, color: "#717d96" }}>
         {label}
+      </span>
+      <span style={{ ...F, fontSize: 18, color: "#172e78" }}>:</span>
+      <span style={{ ...F, fontSize: 18, color: "#2d3648", whiteSpace: "nowrap" }}>
+        {value}
       </span>
     </div>
   );
@@ -203,7 +203,7 @@ export function SuccessSoldierPage() {
               {/* Row 1 */}
               <div className="flex flex-wrap gap-6">
                 <InfoRow label="الدرجة"          value={form.rank} />
-                <InfoRow label="الرقم العسكـري"  value={form.milId} />
+                <InfoRow label="الرقمبتـري"  value={form.milId} />
               </div>
               {/* Row 2 */}
               <div className="flex flex-wrap gap-6">
