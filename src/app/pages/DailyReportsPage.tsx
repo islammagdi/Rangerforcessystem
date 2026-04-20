@@ -19,8 +19,8 @@ function DailyStepper({ step }: { step: 1 | 2 | 3 }) {
               <div
                 className="w-8 h-8 rounded-full flex items-center justify-center border-2"
                 style={{
-                  borderColor: done ? "#00b867" : active ? "#1f3d97" : "#a1aebe",
-                  background: done ? "#00b867" : active ? "#1f3d97" : "#fff",
+                  borderColor: done ? "#00b867" : active ? "#4BFF62" : "#a1aebe",
+                  background: done ? "#00b867" : active ? "#00B867" : "#fff",
                 }}
               >
                 {done
@@ -35,7 +35,7 @@ function DailyStepper({ step }: { step: 1 | 2 | 3 }) {
                   color: done
                     ? "#00b867"
                     : active
-                    ? "#1f3d97"
+                    ? "#121212"
                     : "#a1aebe",
                 }}
               >
@@ -186,7 +186,7 @@ function Step2({ reportTitle, onNext }: { reportTitle: string; onNext: (cfg: { u
       </div>
 
       {/* Exclude batch */}
-      <div className="flex items-center gap-2 justify-end">
+      <div className="flex items-center gap-2 justify-start">
         <label htmlFor="excludeBatch" style={{ ...F, fontSize: 15, color: "#2d3648" }}>استثناء دفعة رديف</label>
         <input
           id="excludeBatch"
@@ -254,12 +254,12 @@ function Step3({ reportTitle, cfg }: { reportTitle: string; cfg: ReportConfig })
       {/* Header info */}
       <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full p-5 flex flex-col gap-3">
         {/* Report title */}
-        <div className="flex items-center justify-end">
+        <div className="flex items-center justify-start">
           <p style={{ ...F, fontSize: 16, color: "#2d3648", fontWeight: 700 }}>{reportTitle}</p>
         </div>
         <div className="w-full h-px bg-[#eff0f6]" />
         {/* Meta row */}
-        <div className="flex flex-wrap gap-x-6 gap-y-2 items-center justify-end" dir="rtl">
+        <div className="flex flex-wrap gap-x-6 gap-y-2 items-center justify-start" dir="rtl">
           <div className="flex items-center gap-1.5">
             <span style={{ ...F, fontSize: 13, color: "#717d96" }}>استثناء دفعة رديف :</span>
             <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>{cfg.excludeBatch ? "يوجد" : "لا يوجد"}</span>

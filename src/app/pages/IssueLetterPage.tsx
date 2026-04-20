@@ -2,7 +2,9 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 
 // ─── Shared style ─────────────────────────────────────────────────────────────
-const F: React.CSSProperties = { fontFamily: "'Almarai', sans-serif" };
+const F: React.CSSProperties = {
+  fontFamily: "'Almarai', sans-serif",
+};
 
 // ─── SVG path for the staircase / steps icon (p8cec1f0) ──────────────────────
 const STEPS_PATH =
@@ -21,13 +23,13 @@ function Step({ number, label, active = false }: StepProps) {
       {/* Circle */}
       <div
         className="w-8 h-8 rounded-full flex items-center justify-center bg-white border-2"
-        style={{ borderColor: active ? "#1f3d97" : "#a1aebe" }}
+        style={{ borderColor: active ? "#318B3C" : "#a1aebe" }}
       >
         <span
           style={{
             ...F,
             fontSize: 14,
-            color: active ? "#1f3d97" : "#2d3648",
+            color: active ? "#318B3C" : "#2d3648",
             lineHeight: 1.4,
           }}
         >
@@ -37,7 +39,12 @@ function Step({ number, label, active = false }: StepProps) {
       {/* Label */}
       <span
         className="text-center whitespace-nowrap"
-        style={{ ...F, fontSize: 14, color: active ? "#1f3d97" : "#465668", lineHeight: 1.4 }}
+        style={{
+          ...F,
+          fontSize: 14,
+          color: active ? "#318B3C" : "#465668",
+          lineHeight: 1.4,
+        }}
       >
         {label}
       </span>
@@ -50,7 +57,10 @@ function StepConnector() {
   return (
     <div className="flex items-center gap-[3px] mb-[26px] shrink-0">
       {Array.from({ length: 16 }).map((_, i) => (
-        <div key={i} className="w-[3px] h-[3px] rounded-full bg-[#a1aebe]" />
+        <div
+          key={i}
+          className="w-[3px] h-[3px] rounded-full bg-[#a1aebe]"
+        />
       ))}
     </div>
   );
@@ -64,7 +74,12 @@ interface LetterCardProps {
   onClick: () => void;
 }
 
-function LetterCard({ title, iconRotate, selected, onClick }: LetterCardProps) {
+function LetterCard({
+  title,
+  iconRotate,
+  selected,
+  onClick,
+}: LetterCardProps) {
   return (
     <button
       type="button"
@@ -72,7 +87,7 @@ function LetterCard({ title, iconRotate, selected, onClick }: LetterCardProps) {
       className="flex-1 min-w-[220px] max-w-[300px] bg-white rounded-[24px] flex flex-col items-center gap-6 px-12 py-8 cursor-pointer transition-all duration-200"
       style={{
         boxShadow: selected
-          ? "0 0 0 2.5px #1f3d97, 0px 4px 16px 0px rgba(31,61,151,0.18)"
+          ? "0 0 0 2.5px #318B3C, 0px 4px 16px 0px rgba(31,61,151,0.18)"
           : "0px 1px 4px 0px rgba(0,0,0,0.15)",
         outline: "none",
       }}
@@ -83,11 +98,16 @@ function LetterCard({ title, iconRotate, selected, onClick }: LetterCardProps) {
           className="w-full h-full flex items-center justify-center"
           style={{ transform: iconRotate }}
         >
-          <svg width="76" height="76" viewBox="0 0 18.75 18.75" fill="none">
+          <svg
+            width="76"
+            height="76"
+            viewBox="0 0 18.75 18.75"
+            fill="none"
+          >
             <path
               clipRule="evenodd"
               d={STEPS_PATH}
-              fill={selected ? "#1f3d97" : "#4a5468"}
+              fill={selected ? "#318B3C" : "#4a5468"}
               fillRule="evenodd"
             />
           </svg>
@@ -100,7 +120,7 @@ function LetterCard({ title, iconRotate, selected, onClick }: LetterCardProps) {
           ...F,
           fontWeight: 700,
           fontSize: 24,
-          color: selected ? "#1f3d97" : "#575d65",
+          color: selected ? "#318B3C" : "#575d65",
           lineHeight: 1.5,
           whiteSpace: "nowrap",
         }}
@@ -114,7 +134,9 @@ function LetterCard({ title, iconRotate, selected, onClick }: LetterCardProps) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export function IssueLetterPage() {
   const navigate = useNavigate();
-  const [selected, setSelected] = useState<"attachment" | "end-attachment" | null>(null);
+  const [selected, setSelected] = useState<
+    "attachment" | "end-attachment" | null
+  >(null);
 
   function handleNext() {
     if (!selected) return;
@@ -124,18 +146,29 @@ export function IssueLetterPage() {
   }
 
   return (
-    <div className="flex flex-col items-center gap-10 w-full pb-10" dir="rtl">
-
+    <div
+      className="flex flex-col items-center gap-10 w-full pb-10"
+      dir="rtl"
+    >
       {/* ── Page title ──────────────────────────────────────── */}
       <h1
         className="text-center"
-        style={{ ...F, fontWeight: 700, fontSize: "clamp(22px,4vw,32px)", color: "#2d3648", lineHeight: 1.5 }}
+        style={{
+          ...F,
+          fontWeight: 700,
+          fontSize: "clamp(22px,4vw,32px)",
+          color: "#2d3648",
+          lineHeight: 1.5,
+        }}
       >
         اصدار خطابات
       </h1>
 
       {/* ── Stepper ─────────────────────────────────────────── */}
-      <div className="flex items-start justify-center gap-0 flex-wrap" dir="rtl">
+      <div
+        className="flex items-start justify-center gap-0 flex-wrap"
+        dir="rtl"
+      >
         {/* Step 01 — active */}
         <Step number="01" label="تحديد نوع الخطاب" active />
         <StepConnector />
@@ -154,11 +187,16 @@ export function IssueLetterPage() {
 
       {/* ── Body ────────────────────────────────────────────── */}
       <div className="flex flex-col items-center gap-10 w-full max-w-[640px]">
-
         {/* Subtitle */}
         <p
           className="text-center"
-          style={{ ...F, fontWeight: 700, fontSize: "clamp(18px,3vw,24px)", color: "#404040", lineHeight: 1.5 }}
+          style={{
+            ...F,
+            fontWeight: 700,
+            fontSize: "clamp(18px,3vw,24px)",
+            color: "#404040",
+            lineHeight: 1.5,
+          }}
         >
           يرجى تحديد نوع الخطاب المطلوب إصداره
         </p>
@@ -189,7 +227,9 @@ export function IssueLetterPage() {
           onClick={handleNext}
           className="w-full min-h-[52px] rounded-[8px] flex items-center justify-center transition-colors"
           style={{
-            background: selected ? "linear-gradient(to bottom, #00b867, #00522e)" : "#edf0f7",
+            background: selected
+              ? "linear-gradient(to bottom, #00b867, #00522e)"
+              : "#edf0f7",
             cursor: selected ? "pointer" : "not-allowed",
           }}
         >
@@ -204,7 +244,6 @@ export function IssueLetterPage() {
             الانتقال إلى تحديد الأفراد
           </span>
         </button>
-
       </div>
     </div>
   );

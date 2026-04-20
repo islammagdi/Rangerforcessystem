@@ -1,3 +1,4 @@
+import Select from "react-select";
 import { useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router";
 import {
@@ -18,8 +19,8 @@ const F: React.CSSProperties = {
 
 // ─── Stepper ─────────────────────────────────────────────────────────────────
 const STEPS = [
-  { num: "01", label: "رفع البيانات",  active: true  },
-  { num: "02", label: "المراجعة",      active: false },
+  { num: "01", label: "رفع البيانات", active: true },
+  { num: "02", label: "المراجعة", active: false },
   { num: "03", label: "الحفظ النهائي", active: false },
 ];
 
@@ -44,9 +45,9 @@ function Stepper({
   const steps = groupMode
     ? STEPS
     : [
-        { num: "01", label: "ادخال البيانات", active: true  },
-        { num: "02", label: "المراجعة",       active: false },
-        { num: "03", label: "اعتماد",         active: false },
+        { num: "01", label: "ادخال البيانات", active: true },
+        { num: "02", label: "المراجعة", active: false },
+        { num: "03", label: "اعتماد", active: false },
       ];
 
   return (
@@ -58,7 +59,7 @@ function Stepper({
               className={[
                 "w-8 h-8 rounded-full flex items-center justify-center border-2",
                 step.active
-                  ? "border-[#1f3d97] bg-white"
+                  ? "border-[#344736] bg-white"
                   : "border-[#a1aebe] bg-white",
               ].join(" ")}
             >
@@ -66,7 +67,7 @@ function Stepper({
                 style={{
                   ...F,
                   fontSize: 14,
-                  color: step.active ? "#1f3d97" : "#2d3648",
+                  color: step.active ? "#344736" : "#2d3648",
                   lineHeight: 1.4,
                 }}
               >
@@ -77,7 +78,7 @@ function Stepper({
               style={{
                 ...F,
                 fontSize: 14,
-                color: step.active ? "#1f3d97" : "#465668",
+                color: step.active ? "#344736" : "#465668",
                 lineHeight: 1.4,
                 whiteSpace: "nowrap",
               }}
@@ -278,7 +279,7 @@ function FormDropdown({
                   className={[
                     "w-full text-right px-4 py-3 transition-colors",
                     opt === value
-                      ? "bg-[#f0f2fd] text-[#1f3d97]"
+                      ? "bg-[#f0f2fd] text-[#344736]"
                       : "hover:bg-[#f5f6fb] text-[#2d3648]",
                   ].join(" ")}
                   style={{ ...F, fontSize: 16 }}
@@ -331,7 +332,7 @@ function FormInput({
         disabled={disabled}
         dir="rtl"
         className={[
-          "w-full h-[54px] bg-white border rounded-[8px] px-3 text-right outline-none focus:border-[#1f3d97] transition-colors",
+          "w-full h-[54px] bg-white border rounded-[8px] px-3 text-right outline-none focus:border-[#344736] transition-colors",
           disabled ? "opacity-50 cursor-not-allowed" : "",
           error ? "border-[#ef4444]" : "border-[#e2e7f0]",
         ].join(" ")}
@@ -386,7 +387,10 @@ function DateInput({
           className="absolute inset-y-0 right-3 flex items-center z-10"
           tabIndex={-1}
         >
-          <CalendarDays size={20} style={{ color: "#294dbb" }} />
+          <CalendarDays
+            size={20}
+            style={{ color: "#415844" }}
+          />
         </button>
 
         <input
@@ -395,7 +399,7 @@ function DateInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className={[
-            "w-full h-[54px] bg-white border rounded-[8px] pr-10 pl-3 outline-none focus:border-[#294dbb] transition-colors cursor-pointer",
+            "w-full h-[54px] bg-white border rounded-[8px] pr-10 pl-3 outline-none focus:border-[#415844] transition-colors cursor-pointer",
             error ? "border-[#ef4444]" : "border-[#e2e7f0]",
           ].join(" ")}
           style={{
@@ -535,14 +539,14 @@ function ExcelIcon({ size = 28 }: { size?: number }) {
 function UploadFolderIcon() {
   return (
     <svg width="42" height="42" viewBox="0 0 42 42" fill="none">
-      <rect width="42" height="42" rx="8" fill="#EBEDFD" />
+      <rect width="42" height="42" rx="8" fill="#DCF4DF" />
       <path
         d="M8 16C8 13.8 9.8 12 12 12H18L21 15H30C32.2 15 34 16.8 34 19V28C34 30.2 32.2 32 30 32H12C9.8 32 8 30.2 8 28V16Z"
-        fill="#476AE9"
+        fill="#395945"
       />
       <path
         d="M8 20H34V28C34 30.2 32.2 32 30 32H12C9.8 32 8 30.2 8 28V20Z"
-        fill="#294DBB"
+        fill="#415844"
       />
       <path
         d="M21 22V28M21 22L19 24M21 22L23 24"
@@ -614,29 +618,8 @@ function GroupUploadSection({
       <div className="flex flex-col gap-5 px-6 py-5">
         {/* ── Header row ───────────────────────────────────────────── */}
         <div className="flex flex-wrap items-start justify-between gap-4 w-full">
-          {/* Left: download link */}
-          <button
-            type="button"
-            className="flex items-center gap-1.5 shrink-0 group"
-          >
-            <Download size={15} style={{ color: "#00b867" }} />
-            <span
-              className="underline group-hover:opacity-80 transition-opacity"
-              style={{
-                ...F,
-                fontSize: 16,
-                background:
-                  "linear-gradient(to bottom, #00b867, #00522e)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-              }}
-            >
-              تحميل نموذج القيد الموحّد
-            </span>
-          </button>
-
           {/* Right: title + description */}
-          <div className="flex flex-col gap-1 items-end flex-1 min-w-0">
+          <div className="flex flex-col gap-1 items-start flex-1 min-w-0">
             <p
               style={{
                 ...F,
@@ -661,6 +644,35 @@ function GroupUploadSection({
               ثم رفع الكشف بصيغة Excel لإتمام المراجعة.
             </p>
           </div>
+          {/* Left: download link */}
+          <a
+            href="https://github.com/islammagdi/Rangerforcessystem/raw/refs/heads/main/Data.xlsx"
+            download
+            className="flex items-center gap-1.5 shrink-0 group"
+          >
+            <button
+              type="button"
+              className="flex items-center gap-1.5 shrink-0 group"
+            >
+              <Download
+                size={15}
+                style={{ color: "#00b867" }}
+              />
+              <span
+                className="underline group-hover:opacity-80 transition-opacity"
+                style={{
+                  ...F,
+                  fontSize: 16,
+                  background:
+                    "linear-gradient(to bottom, #00b867, #00522e)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                }}
+              >
+                تحميل نموذج القيد الموحّد
+              </span>
+            </button>
+          </a>
         </div>
 
         {/* Divider */}
@@ -677,14 +689,14 @@ function GroupUploadSection({
           className={[
             "flex flex-col items-center justify-center gap-4 py-10 px-6 rounded-[12px] border-2 border-dashed transition-colors cursor-default",
             dragOver
-              ? "border-[#294dbb] bg-[#f0f3ff]"
+              ? "border-[#415844] bg-[#f0f3ff]"
               : "border-[#cbd2e0] bg-transparent",
           ].join(" ")}
         >
           <UploadFolderIcon />
 
           <div className="flex flex-col items-center gap-3 w-full">
-            <p style={{ ...F, fontSize: 14, color: "#2d3648" }}>
+            <p style={{ ...F, fontSize: 14, color: "#5B795F" }}>
               اسحب الملف هنا أو تصفح
             </p>
 
@@ -703,14 +715,14 @@ function GroupUploadSection({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="bg-[#f7f9fc] border border-[#294dbb] rounded-[8px] px-3 py-1.5 transition-colors hover:bg-[#eef1fd] active:opacity-80"
+              className="bg-[#f7f9fc] border border-[#415844] rounded-[8px] px-3 py-1.5 transition-colors hover:bg-[#eef1fd] active:opacity-80"
             >
               <span
                 style={{
                   ...F,
                   fontWeight: 700,
                   fontSize: 12,
-                  color: "#294dbb",
+                  color: "#415844",
                 }}
               >
                 تصفح الملفات
@@ -839,8 +851,6 @@ export function AddNewSoldierPage() {
     "ملحق علي القوة",
     "قوة الوحده",
     "منتهي خدمته",
-    "إجازة",
-    "غائب",
   ];
   const ATTACH = [
     "لا يوجد",
@@ -855,10 +865,12 @@ export function AddNewSoldierPage() {
     if (!rank.trim()) e.rank = "الدرجة مطلوبة";
     if (!milId.trim()) e.milId = "الرقم العسكري مطلوب";
     // تاريخ التسريح غير مطلوب للمتطوع
-    if (category !== "متطوع" && !discharge.trim()) e.discharge = "تاريخ التسريح مطلوب";
+    if (category !== "متطوع" && !discharge.trim())
+      e.discharge = "تاريخ التسريح مطلوب";
     if (!unit.trim()) e.unit = "الوحدة الاساسية مطلوبة";
     // جهة الالحاق غير مطلوبة عند "ملحق علي القوة"
-    if (status !== "ملحق علي القوة" && !attachment.trim()) e.attachment = "جهة الالحاق مطلوبة";
+    if (status !== "ملحق علي القوة" && !attachment.trim())
+      e.attachment = "جهة الالحاق مطلوبة";
     return e;
   }
 
@@ -889,7 +901,7 @@ export function AddNewSoldierPage() {
   }
 
   const isGroup = method === "مجموعة افراد";
-  const isAttachmentDisabled = status === "ملحق علي القوة";
+  const isAttachmentDisabled = status === "قوة الوحده";
 
   return (
     <div className="flex flex-col gap-6 w-full" dir="rtl">
@@ -939,7 +951,7 @@ export function AddNewSoldierPage() {
                   : "border-[#e2e7f0] bg-white hover:border-[#a0aec0]",
               ].join(" ")}
             >
-              <span className="shrink-0 w-5 h-5 rounded-full border-[1.5px] border-[#1f3d97] flex items-center justify-center">
+              <span className="shrink-0 w-5 h-5 rounded-full border-[1.5px] border-[#344736] flex items-center justify-center">
                 {method === m && (
                   <span
                     className="w-3 h-3 rounded-full"
@@ -974,7 +986,7 @@ export function AddNewSoldierPage() {
           <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full">
             <div className="flex flex-col gap-6 px-6 py-5">
               {/* Card header */}
-              <div className="flex items-center justify-end gap-3 pb-3 border-b border-[#cbd2e0]">
+              <div className="flex items-center justify-start gap-3 pb-3 border-b border-[#cbd2e0]">
                 <span
                   style={{
                     ...F,
@@ -998,18 +1010,18 @@ export function AddNewSoldierPage() {
               <SubHeader>البيانات التعريفية</SubHeader>
 
               <div className="flex flex-col sm:flex-row gap-4">
-                <FieldGroup label="الاسم">
+                <FieldGroup label="الرقم العسكري">
                   <FormInput
-                    placeholder="اسم الفرد"
-                    value={name}
+                    placeholder="ادخل الرقم العسكري"
+                    value={milId}
                     onChange={(v) => {
-                      setName(v);
+                      setMilId(v);
                       setErrors((p) => ({
                         ...p,
-                        name: undefined,
+                        milId: undefined,
                       }));
                     }}
-                    error={errors.name}
+                    error={errors.milId}
                   />
                 </FieldGroup>
                 <FieldGroup label="الدرجة">
@@ -1027,44 +1039,44 @@ export function AddNewSoldierPage() {
                     error={errors.rank}
                   />
                 </FieldGroup>
-                <FieldGroup label="الرقم العسكري">
+                <FieldGroup label="الاسم">
                   <FormInput
-                    placeholder="ادخل الرقم العسكري"
-                    value={milId}
+                    placeholder="اسم الفرد"
+                    value={name}
                     onChange={(v) => {
-                      setMilId(v);
+                      setName(v);
                       setErrors((p) => ({
                         ...p,
-                        milId: undefined,
+                        name: undefined,
                       }));
                     }}
-                    error={errors.milId}
+                    error={errors.name}
                   />
                 </FieldGroup>
               </div>
 
               {/* تاريخ التسريح — مخفي عند متطوع */}
               {category !== "متطوع" && (
-              <div className="flex flex-col sm:flex-row gap-4">
-                <FieldGroup
-                  label="تاريخ التسريح"
-                  labelColor="#294dbb"
-                >
-                  <DateInput
-                    value={discharge}
-                    onChange={(v) => {
-                      setDischarge(v);
-                      setErrors((p) => ({
-                        ...p,
-                        discharge: undefined,
-                      }));
-                    }}
-                    error={errors.discharge}
-                  />
-                </FieldGroup>
-                <div className="flex-1 hidden sm:block" />
-                <div className="flex-1 hidden sm:block" />
-              </div>
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <FieldGroup
+                    label="تاريخ التسريح"
+                    labelColor="#415844"
+                  >
+                    <DateInput
+                      value={discharge}
+                      onChange={(v) => {
+                        setDischarge(v);
+                        setErrors((p) => ({
+                          ...p,
+                          discharge: undefined,
+                        }));
+                      }}
+                      error={errors.discharge}
+                    />
+                  </FieldGroup>
+                  <div className="flex-1 hidden sm:block" />
+                  <div className="flex-1 hidden sm:block" />
+                </div>
               )}
 
               <SubHeader>بيانات الوحدة والموقف</SubHeader>
@@ -1095,14 +1107,21 @@ export function AddNewSoldierPage() {
                       // clear attachment when disabling
                       if (v === "ملحق علي القوة") {
                         setAttachment("");
-                        setErrors((p) => ({ ...p, attachment: undefined }));
+                        setErrors((p) => ({
+                          ...p,
+                          attachment: undefined,
+                        }));
                       }
                     }}
                   />
                 </FieldGroup>
                 <FieldGroup label="جهة الالحاق">
                   <FormDropdown
-                    placeholder={isAttachmentDisabled ? "غير متاح - ملحق علي القوة" : "اختر الوحدة"}
+                    placeholder={
+                      isAttachmentDisabled
+                        ? "غير متاح"
+                        : "اختر الوحدة"
+                    }
                     options={ATTACH}
                     value={attachment}
                     disabled={isAttachmentDisabled}
@@ -1113,7 +1132,11 @@ export function AddNewSoldierPage() {
                         attachment: undefined,
                       }));
                     }}
-                    error={isAttachmentDisabled ? undefined : errors.attachment}
+                    error={
+                      isAttachmentDisabled
+                        ? undefined
+                        : errors.attachment
+                    }
                   />
                 </FieldGroup>
               </div>

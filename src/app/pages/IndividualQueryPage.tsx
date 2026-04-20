@@ -685,6 +685,30 @@ export function IndividualQueryPage() {
         onSubmit={handleSearch}
         className="flex flex-col gap-6 items-end"
       >
+        {/* ── فئة الفرد ────────────────────────────────────────────────── */}
+        <div className="flex flex-col gap-3 items-sart w-full">
+          <p
+            style={{
+              fontFamily: "'Almarai', sans-serif",
+              fontWeight: 700,
+              fontSize: "18px",
+              color: "#2d3648",
+              textAlign: "right",
+            }}
+          >
+            فئة الفرد
+          </p>
+          <div className="flex flex-wrap gap-4 justify-start w-full">
+            {CATEGORIES.map((cat) => (
+              <RadioCard
+                key={cat.id}
+                label={cat.label}
+                checked={selectedCategory === cat.label}
+                onChange={() => setSelectedCategory(cat.label)}
+              />
+            ))}
+          </div>
+        </div>
         {/* ── Row: Dropdown → Input → Button ───────────────────────────── */}
         <div className="flex flex-col sm:flex-row gap-5 w-full items-end">
           {/* 1 - أساس الاستعلام (Dropdown) — rightmost in RTL */}
@@ -772,31 +796,6 @@ export function IndividualQueryPage() {
           >
             استعلام
           </button>
-        </div>
-
-        {/* ── فئة الفرد ────────────────────────────────────────────────── */}
-        <div className="flex flex-col gap-3 items-sart w-full">
-          <p
-            style={{
-              fontFamily: "'Almarai', sans-serif",
-              fontWeight: 700,
-              fontSize: "18px",
-              color: "#2d3648",
-              textAlign: "right",
-            }}
-          >
-            فئة الفرد
-          </p>
-          <div className="flex flex-wrap gap-4 justify-start w-full">
-            {CATEGORIES.map((cat) => (
-              <RadioCard
-                key={cat.id}
-                label={cat.label}
-                checked={selectedCategory === cat.label}
-                onChange={() => setSelectedCategory(cat.label)}
-              />
-            ))}
-          </div>
         </div>
       </form>
 
