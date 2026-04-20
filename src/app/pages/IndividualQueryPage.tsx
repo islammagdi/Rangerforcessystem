@@ -810,7 +810,7 @@ export function IndividualQueryPage() {
                 fontFamily: "'Almarai', sans-serif",
                 fontWeight: 700,
                 fontSize: "14px",
-                color: "#172e78",
+                color: "#2d3648",
               }}
             >
               {found

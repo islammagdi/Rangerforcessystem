@@ -152,34 +152,7 @@ function AuditStrip() {
       </p>
       <div className="flex items-center gap-3 border border-[#e7e7e7] rounded-[12px] px-3 py-3 flex-wrap">
         <div className="flex items-center gap-1">
-          <span
-            style={{
-              ...F,
-              fontSize: 14,
-              color: "#4a5468",
-              whiteSpace: "nowrap",
-            }}
-          >
-            10 : 30 ص
-          </span>
-          <Clock size={18} className="text-[#a0abc0]" />
-        </div>
-        <div className="h-3 w-px bg-[#cbd2e0]" />
-        <div className="flex items-center gap-1">
-          <span
-            style={{
-              ...F,
-              fontSize: 14,
-              color: "#4a5468",
-              whiteSpace: "nowrap",
-            }}
-          >
-            2025 - 08 - 20
-          </span>
-          <CalendarDays size={18} className="text-[#a0abc0]" />
-        </div>
-        <div className="h-3 w-px bg-[#cbd2e0]" />
-        <div className="flex items-center gap-1">
+          <User size={18} className="text-[#a0abc0]" />
           <span
             style={{
               ...F,
@@ -190,7 +163,35 @@ function AuditStrip() {
           >
             جندي / اسلام مجدي عبدالستار
           </span>
-          <User size={18} className="text-[#a0abc0]" />
+        </div>
+
+        <div className="h-3 w-px bg-[#cbd2e0]" />
+        <div className="flex items-center gap-1">
+          <CalendarDays size={18} className="text-[#a0abc0]" />
+          <span
+            style={{
+              ...F,
+              fontSize: 14,
+              color: "#4a5468",
+              whiteSpace: "nowrap",
+            }}
+          >
+            2025 - 08 - 20
+          </span>
+        </div>
+        <div className="h-3 w-px bg-[#cbd2e0]" />
+        <div className="flex items-center gap-1">
+          <Clock size={18} className="text-[#a0abc0]" />
+          <span
+            style={{
+              ...F,
+              fontSize: 14,
+              color: "#4a5468",
+              whiteSpace: "nowrap",
+            }}
+          >
+            10 : 00 ص
+          </span>
         </div>
       </div>
     </div>
@@ -339,32 +340,7 @@ export function SuccessSoldierPage() {
           <AuditStrip />
 
           {/* ── Action buttons ───────────────────────────────────────── */}
-          <div className="flex flex-wrap gap-3 items-center w-full">
-            <button
-              onClick={() => navigate("/dashboard")}
-              className="flex items-center justify-center min-h-[44px] px-4 rounded-[8px] transition-opacity hover:opacity-80"
-            >
-              <span
-                style={{
-                  ...F,
-                  fontSize: 16,
-                  color: "#172e78",
-                  textDecoration: "underline",
-                }}
-              >
-                اصدار خطاب
-              </span>
-            </button>
-            <button
-              onClick={() => navigate("/dashboard")}
-              className="flex items-center justify-center min-h-[44px] px-5 rounded-[8px] bg-[#ebedfd] transition-opacity hover:opacity-90 active:opacity-80"
-            >
-              <span
-                style={{ ...F, fontSize: 16, color: "#2d3648" }}
-              >
-                الموقف العام
-              </span>
-            </button>
+          <div className="flex flex-wrap gap-3 items-center w-full justify-end">
             <button
               onClick={() => navigate("/dashboard/add-soldier")}
               className="flex items-center justify-center min-h-[44px] px-5 rounded-[8px] transition-opacity hover:opacity-90 active:opacity-80"
@@ -377,6 +353,32 @@ export function SuccessSoldierPage() {
                 style={{ ...F, fontSize: 16, color: "#f5f5f5" }}
               >
                 اضافة فرد اخري
+              </span>
+            </button>
+            <button
+              onClick={() => navigate("/dashboard")}
+              className="flex items-center justify-center min-h-[44px] px-5 rounded-[8px] bg-[#ebedfd] transition-opacity hover:opacity-90 active:opacity-80"
+            >
+              <span
+                style={{ ...F, fontSize: 16, color: "#2d3648" }}
+              >
+                الموقف العام
+              </span>
+            </button>
+
+            <button
+              onClick={() => navigate("/dashboard")}
+              className="flex items-center justify-center min-h-[44px] px-4 rounded-[8px] transition-opacity hover:opacity-80"
+            >
+              <span
+                style={{
+                  ...F,
+                  fontSize: 16,
+                  color: "#273629",
+                  textDecoration: "underline",
+                }}
+              >
+                اصدار خطاب
               </span>
             </button>
           </div>

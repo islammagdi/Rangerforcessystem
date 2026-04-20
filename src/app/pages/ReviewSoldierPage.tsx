@@ -74,14 +74,14 @@ function Stepper() {
 
       {/* Step 02 — المراجعة (active) */}
       <div className="flex flex-col items-center gap-2">
-        <div className="w-8 h-8 rounded-full flex items-center justify-center border-2 border-[#294dbb] bg-white">
+        <div className="w-8 h-8 rounded-full flex items-center justify-center border-2 border-[#344736] bg-white">
           <span
-            style={{ ...F, fontSize: 14, color: "#294dbb" }}
+            style={{ ...F, fontSize: 14, color: "#344736" }}
           >
             02
           </span>
         </div>
-        <span style={{ ...F, fontSize: 14, color: "#294dbb" }}>
+        <span style={{ ...F, fontSize: 14, color: "#344736" }}>
           المراجعة
         </span>
       </div>

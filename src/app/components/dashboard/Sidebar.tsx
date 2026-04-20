@@ -85,7 +85,9 @@ function NavItem({
   onClick,
 }: NavItemProps) {
   const styledIcon = active
-    ? cloneElement(icon, { stroke: "url(#navActiveGrad)" } as object)
+    ? cloneElement(icon, {
+        stroke: "url(#navActiveGrad)",
+      } as object)
     : icon;
 
   return (
@@ -104,9 +106,7 @@ function NavItem({
       }}
     >
       <span className="flex-1 text-right">{label}</span>
-      <span className="shrink-0">
-        {styledIcon}
-      </span>
+      <span className="shrink-0">{styledIcon}</span>
     </button>
   );
 }
@@ -241,9 +241,19 @@ export function Sidebar({
       dir="rtl"
     >
       {/* ── Global gradient defs for active icons ───────────────────────── */}
-      <svg width="0" height="0" style={{ position: "absolute", overflow: "hidden" }}>
+      <svg
+        width="0"
+        height="0"
+        style={{ position: "absolute", overflow: "hidden" }}
+      >
         <defs>
-          <linearGradient id="navActiveGrad" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient
+            id="navActiveGrad"
+            x1="0"
+            y1="0"
+            x2="0"
+            y2="1"
+          >
             <stop offset="0%" stopColor="#00B867" />
             <stop offset="100%" stopColor="#00522E" />
           </linearGradient>
@@ -388,7 +398,10 @@ export function Sidebar({
           {allNavItems.map(({ icon, label }) => {
             const isActive = activeLabel === label;
             const styledIcon = isActive
-              ? cloneElement(icon as React.ReactElement, { stroke: "url(#navActiveGrad)" } as object)
+              ? cloneElement(
+                  icon as React.ReactElement,
+                  { stroke: "url(#navActiveGrad)" } as object,
+                )
               : icon;
             return (
               <button
@@ -415,9 +428,14 @@ export function Sidebar({
           <button
             onClick={() => {}}
             className="w-full h-[44px] rounded-[99px] flex items-center px-4 gap-3 transition-colors text-right text-[#717d96] hover:bg-[#f5f6fb] hover:text-[#2d3648]"
-            style={{ fontFamily: "'Almarai', sans-serif", fontSize: "16px" }}
+            style={{
+              fontFamily: "'Almarai', sans-serif",
+              fontSize: "16px",
+            }}
           >
-            <span className="flex-1 text-right">تسجيل الخروج</span>
+            <span className="flex-1 text-right">
+              تسجيل الخروج
+            </span>
             <span className="shrink-0">
               <LogOut size={18} />
             </span>

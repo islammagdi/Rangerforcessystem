@@ -50,7 +50,7 @@ function InfoRow({
       >
         {label}
       </span>
-      <span style={{ ...FONT, fontSize: 18, color: "#172e78" }}>
+      <span style={{ ...FONT, fontSize: 18, color: "#2d3648" }}>
         :
       </span>
       <span
@@ -58,7 +58,7 @@ function InfoRow({
         style={{
           ...FONT,
           fontSize: 18,
-          color: highlight ? "#172e78" : "#2d3648",
+          color: highlight ? "#2d3648" : "#2d3648",
           whiteSpace: "nowrap",
         }}
       >
