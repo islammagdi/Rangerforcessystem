@@ -89,9 +89,9 @@ function Stepper() {
 
       {/* Step 02 — المراجعة (active) */}
       <div className="flex flex-col items-center gap-2">
-        <div className="w-8 h-8 rounded-full flex items-center justify-center border-2 border-[#294dbb] bg-white">
+        <div className="w-8 h-8 rounded-full flex items-center justify-center border-2 border-[#415844] bg-white">
           <span
-            style={{ ...F, fontSize: 14, color: "#294dbb" }}
+            style={{ ...F, fontSize: 14, color: "#415844" }}
           >
             02
           </span>
@@ -100,7 +100,7 @@ function Stepper() {
           style={{
             ...F,
             fontSize: 14,
-            color: "#294dbb",
+            color: "#415844",
             whiteSpace: "nowrap",
           }}
         >
@@ -155,8 +155,8 @@ function StatCard({
       className="flex-1 min-w-0 rounded-[16px] border border-[#eff0f6]"
       style={{ background: bg }}
     >
-      <div className="flex items-center justify-end gap-3 px-5 py-3 w-full">
-        <div className="flex flex-col items-end gap-0.5 flex-1 min-w-0">
+      <div className="flex items-center justify-start gap-3 px-5 py-3 w-full">
+        <div className="flex flex-col items-start gap-0.5 flex-1 min-w-0">
           <span
             style={{
               ...F,
@@ -431,8 +431,8 @@ function CheckboxCell({
       onClick={onChange}
       className="w-5 h-5 rounded-[4px] border-2 flex items-center justify-center shrink-0 transition-colors"
       style={{
-        borderColor: checked ? "#294dbb" : "#cbd2e0",
-        background: checked ? "#294dbb" : "white",
+        borderColor: checked ? "#415844" : "#cbd2e0",
+        background: checked ? "#415844" : "white",
       }}
     >
       {checked && (
@@ -847,18 +847,11 @@ export function GroupReviewPage() {
           {/* ── Stats cards ─────────────────────────────────────── */}
           <div className="flex flex-wrap gap-3 w-full items-start">
             <StatCard
-              count={stats.issues}
-              label="بيانات بها ملاحظات"
-              bg="#fce8f1"
-              textColor="#90132a"
-              icon={<RedXIcon />}
-            />
-            <StatCard
-              count={stats.updated}
-              label="افراد يتم تحديث بياناتهم"
-              bg="#e9f9ff"
-              textColor="#146d7c"
-              icon={<CyanRefreshIcon />}
+              count={stats.total}
+              label="اجمالي الافراد بالكشف"
+              bg="white"
+              textColor="#2d3648"
+              icon={<GroupIcon />}
             />
             <StatCard
               count={stats.newCount}
@@ -868,11 +861,18 @@ export function GroupReviewPage() {
               icon={<GreenCheckIcon />}
             />
             <StatCard
-              count={stats.total}
-              label="اجمالي الافراد بالكشف"
-              bg="white"
-              textColor="#2d3648"
-              icon={<GroupIcon />}
+              count={stats.updated}
+              label="افراد يتم تحديث بياناتهم"
+              bg="#e9f9ff"
+              textColor="#146d7c"
+              icon={<CyanRefreshIcon />}
+            />
+            <StatCard
+              count={stats.issues}
+              label="بيانات بها ملاحظات"
+              bg="#fce8f1"
+              textColor="#90132a"
+              icon={<RedXIcon />}
             />
           </div>
         </div>

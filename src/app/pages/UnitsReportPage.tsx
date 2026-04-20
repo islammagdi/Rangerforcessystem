@@ -172,6 +172,20 @@ function UnitCard({ unit }: { unit: Unit }) {
     >
       {/* ── Header: badge + name ─────────────────────────── */}
       <div className="flex items-center gap-4 w-full">
+        {/* Name — blurred for sensitivity */}
+        <span
+          className="flex-1 min-w-0 text-right select-none"
+          style={{
+            ...F,
+            fontWeight: 700,
+            fontSize: 18,
+            color: "#2d3648",
+            lineHeight: 1.5,
+          }}
+          dir="auto"
+        >
+          {unit.name}
+        </span>
         {/* Badge */}
         <span
           className="shrink-0 rounded-[4px] px-1.5 py-0.5 h-6 flex items-center"
@@ -189,24 +203,35 @@ function UnitCard({ unit }: { unit: Unit }) {
             {badge.label}
           </span>
         </span>
-        {/* Name — blurred for sensitivity */}
-        <span
-          className="flex-1 min-w-0 text-right select-none"
-          style={{
-            ...F,
-            fontWeight: 700,
-            fontSize: 18,
-            color: "#2d3648",
-            lineHeight: 1.5,
-          }}
-          dir="auto"
-        >
-          {unit.name}
-        </span>
       </div>
 
       {/* ── Stats row ────────────────────────────────────── */}
       <div className="flex items-center justify-between w-full">
+        {/* قوة الوحدة */}
+        <div className="flex flex-col gap-1 items-start">
+          <span
+            style={{
+              ...F,
+              fontSize: 12,
+              color: "#717d96",
+              whiteSpace: "nowrap",
+            }}
+          >
+            قوة الوحدة
+          </span>
+          <span
+            style={{
+              ...F,
+              fontWeight: 700,
+              fontSize: 16,
+              color: "#2d3648",
+            }}
+            dir="auto"
+          >
+            {unit.strength}
+          </span>
+        </div>
+        <div className="flex-1 h-px mx-2 bg-[#bed0ff]" />
         {/* جنود */}
         <div className="flex flex-col gap-1 items-start">
           <span
@@ -251,33 +276,6 @@ function UnitCard({ unit }: { unit: Unit }) {
             {unit.ncos}
           </span>
         </div>
-
-        <div className="flex-1 h-px mx-2 bg-[#bed0ff]" />
-
-        {/* قوة الوحدة */}
-        <div className="flex flex-col gap-1 items-start">
-          <span
-            style={{
-              ...F,
-              fontSize: 12,
-              color: "#717d96",
-              whiteSpace: "nowrap",
-            }}
-          >
-            قوة الوحدة
-          </span>
-          <span
-            style={{
-              ...F,
-              fontWeight: 700,
-              fontSize: 16,
-              color: "#2d3648",
-            }}
-            dir="auto"
-          >
-            {unit.strength}
-          </span>
-        </div>
       </div>
 
       {/* ── Progress bar section ──────────────────────────── */}
@@ -290,16 +288,17 @@ function UnitCard({ unit }: { unit: Unit }) {
             {unit.khawarijPct}%
           </span>
           <div className="flex items-center gap-1">
+                        <span
+              style={{ ...F, fontSize: 14, color: "#a0abc0" }}
+            >
+              نسبة الخوارج
+            </span>
             <span
               style={{ ...F, fontSize: 14, color: "#2d3648" }}
             >
               ({unit.khawarijCount})
             </span>
-            <span
-              style={{ ...F, fontSize: 14, color: "#a0abc0" }}
-            >
-              نسبة الخوارج
-            </span>
+
           </div>
         </div>
 
@@ -528,13 +527,34 @@ export function UnitsReportPage() {
               style={{
                 ...F,
                 fontWeight: 700,
-                fontSize: 20,
+                fontSize: 16,
                 color: "#2d3648",
               }}
             >
               تصنيف وعرض الوحدات
             </label>
             <div className="flex items-center overflow-hidden rounded-[12px] border border-[#eff0f6]">
+              {/* الكل — rightmost in RTL */}
+              <button
+                type="button"
+                onClick={() => setFilter("الكل")}
+                className={[
+                  "px-4 py-3 w-[155px] text-center transition-colors",
+                  filter === "الكل"
+                    ? "text-white"
+                    : "bg-white text-[#2d3648] hover:bg-[#f5f6fb]",
+                ].join(" ")}
+                style={{
+                  ...F,
+                  fontSize: 18,
+                  background:
+                    filter === "الكل"
+                      ? "linear-gradient(to bottom, #00b867, #00522e)"
+                      : undefined,
+                }}
+              >
+                الكل (120)
+              </button>
               {/* اداري — left (in RTL = leftmost visually on right) */}
               <button
                 type="button"
@@ -556,6 +576,7 @@ export function UnitsReportPage() {
               >
                 اداري (88)
               </button>
+
               {/* اساسي */}
               <button
                 type="button"
@@ -576,27 +597,6 @@ export function UnitsReportPage() {
                 }}
               >
                 اساسي (32)
-              </button>
-              {/* الكل — rightmost in RTL */}
-              <button
-                type="button"
-                onClick={() => setFilter("الكل")}
-                className={[
-                  "px-4 py-3 w-[155px] text-center transition-colors",
-                  filter === "الكل"
-                    ? "text-white"
-                    : "bg-white text-[#2d3648] hover:bg-[#f5f6fb]",
-                ].join(" ")}
-                style={{
-                  ...F,
-                  fontSize: 18,
-                  background:
-                    filter === "الكل"
-                      ? "linear-gradient(to bottom, #00b867, #00522e)"
-                      : undefined,
-                }}
-              >
-                الكل (120)
               </button>
             </div>
           </div>

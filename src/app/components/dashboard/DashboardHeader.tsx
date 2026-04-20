@@ -1,20 +1,39 @@
 import { useState, useRef, useEffect } from "react";
-import { ChevronDown, KeyRound, ImagePlus, X } from "lucide-react";
+import {
+  ChevronDown,
+  KeyRound,
+  ImagePlus,
+  X,
+} from "lucide-react";
 import imgAvatar from "figma:asset/8b9f86452ff0e90495bf9daf1494dd6920ad538a.png";
 
-const F: React.CSSProperties = { fontFamily: "'Almarai', sans-serif" };
+const F: React.CSSProperties = {
+  fontFamily: "'Almarai', sans-serif",
+};
 
 // ─── Change Password Modal ─────────────────────────────────────────────────────
-function ChangePasswordModal({ onClose }: { onClose: () => void }) {
-  const [form, setForm] = useState({ current: "", next: "", confirm: "" });
-  const [errors, setErrors] = useState<Record<string, string>>({});
+function ChangePasswordModal({
+  onClose,
+}: {
+  onClose: () => void;
+}) {
+  const [form, setForm] = useState({
+    current: "",
+    next: "",
+    confirm: "",
+  });
+  const [errors, setErrors] = useState<Record<string, string>>(
+    {},
+  );
   const [success, setSuccess] = useState(false);
 
   function validate() {
     const e: Record<string, string> = {};
     if (!form.current) e.current = "كلمة المرور الحالية مطلوبة";
-    if (!form.next || form.next.length < 6) e.next = "كلمة المرور يجب أن تكون 6 أحرف على الأقل";
-    if (form.next !== form.confirm) e.confirm = "كلمتا المرور غير متطابقتين";
+    if (!form.next || form.next.length < 6)
+      e.next = "كلمة المرور يجب أن تكون 6 أحرف على الأقل";
+    if (form.next !== form.confirm)
+      e.confirm = "كلمتا المرور غير متطابقتين";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -27,48 +46,121 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" dir="rtl">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      dir="rtl"
+    >
       <div className="bg-white rounded-[20px] p-6 w-[90%] max-w-sm flex flex-col gap-5 shadow-xl">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <button type="button" onClick={onClose} className="text-[#a1aebe] hover:text-[#2d3648] transition-colors">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-[#a1aebe] hover:text-[#2d3648] transition-colors"
+          >
             <X size={20} />
           </button>
           <div className="flex items-center gap-2">
-            <span style={{ ...F, fontSize: 18, color: "#2d3648", fontWeight: 700 }}>تغيير كلمة المرور</span>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "#ebedfd" }}>
-              <KeyRound size={16} style={{ color: "#1f3d97" }} />
+            <span
+              style={{
+                ...F,
+                fontSize: 18,
+                color: "#2d3648",
+                fontWeight: 700,
+              }}
+            >
+              تغيير كلمة المرور
+            </span>
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center"
+              style={{ background: "#ebedfd" }}
+            >
+              <KeyRound
+                size={16}
+                style={{ color: "#1f3d97" }}
+              />
             </div>
           </div>
         </div>
 
         {success ? (
-          <p style={{ ...F, fontSize: 15, color: "#166534", textAlign: "center" }}>تم تغيير كلمة المرور بنجاح ✓</p>
+          <p
+            style={{
+              ...F,
+              fontSize: 15,
+              color: "#166534",
+              textAlign: "center",
+            }}
+          >
+            تم تغيير كلمة المرور بنجاح ✓
+          </p>
         ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            {([ 
-              { key: "current", label: "كلمة المرور الحالية" },
-              { key: "next",    label: "كلمة المرور الجديدة" },
-              { key: "confirm", label: "تأكيد كلمة المرور" },
-            ] as const).map(({ key, label }) => (
+          <form
+            onSubmit={handleSubmit}
+            className="flex flex-col gap-4"
+          >
+            {(
+              [
+                {
+                  key: "current",
+                  label: "كلمة المرور الحالية",
+                },
+                { key: "next", label: "كلمة المرور الجديدة" },
+                { key: "confirm", label: "تأكيد كلمة المرور" },
+              ] as const
+            ).map(({ key, label }) => (
               <div key={key} className="flex flex-col gap-1">
-                <label style={{ ...F, fontSize: 13, color: "#717d96" }}>{label}</label>
+                <label
+                  style={{
+                    ...F,
+                    fontSize: 13,
+                    color: "#717d96",
+                  }}
+                >
+                  {label}
+                </label>
                 <input
                   type="password"
                   value={form[key]}
-                  onChange={(e) => setForm((p) => ({ ...p, [key]: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((p) => ({
+                      ...p,
+                      [key]: e.target.value,
+                    }))
+                  }
                   className={`h-[44px] w-full rounded-[8px] border px-3 text-right outline-none transition-colors focus:border-[#1f3d97] ${errors[key] ? "border-red-500" : "border-[#e2e7f0]"}`}
-                  style={{ ...F, fontSize: 14, color: "#2d3648" }}
+                  style={{
+                    ...F,
+                    fontSize: 14,
+                    color: "#2d3648",
+                  }}
                 />
-                {errors[key] && <span style={{ ...F, fontSize: 12, color: "#e3282c" }}>{errors[key]}</span>}
+                {errors[key] && (
+                  <span
+                    style={{
+                      ...F,
+                      fontSize: 12,
+                      color: "#e3282c",
+                    }}
+                  >
+                    {errors[key]}
+                  </span>
+                )}
               </div>
             ))}
             <button
               type="submit"
               className="h-[48px] rounded-[8px] flex items-center justify-center mt-1 transition-opacity hover:opacity-90"
-              style={{ background: "linear-gradient(to bottom, #00b867, #00522e)" }}
+              style={{
+                background:
+                  "linear-gradient(to bottom, #00b867, #00522e)",
+              }}
             >
-              <span style={{ ...F, fontSize: 15, color: "#fff" }}>حفظ كلمة المرور</span>
+              <span
+                style={{ ...F, fontSize: 15, color: "#fff" }}
+              >
+                حفظ كلمة المرور
+              </span>
             </button>
           </form>
         )}
@@ -78,7 +170,11 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 }
 
 // ─── Change Picture Modal ──────────────────────────────────────────────────────
-function ChangePictureModal({ onClose }: { onClose: () => void }) {
+function ChangePictureModal({
+  onClose,
+}: {
+  onClose: () => void;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -102,50 +198,114 @@ function ChangePictureModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" dir="rtl">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      dir="rtl"
+    >
       <div className="bg-white rounded-[20px] p-6 w-[90%] max-w-sm flex flex-col gap-5 shadow-xl">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <button type="button" onClick={onClose} className="text-[#a1aebe] hover:text-[#2d3648] transition-colors">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-[#a1aebe] hover:text-[#2d3648] transition-colors"
+          >
             <X size={20} />
           </button>
           <div className="flex items-center gap-2">
-            <span style={{ ...F, fontSize: 18, color: "#2d3648", fontWeight: 700 }}>تغيير الصورة الشخصية</span>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "#ebedfd" }}>
-              <ImagePlus size={16} style={{ color: "#1f3d97" }} />
+            <span
+              style={{
+                ...F,
+                fontSize: 18,
+                color: "#2d3648",
+                fontWeight: 700,
+              }}
+            >
+              تغيير الصورة الشخصية
+            </span>
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center"
+              style={{ background: "#ebedfd" }}
+            >
+              <ImagePlus
+                size={16}
+                style={{ color: "#1f3d97" }}
+              />
             </div>
           </div>
         </div>
 
         {saved ? (
-          <p style={{ ...F, fontSize: 15, color: "#166534", textAlign: "center" }}>تم تحديث الصورة بنجاح ✓</p>
+          <p
+            style={{
+              ...F,
+              fontSize: 15,
+              color: "#166534",
+              textAlign: "center",
+            }}
+          >
+            تم تحديث الصورة بنجاح ✓
+          </p>
         ) : (
           <>
             {/* Drop zone */}
             <div
-              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
               onDragLeave={() => setDragging(false)}
               onDrop={handleDrop}
               onClick={() => inputRef.current?.click()}
               className="w-full rounded-[12px] flex flex-col items-center justify-center gap-3 py-8 px-4 cursor-pointer transition-colors"
-              style={{ border: `2px dashed ${dragging ? "#1f3d97" : "#cbd2e0"}`, background: dragging ? "#f0f4ff" : "#fafbff" }}
+              style={{
+                border: `2px dashed ${dragging ? "#1f3d97" : "#cbd2e0"}`,
+                background: dragging ? "#f0f4ff" : "#fafbff",
+              }}
             >
               <input
                 ref={inputRef}
                 type="file"
                 accept="image/*"
                 hidden
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleFile(f);
+                }}
               />
               {preview ? (
-                <img src={preview} alt="معاينة" className="w-20 h-20 rounded-full object-cover border-2 border-[#1f3d97]" />
+                <img
+                  src={preview}
+                  alt="معاينة"
+                  className="w-20 h-20 rounded-full object-cover border-2 border-[#1f3d97]"
+                />
               ) : (
                 <>
                   <div className="w-16 h-16 rounded-full bg-[#ebedfd] flex items-center justify-center">
-                    <ImagePlus size={28} style={{ color: "#1f3d97" }} />
+                    <ImagePlus
+                      size={28}
+                      style={{ color: "#1f3d97" }}
+                    />
                   </div>
-                  <p style={{ ...F, fontSize: 14, color: "#4a5468", textAlign: "center" }}>اسحب الصورة هنا أو انقر للاختيار</p>
-                  <p style={{ ...F, fontSize: 12, color: "#a1aebe" }}>PNG, JPG مسموح بهما</p>
+                  <p
+                    style={{
+                      ...F,
+                      fontSize: 14,
+                      color: "#4a5468",
+                      textAlign: "center",
+                    }}
+                  >
+                    اسحب الصورة هنا أو انقر للاختيار
+                  </p>
+                  <p
+                    style={{
+                      ...F,
+                      fontSize: 12,
+                      color: "#a1aebe",
+                    }}
+                  >
+                    PNG, JPG مسموح بهما
+                  </p>
                 </>
               )}
             </div>
@@ -155,9 +315,16 @@ function ChangePictureModal({ onClose }: { onClose: () => void }) {
               onClick={handleSave}
               disabled={!preview}
               className="h-[48px] rounded-[8px] flex items-center justify-center transition-opacity hover:opacity-90 disabled:opacity-40"
-              style={{ background: "linear-gradient(to bottom, #00b867, #00522e)" }}
+              style={{
+                background:
+                  "linear-gradient(to bottom, #00b867, #00522e)",
+              }}
             >
-              <span style={{ ...F, fontSize: 15, color: "#fff" }}>حفظ الصورة</span>
+              <span
+                style={{ ...F, fontSize: 15, color: "#fff" }}
+              >
+                حفظ الصورة
+              </span>
             </button>
           </>
         )}
@@ -175,18 +342,27 @@ export function DashboardHeader({
   pageTitle = "الموقف العام",
 }: DashboardHeaderProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [modal, setModal] = useState<"password" | "picture" | null>(null);
+  const [modal, setModal] = useState<
+    "password" | "picture" | null
+  >(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
         setDropdownOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () =>
+      document.removeEventListener(
+        "mousedown",
+        handleClickOutside,
+      );
   }, []);
 
   return (
@@ -194,23 +370,19 @@ export function DashboardHeader({
       <header className="bg-white h-[100px] w-full border-b border-[#eff0f6] flex items-center justify-between px-7 shrink-0">
         {/* Right: Page title */}
         <div className="flex items-center">
-          <span style={{ color: "#2d3648", fontFamily: "'Almarai', sans-serif", fontSize: "18px" }}>
+          <span
+            style={{
+              color: "#2d3648",
+              fontFamily: "'Almarai', sans-serif",
+              fontSize: "18px",
+            }}
+          >
             {pageTitle}
           </span>
         </div>
 
         {/* Left: User info + avatar */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2.5">
-            <ChevronDown size={18} className="text-[#081021]" />
-            <div className="flex flex-col items-end gap-0.5">
-              <span style={{ color: "#64748b", fontFamily: "'Almarai', sans-serif", fontSize: "12px" }}>مرحبا بك</span>
-              <span style={{ color: "#081021", fontFamily: "'Almarai', sans-serif", fontWeight: 700, fontSize: "14px" }}>
-                جندي / اسلام مجدي
-              </span>
-            </div>
-          </div>
-
           {/* Avatar + dropdown */}
           <div className="relative shrink-0" ref={dropdownRef}>
             <button
@@ -223,7 +395,11 @@ export function DashboardHeader({
                 src={imgAvatar}
                 alt="اسلام مجدي"
                 className="absolute object-contain pointer-events-none"
-                style={{ inset: "-35% -40% -45% -40%", width: "180%", height: "180%" }}
+                style={{
+                  inset: "-35% -40% -45% -40%",
+                  width: "180%",
+                  height: "180%",
+                }}
               />
             </button>
 
@@ -235,30 +411,88 @@ export function DashboardHeader({
               >
                 <button
                   type="button"
-                  onClick={() => { setDropdownOpen(false); setModal("password"); }}
+                  onClick={() => {
+                    setDropdownOpen(false);
+                    setModal("password");
+                  }}
                   className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#f5f6fb] transition-colors text-right"
                 >
-                  <KeyRound size={16} style={{ color: "#1f3d97" }} className="shrink-0" />
-                  <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>تغيير كلمة المرور</span>
+                  <KeyRound
+                    size={16}
+                    style={{ color: "#1f3d97" }}
+                    className="shrink-0"
+                  />
+                  <span
+                    style={{
+                      ...F,
+                      fontSize: 14,
+                      color: "#2d3648",
+                    }}
+                  >
+                    تغيير كلمة المرور
+                  </span>
                 </button>
                 <div className="h-px bg-[#eff0f6]" />
                 <button
                   type="button"
-                  onClick={() => { setDropdownOpen(false); setModal("picture"); }}
+                  onClick={() => {
+                    setDropdownOpen(false);
+                    setModal("picture");
+                  }}
                   className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#f5f6fb] transition-colors text-right"
                 >
-                  <ImagePlus size={16} style={{ color: "#1f3d97" }} className="shrink-0" />
-                  <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>تغيير الصورة الشخصية</span>
+                  <ImagePlus
+                    size={16}
+                    style={{ color: "#1f3d97" }}
+                    className="shrink-0"
+                  />
+                  <span
+                    style={{
+                      ...F,
+                      fontSize: 14,
+                      color: "#2d3648",
+                    }}
+                  >
+                    تغيير الصورة الشخصية
+                  </span>
                 </button>
               </div>
             )}
           </div>
+          <div className="flex items-center gap-2.5">
+            <div className="flex flex-col items-start gap-0.5">
+              <span
+                style={{
+                  color: "#64748b",
+                  fontFamily: "'Almarai', sans-serif",
+                  fontSize: "12px",
+                }}
+              >
+                مرحبا بك
+              </span>
+              <span
+                style={{
+                  color: "#081021",
+                  fontFamily: "'Almarai', sans-serif",
+                  fontWeight: 700,
+                  fontSize: "14px",
+                }}
+              >
+                جندي / اسلام مجدي
+              </span>
+            </div>
+          </div>
+          <ChevronDown size={18} className="text-[#081021]" />
         </div>
       </header>
 
       {/* Modals */}
-      {modal === "password" && <ChangePasswordModal onClose={() => setModal(null)} />}
-      {modal === "picture"  && <ChangePictureModal  onClose={() => setModal(null)} />}
+      {modal === "password" && (
+        <ChangePasswordModal onClose={() => setModal(null)} />
+      )}
+      {modal === "picture" && (
+        <ChangePictureModal onClose={() => setModal(null)} />
+      )}
     </>
   );
 }
