@@ -23,13 +23,13 @@ function Step({ number, label, active = false }: StepProps) {
       {/* Circle */}
       <div
         className="w-8 h-8 rounded-full flex items-center justify-center bg-white border-2"
-        style={{ borderColor: active ? "#318B3C" : "#a1aebe" }}
+        style={{ borderColor: active ? "#415844" : "#a1aebe" }}
       >
         <span
           style={{
             ...F,
             fontSize: 14,
-            color: active ? "#318B3C" : "#2d3648",
+            color: active ? "#415844" : "#2d3648",
             lineHeight: 1.4,
           }}
         >
@@ -42,7 +42,7 @@ function Step({ number, label, active = false }: StepProps) {
         style={{
           ...F,
           fontSize: 14,
-          color: active ? "#318B3C" : "#465668",
+          color: active ? "#415844" : "#465668",
           lineHeight: 1.4,
         }}
       >
@@ -87,7 +87,7 @@ function LetterCard({
       className="flex-1 min-w-[220px] max-w-[300px] bg-white rounded-[24px] flex flex-col items-center gap-6 px-12 py-8 cursor-pointer transition-all duration-200"
       style={{
         boxShadow: selected
-          ? "0 0 0 2.5px #318B3C, 0px 4px 16px 0px rgba(31,61,151,0.18)"
+          ? "0 0 0 2.5px #415844, 0px 4px 16px 0px rgba(31,61,151,0.18)"
           : "0px 1px 4px 0px rgba(0,0,0,0.15)",
         outline: "none",
       }}
@@ -107,7 +107,7 @@ function LetterCard({
             <path
               clipRule="evenodd"
               d={STEPS_PATH}
-              fill={selected ? "#318B3C" : "#4a5468"}
+              fill={selected ? "#415844" : "#4a5468"}
               fillRule="evenodd"
             />
           </svg>
@@ -120,7 +120,7 @@ function LetterCard({
           ...F,
           fontWeight: 700,
           fontSize: 24,
-          color: selected ? "#318B3C" : "#575d65",
+          color: selected ? "#415844" : "#575d65",
           lineHeight: 1.5,
           whiteSpace: "nowrap",
         }}

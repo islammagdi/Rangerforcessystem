@@ -48,7 +48,6 @@ function GreenCheckBubble({ label }: { label: string }) {
             cy="16"
             r="15"
             fill="url(#sg1)"
-            stroke="url(#sg2)"
             strokeWidth="2"
           />
         </svg>
