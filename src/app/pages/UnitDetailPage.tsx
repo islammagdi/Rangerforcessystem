@@ -804,6 +804,16 @@ export function UnitDetailPage() {
       <section className="bg-white rounded-[12px] border border-[#eff0f6] w-full overflow-hidden">
         {/* Header bar */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#eff0f6]">
+          <h3
+            style={{
+              ...F,
+              fontWeight: 700,
+              fontSize: 24,
+              color: "#2d3648",
+            }}
+          >
+            افراد الوحده
+          </h3>
           <button
             type="button"
             className="hover:opacity-80 transition-opacity"
@@ -827,16 +837,6 @@ export function UnitDetailPage() {
               عرض الجميع
             </span>
           </button>
-          <h3
-            style={{
-              ...F,
-              fontWeight: 700,
-              fontSize: 24,
-              color: "#2d3648",
-            }}
-          >
-            افراد الوحده
-          </h3>
         </div>
 
         {/* Scrollable table */}
