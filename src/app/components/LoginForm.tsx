@@ -76,7 +76,7 @@ export function LoginForm() {
             lineHeight: 1.2,
           }}
         >
-          قوات الصاعقة المصرية
+         فرع التنظيم والادارة لقوات الصاعقة
         </p>
       </div>
 
