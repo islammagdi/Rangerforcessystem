@@ -19,7 +19,7 @@ function DailyStepper({ step }: { step: 1 | 2 | 3 }) {
               <div
                 className="w-8 h-8 rounded-full flex items-center justify-center border-2"
                 style={{
-                  borderColor: done ? " #00b867" : active ? "#a1aebe" : "#a1aebe",
+                  borderColor: done ? " #00b867" : active ? "#a1aebec3" : "#a1aebe",
                   background: done ? " #00b867" : active ? "#ffffff" : "#fff",
                 }}
               >
@@ -91,7 +91,7 @@ function Step1({ onSelect }: { onSelect: (card: ReportCard) => void }) {
           <button
             type="button"
             onClick={() => onSelect(card)}
-            style={{ ...F, fontSize: 13, color: "#00b867", fontWeight: 700, textAlign: "right" }}
+            style={{ ...F, fontSize: 13, color: "#00b867", fontWeight: 700, textAlign: "left" }}
             className="hover:underline"
           >
             إنشاء اليومية
@@ -186,30 +186,53 @@ function Step2({ reportTitle, onNext }: { reportTitle: string; onNext: (cfg: { u
       </div>
 
       {/* Exclude batch */}
-      <div className="flex items-center gap-2 justify-start">
-        <label htmlFor="excludeBatch" style={{ ...F, fontSize: 15, color: "#2d3648" }}>استثناء دفعة رديف</label>
-        <input
-          id="excludeBatch"
-          type="checkbox"
-          checked={excludeBatch}
-          onChange={(e) => setExcludeBatch(e.target.checked)}
-          className="w-4 h-4 accent-[#00b867]"
-        />
-      </div>
+<div className="flex items-center gap-2 justify-start">
+  <input
+    id="excludeBatch"
+    type="checkbox"
+    checked={excludeBatch}
+   onChange={(e) => {
+  const checked = e.target.checked;
+  setExcludeBatch(checked);
+  if (!checked) setDate("");
+}}
+    className="w-4 h-4 accent-[#00b867]"
+  />
 
-      {/* Date */}
-      <div className="relative w-full">
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="w-full h-[54px] bg-white border border-[#e2e7f0] rounded-[8px] px-3 text-right outline-none focus:border-[#00b867] transition-colors"
-          style={{ ...F, fontSize: 15, color: date ? "#2d3648" : "#4a5468", direction: "rtl" }}
-          placeholder="تاريخ التسريح"
-        />
-        <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1aebe] pointer-events-none" />
-      </div>
+  <label
+    htmlFor="excludeBatch"
+    style={{ ...F, fontSize: 15, color: "#2d3648" }}
+  >
+    استثناء دفعة رديف
+  </label>
+</div>
 
+{/* Date */}
+<div className="relative w-full">
+  <input
+    value={date}
+    onChange={(e) => setDate(e.target.value)}
+    disabled={!excludeBatch} // 🔥 هنا السحر
+    className={`w-full h-[54px] border rounded-[8px] px-3 text-right outline-none transition-colors
+      ${excludeBatch
+        ? "bg-white border-[#e2e7f0] focus:border-[#00b867]"
+        : "bg-gray-100 border-gray-300 cursor-not-allowed"
+      }`}
+    style={{
+      ...F,
+      fontSize: 15,
+      color: excludeBatch
+        ? date
+          ? "#2d3648"
+          : "#4a5468"
+        : "#9ca3af",
+      direction: "rtl"
+    }}
+    placeholder="تاريخ التسريح"
+  />
+
+  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1aebe] pointer-events-none" />
+</div>
       <button
         type="button"
         onClick={handleSubmit}
