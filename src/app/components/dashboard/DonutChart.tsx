@@ -10,11 +10,12 @@ const COLORS = ["#00b867", "#476ae9"];
 /** Legend item with coloured dot */
 function LegendItem({ color, label }: { color: string; label: string }) {
   return (
-    <div className="flex items-center gap-2.5 justify-end">
+    <div className="flex items-center gap-2.5 justify-start">
+      
+      <div className="w-4 h-4 rounded-[4px] shrink-0" style={{ background: color }} />
       <span style={{ color: "#717d96", fontFamily: "'Almarai', sans-serif", fontSize: "14px" }}>
         {label}
       </span>
-      <div className="w-4 h-4 rounded-[4px] shrink-0" style={{ background: color }} />
     </div>
   );
 }
@@ -73,7 +74,7 @@ export function DonutChart() {
       </div>
 
       {/* Legend */}
-      <div className="flex flex-col gap-3 items-end w-full">
+      <div className="flex flex-col gap-3 items-start w-full">
         <LegendItem color="#00b867" label="اجمالي القوة" />
         <LegendItem color="#476ae9" label="اجمالي الخوارج" />
       </div>

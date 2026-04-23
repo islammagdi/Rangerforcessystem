@@ -368,15 +368,8 @@ function LetterPreview({
       style={{ fontFamily: "'Almarai', sans-serif" }}
     >
       {/* Header */}
-      <div className="flex items-start gap-4 pb-4 border-b border-[#e0e0e0] mb-4">
-        {/* Eagle emblem */}
-        <div className="shrink-0 w-14 h-14">
-          <img
-            src={imgEagle}
-            alt="شعار الجمهورية"
-            className="w-full h-full object-contain"
-          />
-        </div>
+      <div className="justify-between flex items-start gap-4 pb-4 border-b border-[#e0e0e0] mb-4">
+   
         {/* Command info */}
         <div className="flex flex-col gap-0.5 flex-1 text-right">
           <p
@@ -395,10 +388,19 @@ function LetterPreview({
             التاريخ : {today}
           </p>
         </div>
+             {/* Eagle emblem */}
+        <div className="shrink-0 w-14 h-14">
+          <img
+            src={imgEagle}
+            alt="شعار الجمهورية"
+            className="w-full h-full object-contain"
+          />
+        </div>
       </div>
 
       {/* Recipient */}
-      <p
+      <div className="flex flex-col gap-0.5 flex-1 text-center">
+<p
         style={{
           fontSize: 13,
           fontWeight: 700,
@@ -409,6 +411,8 @@ function LetterPreview({
         إلى / {destination || "..."}
       </p>
 
+      </div>
+      
       {/* Body */}
       <p
         style={{
@@ -418,7 +422,7 @@ function LetterPreview({
           marginBottom: 8,
         }}
       >
-        قدم لكم اليوم {today} الأفراد المذكور أسماؤهم وبياناتهم
+        قادم لكم اليوم {today} الأفراد المذكور أسماؤهم وبياناتهم
         من التكليف الأميرية ذلك لهم للعمل (
         {reason || "أوامر قيادة"}) بالأماكن الموضحة قرين كل منهم
         وذلك بناءً على أوامر الأركان وبياناتهم كالتالي:
@@ -437,12 +441,13 @@ function LetterPreview({
             }}
           >
             {[
+               "م",
+               "الدرجة",
+               "الاسم",
+               "الوحدة",
+                "وحدة الالحاق",
               "ملاحظات",
-              "وحدة الالحاق",
-              "الوحدة",
-              "الاسم",
-              "الدرجة",
-              "م",
+             
             ].map((h) => (
               <th
                 key={h}
@@ -464,35 +469,14 @@ function LetterPreview({
               key={soldier.id}
               style={{ borderBottom: "1px solid #eee" }}
             >
-              <td
+               <td
                 style={{
                   padding: "4px 8px",
                   borderRight: "1px solid #eee",
-                }}
-              ></td>
-              <td
-                style={{
-                  padding: "4px 8px",
-                  borderRight: "1px solid #eee",
+                  textAlign: "center",
                 }}
               >
-                {soldier.attachmentUnit || attachmentPlace}
-              </td>
-              <td
-                style={{
-                  padding: "4px 8px",
-                  borderRight: "1px solid #eee",
-                }}
-              >
-                {soldier.unit}
-              </td>
-              <td
-                style={{
-                  padding: "4px 8px",
-                  borderRight: "1px solid #eee",
-                }}
-              >
-                {soldier.name}
+                {idx + 1}
               </td>
               <td
                 style={{
@@ -506,16 +490,43 @@ function LetterPreview({
                 style={{
                   padding: "4px 8px",
                   borderRight: "1px solid #eee",
-                  textAlign: "center",
                 }}
               >
-                {idx + 1}
+                {soldier.name}
               </td>
+               <td
+                style={{
+                  padding: "4px 8px",
+                  borderRight: "1px solid #eee",
+                }}
+              >
+                {soldier.unit}
+              </td>
+              <td
+                style={{
+                  padding: "4px 8px",
+                  borderRight: "1px solid #eee",
+                }}
+              >
+                {soldier.attachmentUnit || attachmentPlace}
+              </td>
+              <td
+                style={{
+                  padding: "4px 8px",
+                  borderRight: "1px solid #eee",
+                }}
+              ></td>
+              
+              
+             
+              
+              
+             
             </tr>
           ))}
         </tbody>
       </table>
-
+<div className="flex flex-col gap-0.5 flex-1 text-center">
       <p
         style={{
           fontSize: 12,
@@ -525,14 +536,16 @@ function LetterPreview({
       >
         مع وافر التحية ،،،
       </p>
+</div>
 
+ 
       {/* Signature */}
-      <div className="flex flex-col items-start gap-1 mt-4">
+      <div className="flex flex-col items-end gap-1 mt-4">
         <p style={{ fontSize: 12, color: "#333" }}>
-          التوقيع ( )
+          التوقيع (...................................)
         </p>
         <p style={{ fontSize: 12, color: "#333" }}>
-          عليه/محمد سمير عبدالغني
+          عقيد/محمد سمير عبدالغني
         </p>
         <p style={{ fontSize: 12, color: "#333" }}>
           رئيس فرع التنظيم والإدارة
@@ -711,13 +724,13 @@ export function LetterReviewPage() {
           </span>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[500px] border-collapse">
+          <table className="w-full min-w-[500px] border-collapse ">
             <thead>
               <tr>
-                {["وحدة الالحاق", "الوحدة", "اسم", "درجة"].map(
+                {[ "درجة", "اسم",  "الوحدة","وحدة الالحاق",].map(
                   (h) => (
                     <th key={h} className={thClass}>
-                      <div className="flex items-center gap-1 justify-end">
+                      <div className="flex items-center gap-1 justify-start">
                         <span
                           style={{
                             ...F,
@@ -762,7 +775,7 @@ export function LetterReviewPage() {
                   ] as SoldierWithAttachment[])
               ).map((soldier, idx) => (
                 <tr key={soldier.id}>
-                  <td className={tdClass}>
+                     <td className={tdClass}>
                     <span
                       style={{
                         ...F,
@@ -770,9 +783,21 @@ export function LetterReviewPage() {
                         color: "#2d3648",
                       }}
                     >
-                      {soldier.attachmentUnit}
+                      {soldier.rank}
                     </span>
                   </td>
+                   <td className={tdClass}>
+                    <span
+                      style={{
+                        ...F,
+                        fontSize: 14,
+                        color: "#2d3648",
+                      }}
+                    >
+                      {soldier.name}
+                    </span>
+                  </td>
+                 
                   <td className={tdClass}>
                     <span
                       style={{
@@ -792,20 +817,10 @@ export function LetterReviewPage() {
                         color: "#2d3648",
                       }}
                     >
-                      {soldier.name}
+                      {soldier.attachmentUnit}
                     </span>
                   </td>
-                  <td className={tdClass}>
-                    <span
-                      style={{
-                        ...F,
-                        fontSize: 14,
-                        color: "#2d3648",
-                      }}
-                    >
-                      {soldier.rank}
-                    </span>
-                  </td>
+               
                 </tr>
               ))}
             </tbody>
@@ -931,7 +946,7 @@ export function LetterReviewPage() {
       </section>
 
       {/* ── Action buttons ──────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-wrap items-end gap-4">
         {/* Primary: أكيد وطباعة */}
         <button
           type="button"

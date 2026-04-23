@@ -53,14 +53,17 @@ function ChangePasswordModal({
       <div className="bg-white rounded-[20px] p-6 w-[90%] max-w-sm flex flex-col gap-5 shadow-xl">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-[#a1aebe] hover:text-[#2d3648] transition-colors"
-          >
-            <X size={20} />
-          </button>
+          
           <div className="flex items-center gap-2">
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center"
+              style={{ background: "#DCF4DF" }}
+            >
+              <KeyRound
+                size={16}
+                style={{ color: "#5B795F" }}
+              />
+            </div>
             <span
               style={{
                 ...F,
@@ -71,16 +74,15 @@ function ChangePasswordModal({
             >
               تغيير كلمة المرور
             </span>
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center"
-              style={{ background: "#ebedfd" }}
-            >
-              <KeyRound
-                size={16}
-                style={{ color: "#1f3d97" }}
-              />
-            </div>
+            
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-[#a1aebe] hover:text-[#2d3648] transition-colors"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         {success ? (
@@ -128,7 +130,7 @@ function ChangePasswordModal({
                       [key]: e.target.value,
                     }))
                   }
-                  className={`h-[44px] w-full rounded-[8px] border px-3 text-right outline-none transition-colors focus:border-[#1f3d97] ${errors[key] ? "border-red-500" : "border-[#e2e7f0]"}`}
+                  className={`h-[44px] w-full rounded-[8px] border px-3 text-right outline-none transition-colors focus:border-[#5B795F] ${errors[key] ? "border-red-500" : "border-[#e2e7f0]"}`}
                   style={{
                     ...F,
                     fontSize: 14,
@@ -205,14 +207,18 @@ function ChangePictureModal({
       <div className="bg-white rounded-[20px] p-6 w-[90%] max-w-sm flex flex-col gap-5 shadow-xl">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-[#a1aebe] hover:text-[#2d3648] transition-colors"
-          >
-            <X size={20} />
-          </button>
+          
           <div className="flex items-center gap-2">
+            
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center"
+              style={{ background: "#DCF4DF" }}
+            >
+              <ImagePlus
+                size={16}
+                style={{ color: "#5B795F" }}
+              />
+            </div>
             <span
               style={{
                 ...F,
@@ -223,16 +229,14 @@ function ChangePictureModal({
             >
               تغيير الصورة الشخصية
             </span>
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center"
-              style={{ background: "#ebedfd" }}
-            >
-              <ImagePlus
-                size={16}
-                style={{ color: "#1f3d97" }}
-              />
-            </div>
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-[#a1aebe] hover:text-[#2d3648] transition-colors"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         {saved ? (
@@ -259,8 +263,8 @@ function ChangePictureModal({
               onClick={() => inputRef.current?.click()}
               className="w-full rounded-[12px] flex flex-col items-center justify-center gap-3 py-8 px-4 cursor-pointer transition-colors"
               style={{
-                border: `2px dashed ${dragging ? "#1f3d97" : "#cbd2e0"}`,
-                background: dragging ? "#f0f4ff" : "#fafbff",
+                border: `2px dashed ${dragging ? "#5B795F" : "#cbd2e0"}`,
+                background: dragging ? "#f0f4ff" : "#ffffff",
               }}
             >
               <input
@@ -277,14 +281,14 @@ function ChangePictureModal({
                 <img
                   src={preview}
                   alt="معاينة"
-                  className="w-20 h-20 rounded-full object-cover border-2 border-[#1f3d97]"
+                  className="w-20 h-20 rounded-full object-cover border-2 border-[#5B795F]"
                 />
               ) : (
                 <>
-                  <div className="w-16 h-16 rounded-full bg-[#ebedfd] flex items-center justify-center">
+                  <div className="w-16 h-16 rounded-full bg-[#DCF4DF] flex items-center justify-center">
                     <ImagePlus
                       size={28}
-                      style={{ color: "#1f3d97" }}
+                      style={{ color: "#5B795F" }}
                     />
                   </div>
                   <p
@@ -419,7 +423,7 @@ export function DashboardHeader({
                 >
                   <KeyRound
                     size={16}
-                    style={{ color: "#1f3d97" }}
+                    style={{ color: "#5B795F" }}
                     className="shrink-0"
                   />
                   <span
@@ -443,7 +447,7 @@ export function DashboardHeader({
                 >
                   <ImagePlus
                     size={16}
-                    style={{ color: "#1f3d97" }}
+                    style={{ color: "#5B795F" }}
                     className="shrink-0"
                   />
                   <span

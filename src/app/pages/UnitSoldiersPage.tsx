@@ -365,15 +365,17 @@ export function UnitSoldiersPage() {
     value: LocationFilter;
     label: string;
   }[] = [
+    { value: "all", label: "الكل" },
     { value: "inside", label: "داخل الوحده" },
     { value: "outside", label: "خارج الوحده" },
-    { value: "all", label: "الكل" },
+    
   ];
 
   const rankOptions: { value: RankFilter; label: string }[] = [
+    { value: "all", label: "الكل" },
     { value: "soldiers", label: "جنود" },
     { value: "nco", label: "ضباط صف" },
-    { value: "all", label: "الكل" },
+    
   ];
 
   return (
@@ -499,6 +501,16 @@ export function UnitSoldiersPage() {
         {/* ── Section header ── */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#eff0f6]">
           {/* Add soldier button */}
+          <h2
+            style={{
+              ...F,
+              fontWeight: 700,
+              fontSize: 24,
+              color: "#2d3648",
+            }}
+          >
+            افراد الوحده
+          </h2>
           <button
             type="button"
             onClick={() => navigate("/dashboard/add-soldier")}
@@ -523,35 +535,11 @@ export function UnitSoldiersPage() {
               />
             </svg>
           </button>
-          <h2
-            style={{
-              ...F,
-              fontWeight: 700,
-              fontSize: 24,
-              color: "#2d3648",
-            }}
-          >
-            افراد الوحده
-          </h2>
         </div>
 
         {/* ── Filters + Search ── */}
         <div className="flex items-end gap-4 flex-wrap px-5 py-4 border-b border-[#eff0f6]">
-          {/* Filter groups */}
-          <div className="flex items-center gap-4 flex-wrap">
-            <FilterBtnGroup
-              options={locationOptions}
-              active={locationFilter}
-              onChange={setLocationFilter}
-            />
-            <FilterBtnGroup
-              options={rankOptions}
-              active={rankFilter}
-              onChange={setRankFilter}
-            />
-          </div>
-
-          {/* Search */}
+        {/* Search */}
           <div className="flex-1 min-w-[220px]">
             <div className="relative bg-white rounded-[8px] border border-[#e2e7f0] flex items-center gap-3 px-3 py-2.5">
               <svg
@@ -579,6 +567,21 @@ export function UnitSoldiersPage() {
               />
             </div>
           </div>
+          {/* Filter groups */}
+          <div className="flex items-center gap-4 flex-wrap">
+            <FilterBtnGroup
+              options={locationOptions}
+              active={locationFilter}
+              onChange={setLocationFilter}
+            />
+            <FilterBtnGroup
+              options={rankOptions}
+              active={rankFilter}
+              onChange={setRankFilter}
+            />
+          </div>
+
+          
         </div>
 
         {/* ── Table ── */}

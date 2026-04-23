@@ -204,11 +204,15 @@ function SoldiersTable({
   onRemove: (id: string) => void;
 }) {
   const headers = [
+     "رقم عسكري",
+     "درجة",
+     "اسم",
+     "الوحدة",
     "الاجراء",
-    "الوحدة",
-    "اسم",
-    "درجة",
-    "رقم عسكري",
+    
+    
+    
+   
   ];
   const thClass = "px-4 py-3 text-right";
   const tdClass = "px-4 py-3 text-right";
@@ -223,7 +227,7 @@ function SoldiersTable({
           <tr className="border-b border-[#e2e7f0] bg-[#f7f9fc]">
             {headers.map((h) => (
               <th key={h} className={thClass}>
-                <div className="flex items-center gap-1 justify-end">
+                <div className="flex items-center gap-1 justify-start">
                   <span
                     style={{
                       ...F,
@@ -250,19 +254,6 @@ function SoldiersTable({
               }
             >
               <td className={tdClass}>
-                <button
-                  type="button"
-                  onClick={() => onRemove(soldier.id)}
-                  className="w-8 h-8 rounded-[6px] flex items-center justify-center transition-colors hover:opacity-80"
-                  style={{ backgroundColor: "#fce8f1" }}
-                >
-                  <Trash2
-                    size={15}
-                    style={{ color: "#e3282c" }}
-                  />
-                </button>
-              </td>
-              <td className={tdClass}>
                 <span
                   style={{
                     ...F,
@@ -270,18 +261,7 @@ function SoldiersTable({
                     color: "#2d3648",
                   }}
                 >
-                  {soldier.unit}
-                </span>
-              </td>
-              <td className={tdClass}>
-                <span
-                  style={{
-                    ...F,
-                    fontSize: 14,
-                    color: "#2d3648",
-                  }}
-                >
-                  {soldier.name}
+                  {soldier.militaryId}
                 </span>
               </td>
               <td className={tdClass}>
@@ -303,8 +283,35 @@ function SoldiersTable({
                     color: "#2d3648",
                   }}
                 >
-                  {soldier.militaryId}
+                  {soldier.name}
                 </span>
+              </td>
+              <td className={tdClass}>
+                <span
+                  style={{
+                    ...F,
+                    fontSize: 14,
+                    color: "#2d3648",
+                  }}
+                >
+                  {soldier.unit}
+                </span>
+              </td>
+              
+              
+              
+              <td className={tdClass}>
+                <button
+                  type="button"
+                  onClick={() => onRemove(soldier.id)}
+                  className="w-8 h-8 rounded-[6px] flex items-center justify-center transition-colors hover:opacity-80"
+                  style={{ backgroundColor: "#fce8f1" }}
+                >
+                  <Trash2
+                    size={15}
+                    style={{ color: "#e3282c" }}
+                  />
+                </button>
               </td>
             </tr>
           ))}

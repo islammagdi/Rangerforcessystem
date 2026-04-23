@@ -664,14 +664,15 @@ export function LetterDataPage() {
                 <thead>
                   <tr className="bg-[#f7f9fc]">
                     {[
-                      "الاجراء",
-                      "وحدة الالحاق",
-                      "الوحدة",
-                      "اسم",
                       "درجة",
+                      "اسم",
+                       "الوحدة",
+                       "وحدة الالحاق",
+                      "الاجراء",
+                      
                     ].map((h) => (
                       <th key={h} className={thClass}>
-                        <div className="flex items-center gap-1 justify-end">
+                        <div className="flex items-center gap-1 justify-start">
                           <span
                             style={{
                               ...F,
@@ -697,9 +698,72 @@ export function LetterDataPage() {
                           : ""
                       }
                     >
+                      {/* درجة */}
+                      <td className={tdClass}>
+                        <span
+                          style={{
+                            ...F,
+                            fontSize: 14,
+                            color: "#2d3648",
+                          }}
+                        >
+                          {soldier.rank}
+                        </span>
+                      </td>
+                      {/* اسم */}
+                      <td className={tdClass}>
+                        <span
+                          style={{
+                            ...F,
+                            fontSize: 14,
+                            color: "#2d3648",
+                          }}
+                        >
+                          {soldier.name}
+                        </span>
+                      </td>
+                      
+                      {/* الوحدة */}
+                      <td className={tdClass}>
+                        <span
+                          style={{
+                            ...F,
+                            fontSize: 14,
+                            color: "#2d3648",
+                          }}
+                        >
+                          {soldier.unit}
+                        </span>
+                      </td>
+                      {/* وحدة الالحاق */}
+                      <td className={tdClass}>
+                        {editingId === soldier.id ? (
+                          <InlineDropdown
+                            value={getAttachmentUnit(soldier)}
+                            options={ATTACHMENT_OPTIONS}
+                            onChange={(v) =>
+                              handleRowAttachmentChange(
+                                soldier.id,
+                                v,
+                              )
+                            }
+                          />
+                        ) : (
+                          <span
+                            style={{
+                              ...F,
+                              fontSize: 14,
+                              color: "#2d3648",
+                            }}
+                          >
+                            {getAttachmentUnit(soldier)}
+                          </span>
+                        )}
+                      </td>
+                      
                       {/* الاجراء */}
                       <td className={tdClass}>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-start gap-2">
                           <button
                             type="button"
                             onClick={() =>
@@ -748,67 +812,6 @@ export function LetterDataPage() {
                           )}
                         </div>
                       </td>
-                      {/* وحدة الالحاق */}
-                      <td className={tdClass}>
-                        {editingId === soldier.id ? (
-                          <InlineDropdown
-                            value={getAttachmentUnit(soldier)}
-                            options={ATTACHMENT_OPTIONS}
-                            onChange={(v) =>
-                              handleRowAttachmentChange(
-                                soldier.id,
-                                v,
-                              )
-                            }
-                          />
-                        ) : (
-                          <span
-                            style={{
-                              ...F,
-                              fontSize: 14,
-                              color: "#2d3648",
-                            }}
-                          >
-                            {getAttachmentUnit(soldier)}
-                          </span>
-                        )}
-                      </td>
-                      {/* الوحدة */}
-                      <td className={tdClass}>
-                        <span
-                          style={{
-                            ...F,
-                            fontSize: 14,
-                            color: "#2d3648",
-                          }}
-                        >
-                          {soldier.unit}
-                        </span>
-                      </td>
-                      {/* اسم */}
-                      <td className={tdClass}>
-                        <span
-                          style={{
-                            ...F,
-                            fontSize: 14,
-                            color: "#2d3648",
-                          }}
-                        >
-                          {soldier.name}
-                        </span>
-                      </td>
-                      {/* درجة */}
-                      <td className={tdClass}>
-                        <span
-                          style={{
-                            ...F,
-                            fontSize: 14,
-                            color: "#2d3648",
-                          }}
-                        >
-                          {soldier.rank}
-                        </span>
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -817,7 +820,7 @@ export function LetterDataPage() {
           )}
 
           {/* Submit */}
-          <div className="flex items-start pt-1">
+          <div className="w-full flex items-start pt-1">
             <button
               type="button"
               onClick={handleSubmit}
