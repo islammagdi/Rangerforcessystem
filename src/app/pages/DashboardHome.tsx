@@ -36,7 +36,7 @@ export function DashboardHome() {
   return (
     <>
       {/* ── 1. الموقف العام للقوة ─────────────────────────────────── */}
-      <SectionTitle>الموقف العام للقوة</SectionTitle>
+      <SectionTitle>الموقف العام للقوة </SectionTitle>
 
       <div className="flex gap-4 flex-wrap">
         <StatCard

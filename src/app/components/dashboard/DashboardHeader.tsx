@@ -5,7 +5,7 @@ import {
   ImagePlus,
   X,
 } from "lucide-react";
-import imgAvatar from "figma:asset/8b9f86452ff0e90495bf9daf1494dd6920ad538a.png";
+import imgAvatar from "C:/Users/Islam/Rangerforcessystem/src/assets/imagdi.jpg";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
@@ -388,21 +388,21 @@ export function DashboardHeader({
         {/* Left: User info + avatar */}
         <div className="flex items-center gap-3">
           {/* Avatar + dropdown */}
-          <div className="relative shrink-0" ref={dropdownRef}>
+          <div className="flex items-center gap-3 relative shrink-0" ref={dropdownRef}>
             <button
               type="button"
               onClick={() => setDropdownOpen((o) => !o)}
-              className="bg-[#ffb31f] w-10 h-10 rounded-full overflow-hidden relative focus:outline-none ring-offset-1 transition-shadow hover:ring-2 hover:ring-[#ffb31f]/60"
+              className="bg-[#93C199] w-10 h-10 rounded-full overflow-hidden relative focus:outline-none ring-offset-1 transition-shadow hover:ring-2 hover:ring-[#DCF4DF]/60"
               aria-label="قائمة المستخدم"
             >
               <img
                 src={imgAvatar}
                 alt="اسلام مجدي"
-                className="absolute object-contain pointer-events-none"
+               className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none"
                 style={{
-                  inset: "-35% -40% -45% -40%",
-                  width: "180%",
-                  height: "180%",
+                  inset: "0% 0% 0% 0%",
+                  width: "100%",
+                  height: "100%",
                 }}
               />
             </button>
