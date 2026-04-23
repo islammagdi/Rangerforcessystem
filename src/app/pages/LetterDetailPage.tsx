@@ -110,14 +110,8 @@ function LetterPaper({
       style={{ fontFamily: "'Almarai', sans-serif" }}
     >
       {/* Header */}
-      <div className="flex items-start gap-4 pb-3 border-b border-[#e0e0e0] mb-4">
-        <div className="shrink-0 w-12 h-12">
-          <img
-            src={imgEagle}
-            alt="شعار الجمهورية"
-            className="w-full h-full object-contain"
-          />
-        </div>
+      <div className="justify-between flex items-start gap-4 pb-3 border-b border-[#e0e0e0] mb-4">
+        
         <div className="flex flex-col gap-0.5 flex-1 text-right">
           <p
             style={{
@@ -129,16 +123,24 @@ function LetterPaper({
             قيادة قوات الصاعقة
           </p>
           <p style={{ fontSize: 11, color: "#333" }}>
-            فرع التنظيم والإدارة
+            فــــرع التنظيـــــم والإدارة
           </p>
           <p style={{ fontSize: 11, color: "#333" }}>
-            التاريخ : {letter.date}
+            التاريــــــــــــــخ : {letter.date}
           </p>
+        </div>
+        <div className="shrink-0 w-12 h-12">
+          <img
+            src={imgEagle}
+            alt="شعار الجمهورية"
+            className="w-full h-full object-contain"
+          />
         </div>
       </div>
 
       {/* Recipient */}
-      <p
+      <div className="flex flex-col gap-0.5 flex-1 text-center">
+<p
         style={{
           fontSize: 12,
           fontWeight: 700,
@@ -149,6 +151,8 @@ function LetterPaper({
         إلى / {letter.destination}
       </p>
 
+      </div>
+      
       {/* Body */}
       <p
         style={{
@@ -177,12 +181,13 @@ function LetterPaper({
             }}
           >
             {[
-              "ملاحظات",
-              "وحدة الالحاق",
-              "الوحدة",
-              "الاسم",
-              "الدرجة",
               "م",
+              "الدرجة",
+              "الاسم",
+              "الوحدة",
+               "وحدة الالحاق",
+              "ملاحظات",
+    
             ].map((h) => (
               <th
                 key={h}
@@ -204,29 +209,24 @@ function LetterPaper({
               key={idx}
               style={{ borderBottom: "1px solid #eee" }}
             >
-              <td
+               <td
                 style={{
                   padding: "4px 6px",
                   borderRight: "1px solid #eee",
+                  textAlign: "center",
                 }}
-              ></td>
-              <td
+              >
+                {idx + 1}
+              </td>
+               <td
                 style={{
                   padding: "4px 6px",
                   borderRight: "1px solid #eee",
                 }}
               >
-                {s.attachmentUnit}
+                {s.rank}
               </td>
-              <td
-                style={{
-                  padding: "4px 6px",
-                  borderRight: "1px solid #eee",
-                }}
-              >
-                {s.unit}
-              </td>
-              <td
+               <td
                 style={{
                   padding: "4px 6px",
                   borderRight: "1px solid #eee",
@@ -240,23 +240,34 @@ function LetterPaper({
                   borderRight: "1px solid #eee",
                 }}
               >
-                {s.rank}
+                {s.unit}
+              </td>
+               <td
+                style={{
+                  padding: "4px 6px",
+                  borderRight: "1px solid #eee",
+                }}
+              >
+                {s.attachmentUnit}
               </td>
               <td
                 style={{
                   padding: "4px 6px",
                   borderRight: "1px solid #eee",
-                  textAlign: "center",
                 }}
-              >
-                {idx + 1}
-              </td>
+              ></td>
+              
+             
+              
+             
+             
+             
             </tr>
           ))}
         </tbody>
       </table>
-
-      <p
+ <div className="flex flex-col gap-0.5 flex-1 text-center">
+     <p
         style={{
           fontSize: 11,
           color: "#333",
@@ -265,17 +276,19 @@ function LetterPaper({
       >
         مع وافر التحية ،،،
       </p>
+      </div>
+ 
 
       {/* Signature */}
-      <div className="flex flex-col items-start gap-0.5">
+      <div className="flex flex-col items-end gap-0.5">
         <p style={{ fontSize: 11, color: "#333" }}>
-          التوقيع ( )
+          التوقيع (....................................)
         </p>
         <p style={{ fontSize: 11, color: "#333" }}>
-          عليه/محمد سمير عبدالغني
+          عقيد/محمد سمير عبدالغني
         </p>
         <p style={{ fontSize: 11, color: "#333" }}>
-          رئيس فرع التنظيم والإدارة
+          رئــيس فرع التنظيم والإدارة
         </p>
       </div>
     </div>
@@ -559,7 +572,7 @@ export function LetterDetailPage() {
                 {["درجة", "اسم", "الوحدة", "وحدة الالحاق"].map(
                   (h) => (
                     <th key={h} className={thClass}>
-                      <div className="flex items-center gap-1 justify-end">
+                      <div className="flex items-start gap-1 justify-start">
                         <span
                           style={{
                             ...F,

@@ -122,7 +122,7 @@ function LettersTable({ records, onView, onPrint, showSoldierCol = false }: {
             </th>
             {["رقم الخطاب", "تاريخ الخطاب", "نوع الخطاب", "جهة الخطاب", "عدد الافراد", "حالة الخطاب", "الاجراء"].map((h) => (
               <th key={h} className={thClass}>
-                <div className="flex items-center gap-1 justify-end">
+                <div className="flex items-center gap-1 justify-start">
                   <span style={{ ...F, fontSize: 14, color: "#717d96" }}>{h}</span>
                   <SortIcon />
                 </div>
@@ -153,7 +153,7 @@ function LettersTable({ records, onView, onPrint, showSoldierCol = false }: {
               <td className={tdClass}><span style={{ ...F, fontSize: 14, color: "#2d3648" }}>{rec.soldiersCount}</span></td>
               <td className={tdClass}><StatusBadge status={rec.status} /></td>
               <td className={tdClass}>
-                <div className="flex items-center gap-2 justify-end">
+                <div className="flex items-center gap-2 justify-start">
                   <button
                     type="button"
                     onClick={() => onPrint(rec.id)}
@@ -203,6 +203,20 @@ function GeneralArchiveTab({ onView, onPrint }: { onView: (id: string) => void; 
     <div className="flex flex-col gap-5 w-full">
       {/* Filters row */}
       <div className="flex flex-wrap gap-3 items-stretch w-full" dir="rtl">
+        <div className="flex items-center gap-2 bg-white border border-[#e2e7f0] rounded-[8px] px-3 h-[52px] flex-[2] min-w-[200px]" dir="rtl">
+          <span style={{ ...F, fontSize: 15, color: "#4a5468", flex: 1, textAlign: "right" }}>
+            <input
+              type="text"
+              placeholder="ابحث برقم الخطاب او جهة الخطاب"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              className="w-full bg-transparent outline-none text-right"
+              style={{ ...F, fontSize: 15, color: "#2d3648" }}
+              dir="rtl"
+            />
+          </span>
+          <Search size={18} className="shrink-0 text-[#2d3648]" />
+        </div>
         {/* Date range */}
         <div className="flex items-center gap-2 bg-white border border-[#e2e7f0] rounded-[8px] px-3 h-[52px] min-w-[200px]">
           <Calendar size={16} className="shrink-0 text-[#2d3648]" />
@@ -231,20 +245,7 @@ function GeneralArchiveTab({ onView, onPrint }: { onView: (id: string) => void; 
           onChange={setFilterType}
         />
         {/* Search */}
-        <div className="flex items-center gap-2 bg-white border border-[#e2e7f0] rounded-[8px] px-3 h-[52px] flex-[2] min-w-[200px]" dir="rtl">
-          <span style={{ ...F, fontSize: 15, color: "#4a5468", flex: 1, textAlign: "right" }}>
-            <input
-              type="text"
-              placeholder="ابحث برقم الخطاب او جهة الخطاب"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              className="w-full bg-transparent outline-none text-right"
-              style={{ ...F, fontSize: 15, color: "#2d3648" }}
-              dir="rtl"
-            />
-          </span>
-          <Search size={18} className="shrink-0 text-[#2d3648]" />
-        </div>
+        
       </div>
 
       {/* Table */}
@@ -402,19 +403,20 @@ export function LettersArchivePage() {
       <div className="flex flex-col gap-3 items-start w-full">
         <p style={{ ...F, fontSize: 16, color: "#2d3648" }}>بحث حسب</p>
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            style={tab === "individual" ? activeTabStyle : inactiveTabStyle}
-            onClick={() => setTab("individual")}
-          >
-            الفرد
-          </button>
+         
           <button
             type="button"
             style={tab === "general" ? activeTabStyle : inactiveTabStyle}
             onClick={() => setTab("general")}
           >
             الارشيف العام
+          </button>
+           <button
+            type="button"
+            style={tab === "individual" ? activeTabStyle : inactiveTabStyle}
+            onClick={() => setTab("individual")}
+          >
+            الفرد
           </button>
         </div>
       </div>

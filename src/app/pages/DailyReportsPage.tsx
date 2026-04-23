@@ -19,13 +19,13 @@ function DailyStepper({ step }: { step: 1 | 2 | 3 }) {
               <div
                 className="w-8 h-8 rounded-full flex items-center justify-center border-2"
                 style={{
-                  borderColor: done ? "#00b867" : active ? "#4BFF62" : "#a1aebe",
-                  background: done ? "#00b867" : active ? "#00B867" : "#fff",
+                  borderColor: done ? " #00b867" : active ? "#a1aebe" : "#a1aebe",
+                  background: done ? " #00b867" : active ? "#ffffff" : "#fff",
                 }}
               >
                 {done
-                  ? <CheckCircle2 size={16} color="#fff" fill="#00b867" />
-                  : <span style={{ ...F, fontSize: 13, color: active ? "#fff" : "#a1aebe" }}>0{n}</span>}
+                  ? <CheckCircle2 size={16} color="#fff" fill=  " #00b867" />
+                  : <span style={{ ...F, fontSize: 13, color: active ? "#a1aebe" : "#a1aebe" }}>0{n}</span>}
               </div>
               <p
                 className="mt-2 text-center whitespace-nowrap"
