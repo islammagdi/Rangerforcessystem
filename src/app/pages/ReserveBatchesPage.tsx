@@ -202,13 +202,10 @@ function EndServiceDialog({
       <div className="bg-white rounded-[16px] p-5 w-[90%] max-w-sm flex flex-col gap-4 shadow-xl">
         {/* Header */}
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="shrink-0 text-[#ccc] hover:text-[#888] transition-colors"
-          >
-            <X size={18} />
-          </button>
+          <AlertTriangle
+            size={20}
+            className="shrink-0 text-[#e3282c]"
+          />
           <span
             className="flex-1 text-right"
             style={{
@@ -220,10 +217,14 @@ function EndServiceDialog({
           >
             تحذير
           </span>
-          <AlertTriangle
-            size={20}
-            className="shrink-0 text-[#e3282c]"
-          />
+          
+             <button
+            type="button"
+            onClick={onCancel}
+            className="shrink-0 text-[#ccc] hover:text-[#888] transition-colors"
+          >
+            <X size={18} />
+          </button>
         </div>
 
         {/* Body */}
@@ -710,6 +711,20 @@ export function ReserveBatchesPage() {
 
           {/* Action buttons */}
           <div className="flex flex-wrap items-end gap-3">
+            <button
+              type="button"
+              onClick={handleEndService}
+              className="h-[44px] px-5 rounded-[8px] flex items-center justify-center shrink-0 transition-opacity hover:opacity-90"
+              style={{
+                background:
+                  "linear-gradient(to bottom, #00b867, #00522e)",
+                ...F,
+                fontSize: 15,
+                color: "#fff",
+              }}
+            >
+              انهاء خدمة الافراد
+            </button>
             {/* ترحيل دفعه */}
             <button
               type="button"
@@ -729,20 +744,7 @@ export function ReserveBatchesPage() {
               طباعة الكشف
             </button>
             {/* انهاء خدمة الافراد */}
-            <button
-              type="button"
-              onClick={handleEndService}
-              className="h-[44px] px-5 rounded-[8px] flex items-center justify-center shrink-0 transition-opacity hover:opacity-90"
-              style={{
-                background:
-                  "linear-gradient(to bottom, #00b867, #00522e)",
-                ...F,
-                fontSize: 15,
-                color: "#fff",
-              }}
-            >
-              انهاء خدمة الافراد
-            </button>
+            
           </div>
 
           {/* Table */}
@@ -774,12 +776,12 @@ export function ReserveBatchesPage() {
                     "درجة",
                     "اسم",
                     "الوحدة",
-                    "استلام كاريزا",
+                    "استلام كارنيه",
                     "استلام رخصه",
                     "حالة الفرد",
                   ].map((h) => (
                     <th key={h} className={thClass}>
-                      <div className="flex items-center gap-1 justify-end">
+                      <div className="flex items-center gap-1 justify-start">
                         <span
                           style={{
                             ...F,
