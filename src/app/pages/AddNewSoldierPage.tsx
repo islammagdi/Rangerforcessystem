@@ -174,6 +174,29 @@ function CategoryToggle({
 }) {
   return (
     <div className="flex items-stretch rounded-[12px] overflow-hidden border border-[#eff0f6]">
+     <button
+        type="button"
+        onClick={() => onChange("مجند")}
+        className={[
+          "flex items-center gap-4 px-3 py-3 w-[155px] justify-end transition-colors border-r border-[#eff0f6]",
+          value === "مجند"
+            ? "bg-gradient-to-b from-[#00b867] to-[#00522e]"
+            : "bg-white hover:bg-gray-50",
+        ].join(" ")}
+      >
+        <span
+          style={{
+            ...F,
+            fontSize: 18,
+            color: value === "مجند" ? "#f5f5f5" : "#2d3648",
+            flex: 1,
+            textAlign: "right",
+          }}
+        >
+          مجند
+        </span>
+        <SoldierIcon white={value === "مجند"} />
+      </button>
       <button
         type="button"
         onClick={() => onChange("متطوع")}
@@ -197,29 +220,7 @@ function CategoryToggle({
         </span>
         <StarIcon white={value === "متطوع"} />
       </button>
-      <button
-        type="button"
-        onClick={() => onChange("مجند")}
-        className={[
-          "flex items-center gap-4 px-3 py-3 w-[155px] justify-end transition-colors border-r border-[#eff0f6]",
-          value === "مجند"
-            ? "bg-gradient-to-b from-[#00b867] to-[#00522e]"
-            : "bg-white hover:bg-gray-50",
-        ].join(" ")}
-      >
-        <span
-          style={{
-            ...F,
-            fontSize: 18,
-            color: value === "مجند" ? "#f5f5f5" : "#2d3648",
-            flex: 1,
-            textAlign: "right",
-          }}
-        >
-          مجند
-        </span>
-        <SoldierIcon white={value === "مجند"} />
-      </button>
+      
     </div>
   );
 }
@@ -655,14 +656,14 @@ function GroupUploadSection({
               className="flex items-center gap-1.5 shrink-0 group"
             >
               <Download
-                size={15}
+                size={18}
                 style={{ color: "#00b867" }}
               />
               <span
-                className="underline group-hover:opacity-80 transition-opacity"
+                className=" group-hover:opacity-80 transition-opacity"
                 style={{
                   ...F,
-                  fontSize: 16,
+                  fontSize: 18,
                   background:
                     "linear-gradient(to bottom, #00b867, #00522e)",
                   WebkitBackgroundClip: "text",
@@ -938,7 +939,7 @@ export function AddNewSoldierPage() {
         </p>
         <div className="flex flex-wrap gap-4 justify-end">
           {(
-            ["مجموعة افراد", "فرد واحد"] as RegistrationMethod[]
+            [, "فرد واحد","مجموعة افراد"] as RegistrationMethod[]
           ).map((m) => (
             <button
               key={m}

@@ -201,7 +201,7 @@ function ActionBtns({ onView }: { onView: () => void }) {
       {/* Transfer arrow icon */}
       <button
         type="button"
-        className="bg-[#ebedfd] rounded-[4px] p-[3px] hover:opacity-80 transition-opacity"
+        className="bg-[#DCF4DF] rounded-[4px] p-[3px] hover:opacity-80 transition-opacity"
         title="تحديد"
       >
         <svg
@@ -210,7 +210,7 @@ function ActionBtns({ onView }: { onView: () => void }) {
           viewBox="0 0 15 13.868"
           fill="none"
         >
-          <path d={svgPaths.p11466900} fill="#294DBB" />
+          <path d={svgPaths.p11466900} fill="#415844" />
         </svg>
       </button>
       {/* Eye icon */}
@@ -467,7 +467,7 @@ export function UnitSoldiersPage() {
           {/* Print button */}
           <button
             type="button"
-            className="flex items-center gap-1.5 bg-[#ebedfd] rounded-[8px] px-3 py-2 hover:opacity-80 transition-opacity shrink-0"
+            className="flex items-center gap-1.5 bg-[#DCF4DF] rounded-[8px] px-3 py-2 hover:opacity-80 transition-opacity shrink-0"
           >
             <svg
               width="14"
@@ -514,13 +514,9 @@ export function UnitSoldiersPage() {
           <button
             type="button"
             onClick={() => navigate("/dashboard/add-soldier")}
-            className="flex items-center gap-1.5 bg-[#ebedfd] rounded-[8px] px-3 py-2 hover:opacity-80 transition-opacity"
+            className="flex items-center gap-1.5 bg-[#DCF4DF] rounded-[8px] px-3 py-2 hover:opacity-80 transition-opacity"
           >
-            <span
-              style={{ ...F, fontSize: 14, color: "#2d3648" }}
-            >
-              اضافة فرد
-            </span>
+            
             <svg
               width="10"
               height="10"
@@ -534,6 +530,11 @@ export function UnitSoldiersPage() {
                 fillRule="evenodd"
               />
             </svg>
+            <span
+              style={{ ...F, fontSize: 14, color: "#2d3648" }}
+            >
+              اضافة فرد
+            </span>
           </button>
         </div>
 
