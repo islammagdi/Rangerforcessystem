@@ -753,13 +753,10 @@ function GroupUploadSection({
         {uploadedFile && (
           <div className="flex items-center gap-3 bg-white border border-[#e7e7e7] rounded-[12px] px-4 py-3 w-full">
             {/* Remove button */}
-            <button
-              type="button"
-              onClick={() => setUploadedFile(null)}
-              className="shrink-0 flex items-center justify-center w-6 h-6 rounded-full hover:bg-[#f5f5f5] transition-colors"
-            >
-              <X size={16} className="text-[#717d96]" />
-            </button>
+             {/* Excel icon */}
+            <div className="shrink-0">
+              <ExcelIcon size={28} />
+            </div>
 
             {/* File info */}
             <div className="flex flex-col items-end flex-1 min-w-0 gap-0.5">
@@ -781,11 +778,14 @@ function GroupUploadSection({
                 {uploadedFile.size}
               </p>
             </div>
-
-            {/* Excel icon */}
-            <div className="shrink-0">
-              <ExcelIcon size={28} />
-            </div>
+<button
+              type="button"
+              onClick={() => setUploadedFile(null)}
+              className="shrink-0 flex items-center justify-center w-6 h-6 rounded-full hover:bg-[#f5f5f5] transition-colors"
+            >
+              <X size={16} className="text-[#717d96]" />
+            </button>
+           
           </div>
         )}
 
