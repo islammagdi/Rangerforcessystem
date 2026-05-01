@@ -438,7 +438,7 @@ export function GroupSuccessPage() {
                   textAlign: "right",
                 }}
               >
-                الملف المعتمد
+                الملف الذي تم اعتماده
               </p>
               <div className="w-full rounded-[12px] border border-[#e7e7e7] bg-white px-4 py-3 flex items-center gap-3">
                 {/* Download link */}
@@ -487,77 +487,7 @@ export function GroupSuccessPage() {
               </div>
             </div>
 
-            {/* المستخدم الحالي */}
-            <div className="flex flex-col items-start gap-2 flex-1 min-w-0">
-              <p
-                style={{
-                  ...F,
-                  fontSize: 14,
-                  color: "#4a5468",
-                  textAlign: "right",
-                }}
-              >
-                المستخدم الحالي
-              </p>
-              <div className="w-full rounded-[12px] border border-[#e7e7e7] bg-white flex items-center">
-                <div className="flex items-center gap-3 px-3 py-3 flex-wrap">
-                  {/* User */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <User
-                      size={20}
-                      className="text-[#a0abc0]"
-                    />
-                    <span
-                      style={{
-                        ...F,
-                        fontSize: 14,
-                        color: "#4a5468",
-                      }}
-                    >
-                      جندي / اسلام مجدى عبدالستار
-                    </span>
-                  </div>
-                  {/* Vertical divider */}
-                  <div className="w-px h-3 bg-[#cbd2e0] shrink-0" />
-
-                  {/* Date */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <CalendarDays
-                      size={20}
-                      className="text-[#a0abc0]"
-                    />
-                    <span
-                      style={{
-                        ...F,
-                        fontSize: 14,
-                        color: "#4a5468",
-                      }}
-                    >
-                      2025 - 08 - 20
-                    </span>
-                  </div>
-
-                  {/* Vertical divider */}
-                  <div className="w-px h-3 bg-[#cbd2e0] shrink-0" />
-                  {/* Time */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Clock
-                      size={20}
-                      className="text-[#a0abc0]"
-                    />
-                    <span
-                      style={{
-                        ...F,
-                        fontSize: 14,
-                        color: "#4a5468",
-                      }}
-                    >
-                      10 : 30 ص
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
+           
           </div>
 
           {/* ── Action buttons ──────────────────────────────────── */}
@@ -582,7 +512,7 @@ export function GroupSuccessPage() {
             <button
               type="button"
               onClick={() => navigate("/dashboard")}
-              className="h-[44px] px-4 flex items-center justify-center rounded-[8px] bg-[#ebedfd] transition-colors hover:bg-[#d8dcfb] active:opacity-80"
+              className="h-[44px] px-4 flex items-center justify-center rounded-[8px] bg-[#DCF4DF] transition-colors hover:bg-[#d8dcfb] active:opacity-80"
             >
               <span
                 style={{ ...F, fontSize: 16, color: "#2d3648" }}
