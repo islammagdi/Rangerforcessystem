@@ -514,7 +514,7 @@ export function GroupSuccessPage() {
                         color: "#4a5468",
                       }}
                     >
-                      جندي / اسلام مجدى عبدالستار
+                      عريف / اسلام مجدى عبدالستار
                     </span>
                   </div>
                   {/* Vertical divider */}
