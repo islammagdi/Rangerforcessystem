@@ -411,7 +411,7 @@ function ActionBtns({ onView }: { onView: () => void }) {
     <div className="flex items-center gap-1.5 justify-end">
       <button
         type="button"
-        className="bg-[#ebedfd] rounded-[4px] p-[2px] hover:opacity-80 transition-opacity"
+        className="bg-[#DCF4DF] rounded-[4px] p-[2px] hover:opacity-80 transition-opacity"
         title="تحديد"
       >
         <svg
@@ -420,7 +420,7 @@ function ActionBtns({ onView }: { onView: () => void }) {
           viewBox="0 0 15 13.868"
           fill="none"
         >
-          <path d={svgPaths.p11466900} fill="#294DBB" />
+          <path d={svgPaths.p11466900} fill="#415844" />
         </svg>
       </button>
       <button
@@ -716,7 +716,7 @@ export function UnitDetailPage() {
           {/* Print button — left side in RTL */}
           <button
             type="button"
-            className="flex items-center gap-1.5 bg-[#ebedfd] rounded-[8px] px-3 py-2 hover:opacity-80 transition-opacity"
+            className="flex items-center gap-1.5 bg-[#DCF4DF] rounded-[8px] px-3 py-2 hover:opacity-80 transition-opacity"
           >
             <svg
               width="16"
@@ -857,7 +857,7 @@ export function UnitDetailPage() {
                     key={c.key}
                     className="px-4 py-3 text-right whitespace-nowrap"
                   >
-                    <div className="flex items-center gap-1 justify-end">
+                    <div className="flex items-start gap-1 justify-start">
                       <span
                         style={{
                           ...F,
