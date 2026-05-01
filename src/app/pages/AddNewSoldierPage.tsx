@@ -790,7 +790,7 @@ function GroupUploadSection({
         )}
 
         {/* ── Submit button ─────────────────────────────────────────── */}
-        <div className="flex items-start pt-1">
+        <div className="flex justify-end pt-1">
           <button
             type="button"
             onClick={onSubmit}
@@ -1142,7 +1142,7 @@ export function AddNewSoldierPage() {
                 </FieldGroup>
               </div>
 
-              <div className="flex items-start pt-1">
+              <div className="flex justify-end pt-1">
                 <button
                   type="submit"
                   className="h-[44px] px-6 rounded-[8px] flex items-center justify-center gap-2 transition-opacity hover:opacity-90 active:opacity-80"

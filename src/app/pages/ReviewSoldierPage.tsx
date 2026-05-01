@@ -266,7 +266,7 @@ export function ReviewSoldierPage() {
           </div>
 
           {/* ── اعتماد القيد button ──────────────────────────────────── */}
-          <div className="flex items-start py-2">
+          <div className="flex justify-end py-2">
             <button
               onClick={handleConfirm}
               disabled={isLoading}
