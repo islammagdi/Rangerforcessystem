@@ -357,7 +357,7 @@ export function SuccessSoldierPage() {
             </button>
             <button
               onClick={() => navigate("/dashboard")}
-              className="flex items-center justify-center min-h-[44px] px-5 rounded-[8px] bg-[#ebedfd] transition-opacity hover:opacity-90 active:opacity-80"
+              className="flex items-center justify-center min-h-[44px] px-5 rounded-[8px] bg-[#DCF4DF] transition-opacity hover:opacity-90 active:opacity-80"
             >
               <span
                 style={{ ...F, fontSize: 16, color: "#2d3648" }}

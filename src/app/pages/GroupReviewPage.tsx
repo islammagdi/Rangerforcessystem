@@ -889,7 +889,7 @@ export function GroupReviewPage() {
         />
 
         {/* ── Footer action ─────────────────────────────────────── */}
-        <div className="flex items-center justify-start px-6 py-5 gap-3">
+        <div className="flex items-center justify-end px-6 py-5 gap-3">
           <button
             type="button"
             disabled={hasErrors || loading}
