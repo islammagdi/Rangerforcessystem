@@ -487,7 +487,6 @@ export function GroupSuccessPage() {
               </div>
             </div>
 
-<<<<<<< HEAD
             {/* المستخدم الحالي */}
             <div className="flex flex-col items-start gap-2 flex-1 min-w-0">
               <p
@@ -559,9 +558,6 @@ export function GroupSuccessPage() {
                 </div>
               </div>
             </div>
-=======
-           
->>>>>>> UI-Issues-Fixing
           </div>
 
           {/* ── Action buttons ──────────────────────────────────── */}
