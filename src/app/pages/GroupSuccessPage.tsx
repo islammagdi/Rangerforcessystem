@@ -1,4 +1,5 @@
-import { useNavigate } from "react-router";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
 import imgDocs from "figma:asset/0b415e099a9a0d48863970a33cf2c018036bb031.png";
 import {
   Clock,
@@ -6,11 +7,62 @@ import {
   User,
   Download,
 } from "lucide-react";
+import { supabase } from "../../lib/supabase";
 
 // ─── Shared style ─────────────────────────────────────────────────────────────
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
+
+// ⚠️ عدّل هذا الاسم لو جدول الأفراد الفعلي مختلف (نفس الاسم المستخدم في باقي الصفحات)
+const PERSONNEL_TABLE_NAME = "personnel";
+
+// ─── البيانات القادمة من صفحة المراجعة عبر navigate state ─────────────────────
+interface GroupSuccessStats {
+  total: number;
+  newCount: number;
+  updated: number;
+}
+
+interface GroupSuccessLocationState {
+  stats: GroupSuccessStats;
+  file_name: string;
+  file_size: string;
+  file_url?: string;
+  approved_at: string; // ISO timestamp
+}
+
+// ─── تنسيق التاريخ والوقت ──────────────────────────────────────────────────────
+function formatArabicDate(iso: string): string {
+  const d = new Date(iso);
+
+  if (Number.isNaN(d.getTime())) {
+    return "—";
+  }
+
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+
+  return `${y} - ${m} - ${day}`;
+}
+
+function formatArabicTime(iso: string): string {
+  const d = new Date(iso);
+
+  if (Number.isNaN(d.getTime())) {
+    return "—";
+  }
+
+  let hours = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  const period = hours >= 12 ? "م" : "ص";
+
+  hours = hours % 12;
+  if (hours === 0) hours = 12;
+
+  return `${hours} : ${minutes} ${period}`;
+}
 
 // ─── Stepper — all 3 completed ────────────────────────────────────────────────
 function GreenCheck({ uid }: { uid: string }) {
@@ -313,6 +365,110 @@ function ExcelIcon() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export function GroupSuccessPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const state = location.state as GroupSuccessLocationState | undefined;
+
+  const [currentUserLabel, setCurrentUserLabel] = useState<string>("...");
+
+  // لو الصفحة اتفتحت مباشرة من غير ما يجي من اعتماد كشف فعلي (زي refresh)
+  // نرجع المستخدم لصفحة رفع الكشف بدل ما نعرضله بيانات فاضية
+  useEffect(() => {
+    if (!state?.stats) {
+      navigate("/dashboard/add-soldier");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // جلب بيانات المستخدم الحالي المسجل دخوله: profiles → personnel → ranks
+  useEffect(() => {
+    async function loadCurrentUser() {
+      try {
+        const { data: authData, error: authError } =
+          await supabase.auth.getUser();
+
+        if (authError) throw authError;
+
+        const authUser = authData.user;
+
+        if (!authUser) {
+          setCurrentUserLabel("—");
+          return;
+        }
+
+        // profiles.id مفترض إنه نفس auth.users.id (الافتراض القياسي في Supabase)
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("id, personnel_id, username")
+          .eq("id", authUser.id)
+          .maybeSingle();
+
+        if (profileError) throw profileError;
+
+        const fallbackLabel = profile?.username ?? authUser.email ?? "—";
+
+        if (!profile?.personnel_id) {
+          setCurrentUserLabel(fallbackLabel);
+          return;
+        }
+
+        const { data: personnelRecord, error: personnelError } =
+          await supabase
+            .from(PERSONNEL_TABLE_NAME)
+            .select("full_name, rank_id")
+            .eq("id", profile.personnel_id)
+            .maybeSingle();
+
+        if (personnelError) throw personnelError;
+
+        if (!personnelRecord) {
+          setCurrentUserLabel(fallbackLabel);
+          return;
+        }
+
+        let rankName: string | null = null;
+
+        if (personnelRecord.rank_id) {
+          const { data: rankRecord, error: rankError } = await supabase
+            .from("ranks")
+            .select("name")
+            .eq("id", personnelRecord.rank_id)
+            .maybeSingle();
+
+          if (rankError) throw rankError;
+
+          rankName = rankRecord?.name ?? null;
+        }
+
+        const fullName = personnelRecord.full_name || fallbackLabel;
+
+        setCurrentUserLabel(rankName ? `${rankName} / ${fullName}` : fullName);
+      } catch (error) {
+        console.error("Error loading current user:", error);
+        setCurrentUserLabel("—");
+      }
+    }
+
+    loadCurrentUser();
+  }, []);
+
+  const stats: GroupSuccessStats = state?.stats ?? {
+    total: 0,
+    newCount: 0,
+    updated: 0,
+  };
+
+  const fileName = state?.file_name || "—";
+  const fileSize = state?.file_size || "";
+  const fileUrl = state?.file_url;
+
+  const approvedDate = state?.approved_at
+    ? formatArabicDate(state.approved_at)
+    : "—";
+
+  const approvedTime = state?.approved_at
+    ? formatArabicTime(state.approved_at)
+    : "—";
 
   return (
     <div className="flex flex-col gap-6 w-full" dir="rtl">
@@ -381,14 +537,14 @@ export function GroupSuccessPage() {
           {/* ── Stat cards ──────────────────────────────────────── */}
           <div className="flex flex-wrap gap-3 w-full">
             <StatCard
-              count={200}
+              count={stats.total}
               label="اجمالي الافراد بالكشف"
               bg="white"
               textColor="#2d3648"
               icon={<GreenGroupIcon />}
             />
             <StatCard
-              count={180}
+              count={stats.newCount}
               label="أفراد تمت اضافتهم"
               bg="transparent"
               textColor="#2d3648"
@@ -418,7 +574,7 @@ export function GroupSuccessPage() {
               }
             />
             <StatCard
-              count={20}
+              count={stats.updated}
               label="بيانات تم تحديثها"
               bg="transparent"
               textColor="#146d7c"
@@ -441,12 +597,12 @@ export function GroupSuccessPage() {
                 الملف الذي تم اعتماده
               </p>
               <div className="w-full rounded-[12px] border border-[#e7e7e7] bg-white px-4 py-3 flex items-center gap-3">
-                {/* Download link */}
                 {/* Excel icon */}
                 <ExcelIcon />
                 {/* File info */}
                 <div className="flex flex-col items-start flex-1 min-w-0 gap-0.5">
                   <span
+                    className="w-full truncate"
                     style={{
                       ...F,
                       fontWeight: 700,
@@ -454,7 +610,7 @@ export function GroupSuccessPage() {
                       color: "#2d3648",
                     }}
                   >
-                    س 145 اشارة .xlsx
+                    {fileName}
                   </span>
                   <span
                     style={{
@@ -463,27 +619,38 @@ export function GroupSuccessPage() {
                       color: "#a0abc0",
                     }}
                   >
-                    5.3MB
+                    {fileSize}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  className="shrink-0 flex items-center gap-1 group hover:opacity-80 transition-opacity"
-                >
-                  <span
-                    style={{
-                      ...F,
-                      fontSize: 16,
-                      lineHeight: 1.5,
-                      background:
-                        "linear-gradient(to bottom, #00b867, #00522e)",
-                      WebkitBackgroundClip: "text",
-                      WebkitTextFillColor: "transparent",
-                    }}
+                {fileUrl ? (
+                  <a
+                    href={fileUrl}
+                    download={fileName}
+                    className="shrink-0 flex items-center gap-1 group hover:opacity-80 transition-opacity"
                   >
-                    تحميل الملف
+                    <Download size={16} style={{ color: "#00b867" }} />
+                    <span
+                      style={{
+                        ...F,
+                        fontSize: 16,
+                        lineHeight: 1.5,
+                        background:
+                          "linear-gradient(to bottom, #00b867, #00522e)",
+                        WebkitBackgroundClip: "text",
+                        WebkitTextFillColor: "transparent",
+                      }}
+                    >
+                      تحميل الملف
+                    </span>
+                  </a>
+                ) : (
+                  <span
+                    className="shrink-0"
+                    style={{ ...F, fontSize: 13, color: "#a0abc0" }}
+                  >
+                    الملف غير متاح للتحميل
                   </span>
-                </button>
+                )}
               </div>
             </div>
 
@@ -497,7 +664,7 @@ export function GroupSuccessPage() {
                   textAlign: "right",
                 }}
               >
-               للمنظومة المستخدم الحالي
+                للمنظومة المستخدم الحالي
               </p>
               <div className="w-full rounded-[12px] border border-[#e7e7e7] bg-white flex items-center">
                 <div className="flex items-center gap-3 px-3 py-3 flex-wrap">
@@ -514,7 +681,7 @@ export function GroupSuccessPage() {
                         color: "#4a5468",
                       }}
                     >
-                      عريف / اسلام مجدى عبدالستار
+                      {currentUserLabel}
                     </span>
                   </div>
                   {/* Vertical divider */}
@@ -533,7 +700,7 @@ export function GroupSuccessPage() {
                         color: "#4a5468",
                       }}
                     >
-                      2025 - 08 - 20
+                      {approvedDate}
                     </span>
                   </div>
 
@@ -552,7 +719,7 @@ export function GroupSuccessPage() {
                         color: "#4a5468",
                       }}
                     >
-                      10 : 30 ص
+                      {approvedTime}
                     </span>
                   </div>
                 </div>

@@ -1,80 +1,50 @@
-import { useState, useRef } from "react";
+import { useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { Trash2, AlertCircle } from "lucide-react";
-import { getSoldiers } from "../data/soldiersData";
-import type { SoldierData } from "../data/soldiersData";
+import type { CSSProperties, KeyboardEvent } from "react";
+import { supabase } from "../../lib/supabase";
 
-const F: React.CSSProperties = {
+const F: CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
 
-// ─── Shared Stepper ───────────────────────────────────────────────────────────
+export type SoldierData = {
+  id: string;
+  militaryId: string;
+  name: string;
+  rank: string;
+  rankId: string;
+  unit: string;
+  unitId: string;
+  attachmentUnit: string;
+  attachmentUnitId: string | null;
+  dischargeDate: string | null;
+};
+
 function GreenCheckBubble({ label }: { label: string }) {
   return (
     <div className="flex flex-col items-center gap-2 shrink-0">
-      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 relative">
-        <svg
-          width="32"
-          height="32"
-          viewBox="0 0 32 32"
-          fill="none"
+      <div className="w-8 h-8 rounded-full flex items-center justify-center relative">
+        <div
+          className="w-8 h-8 rounded-full"
+          style={{
+            background: "linear-gradient(to bottom,#00b867,#00522e)",
+          }}
+        />
+
+        <span
+          className="absolute text-white"
+          style={{ fontSize: 16 }}
         >
-          <defs>
-            <linearGradient
-              id="sg1"
-              x1="16"
-              x2="16"
-              y1="0"
-              y2="32"
-              gradientUnits="userSpaceOnUse"
-            >
-              <stop stopColor="#00B867" />
-              <stop offset="1" stopColor="#00522E" />
-            </linearGradient>
-            <linearGradient
-              id="sg2"
-              x1="16"
-              x2="16"
-              y1="0"
-              y2="32"
-              gradientUnits="userSpaceOnUse"
-            >
-              <stop stopColor="#4BFF62" />
-              <stop offset="1" stopColor="#318B3C" />
-            </linearGradient>
-          </defs>
-          <circle
-            cx="16"
-            cy="16"
-            r="15"
-            fill="url(#sg1)"
-            strokeWidth="2"
-          />
-        </svg>
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          className="absolute"
-        >
-          <path
-            d="M9 11.5L11.5 14L15.5 10M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z"
-            stroke="white"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+          ✓
+        </span>
       </div>
+
       <span
         style={{
           ...F,
           fontSize: 14,
-          background:
-            "linear-gradient(to bottom, #00b867, #00522e)",
-          WebkitBackgroundClip: "text",
-          WebkitTextFillColor: "transparent",
+          color: "#00864d",
           whiteSpace: "nowrap",
         }}
       >
@@ -97,19 +67,15 @@ function NumberBubble({
     <div className="flex flex-col items-center gap-2 shrink-0">
       <div
         className="w-8 h-8 rounded-full flex items-center justify-center bg-white border-2"
-        style={{ borderColor: active ? "#2d3648" : "#a1aebe" }}
+        style={{
+          borderColor: active ? "#2d3648" : "#a1aebe",
+        }}
       >
-        <span
-          style={{
-            ...F,
-            fontSize: 14,
-            color: active ? "#2d3648" : "#2d3648",
-            lineHeight: 1.4,
-          }}
-        >
+        <span style={{ ...F, fontSize: 14 }}>
           {num}
         </span>
       </div>
+
       <span
         style={{
           ...F,
@@ -125,14 +91,15 @@ function NumberBubble({
 }
 
 function StepDots({ dark }: { dark?: boolean }) {
-  const color = dark ? "#1A202C" : "#A1AEBE";
   return (
     <div className="flex items-center gap-[3px] mt-4 mx-2 shrink-0">
       {Array.from({ length: 16 }).map((_, i) => (
         <div
           key={i}
-          className="w-[3px] h-[3px] rounded-full shrink-0"
-          style={{ background: color }}
+          className="w-[3px] h-[3px] rounded-full"
+          style={{
+            background: dark ? "#1A202C" : "#A1AEBE",
+          }}
         />
       ))}
     </div>
@@ -156,23 +123,28 @@ function LetterStepper({
       className="flex items-start justify-center flex-wrap gap-0"
       dir="rtl"
     >
-      {steps.map((step, idx) => {
-        const stepNum = idx + 1;
-        const isDone = stepNum < activeStep;
-        const isActive = stepNum === activeStep;
+      {steps.map((step, index) => {
+        const number = index + 1;
+        const done = number < activeStep;
+        const active = number === activeStep;
+
         return (
-          <div key={step.num} className="flex items-start">
-            {isDone ? (
+          <div
+            key={step.num}
+            className="flex items-start"
+          >
+            {done ? (
               <GreenCheckBubble label={step.label} />
             ) : (
               <NumberBubble
                 num={step.num}
                 label={step.label}
-                active={isActive}
+                active={active}
               />
             )}
-            {idx < steps.length - 1 && (
-              <StepDots dark={idx + 1 < activeStep} />
+
+            {index < 3 && (
+              <StepDots dark={number < activeStep} />
             )}
           </div>
         );
@@ -181,7 +153,6 @@ function LetterStepper({
   );
 }
 
-// ─── Table ────────────────────────────────────────────────────────────────────
 function SortIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -204,30 +175,28 @@ function SoldiersTable({
   onRemove: (id: string) => void;
 }) {
   const headers = [
-     "رقم عسكري",
-     "درجة",
-     "اسم",
-     "الوحدة",
-    "الاجراء",
-    
-    
-    
-   
+    "رقم عسكري",
+    "درجة",
+    "اسم",
+    "الوحدة",
+    "وحدة الإلحاق",
+    "الإجراء",
   ];
-  const thClass = "px-4 py-3 text-right";
-  const tdClass = "px-4 py-3 text-right";
 
   return (
     <div
       className="w-full overflow-x-auto rounded-[12px] border border-[#e2e7f0]"
       dir="rtl"
     >
-      <table className="w-full min-w-[600px] border-collapse">
+      <table className="w-full min-w-[700px] border-collapse">
         <thead>
           <tr className="border-b border-[#e2e7f0] bg-[#f7f9fc]">
-            {headers.map((h) => (
-              <th key={h} className={thClass}>
-                <div className="flex items-center gap-1 justify-start">
+            {headers.map((header) => (
+              <th
+                key={header}
+                className="px-4 py-3 text-right"
+              >
+                <div className="flex items-center gap-1">
                   <span
                     style={{
                       ...F,
@@ -235,7 +204,7 @@ function SoldiersTable({
                       color: "#717d96",
                     }}
                   >
-                    {h}
+                    {header}
                   </span>
                   <SortIcon />
                 </div>
@@ -243,73 +212,57 @@ function SoldiersTable({
             ))}
           </tr>
         </thead>
+
         <tbody>
-          {soldiers.map((soldier, idx) => (
+          {soldiers.map((soldier, index) => (
             <tr
               key={soldier.id}
               className={
-                idx < soldiers.length - 1
+                index < soldiers.length - 1
                   ? "border-b border-[#e2e7f0]"
                   : ""
               }
             >
-              <td className={tdClass}>
-                <span
-                  style={{
-                    ...F,
-                    fontSize: 14,
-                    color: "#2d3648",
-                  }}
-                >
+              <td className="px-4 py-3">
+                <span style={{ ...F, fontSize: 14 }}>
                   {soldier.militaryId}
                 </span>
               </td>
-              <td className={tdClass}>
-                <span
-                  style={{
-                    ...F,
-                    fontSize: 14,
-                    color: "#2d3648",
-                  }}
-                >
+
+              <td className="px-4 py-3">
+                <span style={{ ...F, fontSize: 14 }}>
                   {soldier.rank}
                 </span>
               </td>
-              <td className={tdClass}>
-                <span
-                  style={{
-                    ...F,
-                    fontSize: 14,
-                    color: "#2d3648",
-                  }}
-                >
+
+              <td className="px-4 py-3">
+                <span style={{ ...F, fontSize: 14 }}>
                   {soldier.name}
                 </span>
               </td>
-              <td className={tdClass}>
-                <span
-                  style={{
-                    ...F,
-                    fontSize: 14,
-                    color: "#2d3648",
-                  }}
-                >
+
+              <td className="px-4 py-3">
+                <span style={{ ...F, fontSize: 14 }}>
                   {soldier.unit}
                 </span>
               </td>
-              
-              
-              
-              <td className={tdClass}>
+
+              <td className="px-4 py-3">
+                <span style={{ ...F, fontSize: 14 }}>
+                  {soldier.attachmentUnit || "لا يوجد"}
+                </span>
+              </td>
+
+              <td className="px-4 py-3">
                 <button
                   type="button"
                   onClick={() => onRemove(soldier.id)}
-                  className="w-8 h-8 rounded-[6px] flex items-center justify-center transition-colors hover:opacity-80"
-                  style={{ backgroundColor: "#fce8f1" }}
+                  className="w-8 h-8 rounded-[6px] flex items-center justify-center"
+                  style={{ background: "#fce8f1" }}
                 >
                   <Trash2
                     size={15}
-                    style={{ color: "#e3282c" }}
+                    color="#e3282c"
                   />
                 </button>
               </td>
@@ -321,80 +274,183 @@ function SoldiersTable({
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
 export function SelectSoldiersPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const letterType: "attachment" | "end-attachment" =
-    (location.state as { letterType?: string })?.letterType ===
-    "end-attachment"
+  const state = location.state as {
+    letterType?: string;
+    letterTypeId?: string;
+    letterTypeCode?: string;
+    letterTypeName?: string;
+  } | null;
+
+  const letterType =
+    state?.letterType === "end-attachment"
       ? "end-attachment"
       : "attachment";
-
-  const pageTitle =
-    letterType === "end-attachment"
-      ? "اصدار خطاب إنهاء إلحاق"
-      : "اصدار خطاب إلحاق";
 
   const [militaryNumber, setMilitaryNumber] = useState("");
   const [soldiers, setSoldiers] = useState<SoldierData[]>([]);
   const [errorType, setErrorType] = useState<
-    "not-found" | "duplicate" | "empty" | null
+    "not-found" | "duplicate" | "empty" | "database" | null
   >(null);
+
+  const [searching, setSearching] = useState(false);
+
   const inputRef = useRef<HTMLInputElement>(null);
 
-  function handleAdd() {
+  async function handleAdd() {
     const trimmed = militaryNumber.trim();
+
     if (!trimmed) {
       setErrorType("empty");
       inputRef.current?.focus();
       return;
     }
 
-    if (soldiers.some((s) => s.militaryId === trimmed)) {
+    if (
+      soldiers.some(
+        (soldier) => soldier.militaryId === trimmed,
+      )
+    ) {
       setErrorType("duplicate");
       return;
     }
 
-    const found = getSoldiers().find(
-      (s) => s.militaryId === trimmed,
-    );
-    if (!found) {
+    setSearching(true);
+    setErrorType(null);
+
+    const { data, error } = await supabase
+      .from("personnel")
+      .select(`
+        id,
+        military_number,
+        full_name,
+        rank_id,
+        discharge_date,
+        is_active,
+
+        rank:ranks!personnel_rank_id_fkey(
+          id,
+          name
+        ),
+
+        primary_unit:units!personnel_primary_unit_id_fkey(
+          id,
+          name
+        ),
+
+        attachment_unit:units!personnel_attachment_unit_id_fkey(
+          id,
+          name
+        )
+      `)
+      .eq("military_number", trimmed)
+      .maybeSingle();
+
+    setSearching(false);
+
+    if (error) {
+      console.error(error);
+      setErrorType("database");
+      return;
+    }
+
+    if (!data) {
       setErrorType("not-found");
       return;
     }
 
-    setSoldiers((prev) => [...prev, found]);
+    if (data.is_active === false) {
+      setErrorType("not-found");
+      return;
+    }
+
+    const rank = Array.isArray(data.rank)
+      ? data.rank[0]
+      : data.rank;
+
+    const primaryUnit = Array.isArray(data.primary_unit)
+      ? data.primary_unit[0]
+      : data.primary_unit;
+
+    const attachmentUnit = Array.isArray(
+      data.attachment_unit,
+    )
+      ? data.attachment_unit[0]
+      : data.attachment_unit;
+
+    const soldier: SoldierData = {
+      id: data.id,
+      militaryId: data.military_number,
+      name: data.full_name,
+      rank: rank?.name ?? "غير محدد",
+      rankId: data.rank_id,
+      unit: primaryUnit?.name ?? "غير محدد",
+      unitId: primaryUnit?.id ?? data.primary_unit_id,
+      attachmentUnit: attachmentUnit?.name ?? "",
+      attachmentUnitId:
+        attachmentUnit?.id ?? data.attachment_unit_id ?? null,
+      dischargeDate: data.discharge_date,
+    };
+
+    setSoldiers((previous) => [
+      ...previous,
+      soldier,
+    ]);
+
     setMilitaryNumber("");
     setErrorType(null);
     inputRef.current?.focus();
   }
 
   function handleKeyDown(
-    e: React.KeyboardEvent<HTMLInputElement>,
+    event: KeyboardEvent<HTMLInputElement>,
   ) {
-    if (e.key === "Enter") handleAdd();
+    if (event.key === "Enter") {
+      void handleAdd();
+    }
   }
 
   function handleRemove(id: string) {
-    setSoldiers((prev) => prev.filter((s) => s.id !== id));
+    setSoldiers((previous) =>
+      previous.filter((soldier) => soldier.id !== id),
+    );
   }
 
   function handleNext() {
-    if (soldiers.length === 0) return;
-    navigate("/dashboard/issue-letter/letter-data", {
-      state: { letterType, soldiers },
-    });
+    if (!soldiers.length) return;
+
+    navigate(
+      "/dashboard/issue-letter/letter-data",
+      {
+        state: {
+          letterType,
+          letterTypeId: state?.letterTypeId,
+          letterTypeCode: state?.letterTypeCode,
+          letterTypeName: state?.letterTypeName,
+          soldiers,
+        },
+      },
+    );
   }
 
+  const pageTitle =
+    letterType === "end-attachment"
+      ? "اصدار خطاب إنهاء إلحاق"
+      : "اصدار خطاب إلحاق";
+
   const hasError =
-    errorType === "not-found" || errorType === "duplicate";
-  const canProceed = soldiers.length > 0;
+    errorType === "not-found" ||
+    errorType === "duplicate" ||
+    errorType === "database";
 
   return (
-    <div className="flex flex-col gap-6 w-full pb-10" dir="rtl">
-      {/* ── Title ───────────────────────────────────────────── */}
+    <div
+      className="flex flex-col gap-6 w-full pb-10"
+      dir="rtl"
+    >
       <h1
         className="text-center"
         style={{
@@ -402,20 +458,16 @@ export function SelectSoldiersPage() {
           fontWeight: 700,
           fontSize: "clamp(22px,4vw,32px)",
           color: "#2d3648",
-          lineHeight: 1.5,
         }}
       >
         {pageTitle}
       </h1>
 
-      {/* ── Stepper ─────────────────────────────────────────── */}
       <div className="flex justify-center">
         <LetterStepper activeStep={2} />
       </div>
 
-      {/* ── Body ────────────────────────────────────────────── */}
       <div className="flex flex-col gap-5 w-full max-w-[760px] mx-auto">
-        {/* Subtitle */}
         <p
           className="text-center"
           style={{
@@ -423,39 +475,34 @@ export function SelectSoldiersPage() {
             fontWeight: 700,
             fontSize: "clamp(18px,3vw,24px)",
             color: "#404040",
-            lineHeight: 1.5,
           }}
         >
           يرجي تحديد الافراد المعنيين
         </p>
 
-        {/* Label + Input */}
-        <div
-          className="flex flex-col gap-1.5 flex-1 min-w-[200px]"
-          dir="rtl"
-        >
+        <div className="flex flex-col gap-2">
           <label
             style={{
               ...F,
               fontWeight: 700,
               fontSize: 16,
               color: "#2d3648",
-              lineHeight: 1.5,
             }}
           >
             الرقم العسكري
           </label>
+
           <input
             ref={inputRef}
-            type="text"
             value={militaryNumber}
-            onChange={(e) => {
-              setMilitaryNumber(e.target.value);
-              if (errorType) setErrorType(null);
+            type="text"
+            onChange={(event) => {
+              setMilitaryNumber(event.target.value);
+              setErrorType(null);
             }}
             onKeyDown={handleKeyDown}
             placeholder="ادخل الرقم العسكري"
-            className="w-full rounded-[8px] bg-white outline-none transition-shadow"
+            className="w-full rounded-[8px] bg-white outline-none"
             style={{
               border: hasError
                 ? "1.5px solid #ef4444"
@@ -463,44 +510,27 @@ export function SelectSoldiersPage() {
               padding: "12px",
               ...F,
               fontSize: 18,
-              color: hasError ? "#ef4444" : "#4a5468",
-              direction: "rtl",
+              color: "#4a5468",
             }}
-            onFocus={(e) =>
-              (e.currentTarget.style.border = hasError
-                ? "1.5px solid #ef4444"
-                : "1.5px solid #769D7B")
-            }
-            onBlur={(e) =>
-              (e.currentTarget.style.border = hasError
-                ? "1.5px solid #ef4444"
-                : "1px solid #e2e7f0")
-            }
           />
         </div>
-        {/* Add button */}
+
         <button
           type="button"
-          onClick={handleAdd}
-          className="shrink-0 min-h-[52px] px-5 py-3 rounded-[8px] flex items-center justify-center transition-colors hover:bg-[#f0f1fd] active:bg-[#e0e2fb]"
+          disabled={searching}
+          onClick={() => void handleAdd()}
+          className="shrink-0 min-h-[52px] px-5 py-3 rounded-[8px]"
           style={{
             border: "2.5px solid #769D7B",
-            minWidth: 140,
+            color: "#769D7B",
+            opacity: searching ? 0.6 : 1,
           }}
         >
-          <span
-            style={{ ...F, fontSize: 16, color: "#769D7B" }}
-          >
-            اضافة الفرد
+          <span style={{ ...F, fontSize: 16 }}>
+            {searching ? "جاري البحث..." : "اضافة الفرد"}
           </span>
         </button>
-        {/* Input row */}
-        <div
-          className="flex items-end gap-4 w-full flex-wrap"
-          dir="rtl"
-        ></div>
 
-        {/* Error alert */}
         {errorType === "not-found" && (
           <div
             className="flex items-start gap-3 px-4 py-3 rounded-[10px]"
@@ -509,33 +539,27 @@ export function SelectSoldiersPage() {
               border: "1px solid #fecaca",
             }}
           >
-            <div className="shrink-0 mt-0.5">
-              <AlertCircle
-                size={22}
-                style={{ color: "#ef4444" }}
-              />
-            </div>
-            <div className="flex flex-col gap-0.5">
+            <AlertCircle color="#ef4444" />
+
+            <div>
               <p
                 style={{
                   ...F,
                   fontWeight: 700,
-                  fontSize: 15,
                   color: "#991b1b",
                 }}
               >
                 رقم عسكري غير موجود
               </p>
+
               <p
                 style={{
                   ...F,
                   fontSize: 13,
                   color: "#b91c1c",
-                  lineHeight: 1.5,
                 }}
               >
-                لا يوجد فرد مرتبط الرقم العسكري المدخل. يرجي
-                التأكد من صحة الرقم العسكري
+                لا يوجد فرد مرتبط بالرقم العسكري المدخل.
               </p>
             </div>
           </div>
@@ -543,24 +567,64 @@ export function SelectSoldiersPage() {
 
         {errorType === "duplicate" && (
           <div
-            className="flex items-start gap-3 px-4 py-3 rounded-[10px]"
+            className="px-4 py-3 rounded-[10px]"
             style={{
               background: "#fffbeb",
               border: "1px solid #fde68a",
             }}
           >
-            <AlertCircle
-              size={22}
-              style={{ color: "#d97706" }}
-              className="shrink-0 mt-0.5"
-            />
-            <p style={{ ...F, fontSize: 14, color: "#92400e" }}>
-              هذا الرقم العسكري مضاف بالفعل
+            <p
+              style={{
+                ...F,
+                fontSize: 14,
+                color: "#92400e",
+              }}
+            >
+              هذا الرقم العسكري مضاف بالفعل.
             </p>
           </div>
         )}
 
-        {/* Soldiers table */}
+        {errorType === "empty" && (
+          <div
+            className="px-4 py-3 rounded-[10px]"
+            style={{
+              background: "#fffbeb",
+              border: "1px solid #fde68a",
+            }}
+          >
+            <p
+              style={{
+                ...F,
+                fontSize: 14,
+                color: "#92400e",
+              }}
+            >
+              من فضلك أدخل الرقم العسكري.
+            </p>
+          </div>
+        )}
+
+        {errorType === "database" && (
+          <div
+            className="px-4 py-3 rounded-[10px]"
+            style={{
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+            }}
+          >
+            <p
+              style={{
+                ...F,
+                fontSize: 14,
+                color: "#991b1b",
+              }}
+            >
+              حدث خطأ أثناء الاتصال بقاعدة البيانات.
+            </p>
+          </div>
+        )}
+
         {soldiers.length > 0 && (
           <SoldiersTable
             soldiers={soldiers}
@@ -568,25 +632,26 @@ export function SelectSoldiersPage() {
           />
         )}
 
-        {/* Next button */}
         <button
           type="button"
-          disabled={!canProceed}
+          disabled={soldiers.length === 0}
           onClick={handleNext}
-          className="w-full min-h-[52px] rounded-[8px] flex items-center justify-center transition-colors"
+          className="w-full min-h-[52px] rounded-[8px]"
           style={{
-            background: canProceed
-              ? "linear-gradient(to bottom, #00b867, #00522e)"
-              : "#edf0f7",
-            cursor: canProceed ? "pointer" : "not-allowed",
+            background:
+              soldiers.length > 0
+                ? "linear-gradient(to bottom,#00b867,#00522e)"
+                : "#edf0f7",
           }}
         >
           <span
             style={{
               ...F,
               fontSize: 16,
-              color: canProceed ? "#ffffff" : "#cbd2e0",
-              lineHeight: 1.5,
+              color:
+                soldiers.length > 0
+                  ? "#fff"
+                  : "#cbd2e0",
             }}
           >
             الانتقال لبيانات الخطاب

@@ -1,27 +1,213 @@
-import Select from "react-select";
-import { useState, useRef, useCallback } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router";
 import {
-  ChevronDown,
   CalendarDays,
-  X,
   Download,
+  Upload,
+  X,
 } from "lucide-react";
+import * as XLSX from "xlsx";
+import { supabase } from "../../lib/supabase";
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+// ============================================================
+// Types
+// ============================================================
+
 type RegistrationMethod = "فرد واحد" | "مجموعة افراد";
 type SoldierCategory = "مجند" | "متطوع";
 
-// ─── Shared style ────────────────────────────────────────────────────────────
+interface Rank {
+  id: string;
+  name: string;
+  code: string | null;
+  sort_order: number | null;
+  is_active: boolean;
+}
+
+interface Unit {
+  id: string;
+  name: string;
+  code: string | null;
+  unit_type: string | null;
+  parent_unit_id: string | null;
+  is_active: boolean;
+}
+
+interface ServiceStatus {
+  id: string;
+  name: string;
+  code: string | null;
+  is_active: boolean;
+}
+
+interface PersonnelCategory {
+  id: string;
+  name: string;
+  code: string | null;
+  is_active: boolean;
+}
+
+interface Option {
+  value: string;
+  label: string;
+}
+
+interface UploadedFile {
+  name: string;
+  size: string;
+  raw: File;
+}
+
+interface GroupPersonnelRow {
+  military_number: string;
+  rank_name: string;
+  full_name: string;
+  personnel_category_name: string;
+  primary_unit_name: string;
+  service_status_name: string;
+  discharge_date: string | null;
+  attachment_unit_name: string;
+  row_number: number;
+}
+
+// النوع الناتج بعد مطابقة كل صف مع قاعدة البيانات
+type RowClassification = "new" | "update" | "error";
+
+interface ClassifiedPersonnelRow extends GroupPersonnelRow {
+  classification: RowClassification;
+  errors: string[];
+  rank_id: string | null;
+  personnel_category_id: string | null;
+  primary_unit_id: string | null;
+  service_status_id: string | null;
+  attachment_unit_id: string | null;
+}
+
+// ============================================================
+// Excel
+// ============================================================
+
+const EXCEL_TEMPLATE_URL =
+  "https://github.com/islammagdi/Rangerforcessystem/raw/0639ca38fd820f9e59a1891492d4bb1592aebca8/Data.xlsx";
+
+const REQUIRED_EXCEL_COLUMNS = [
+  "الرقم العسكري",
+  "الدرجة",
+  "الاسم",
+  "فئه الفرد",
+  "الوحده الاساسيه",
+  "الموقف الخدمي",
+  "تاريخ التسريح",
+  "جهه الالحاق",
+];
+
+// ⚠️ عدّل اسم الجدول هذا ليطابق الجدول الفعلي الذي يخزن الأفراد المسجلين بالفعل
+const PERSONNEL_TABLE_NAME = "personnel";
+
+function normalizeExcelHeader(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/ة/g, "ه")
+    .replace(/أ/g, "ا")
+    .replace(/إ/g, "ا")
+    .replace(/آ/g, "ا");
+}
+
+function normalizeExcelValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  return String(value).trim();
+}
+
+function excelDateToISO(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      return null;
+    }
+
+    return value.toISOString().slice(0, 10);
+  }
+
+  if (typeof value === "number") {
+    const date = XLSX.SSF.parse_date_code(value);
+
+    if (!date) {
+      return null;
+    }
+
+    const month = String(date.m).padStart(2, "0");
+    const day = String(date.d).padStart(2, "0");
+
+    return `${date.y}-${month}-${day}`;
+  }
+
+  const text = String(value).trim();
+
+  if (!text) {
+    return null;
+  }
+
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(text)) {
+    const [y, m, d] = text.split("-");
+
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+
+  // DD/MM/YYYY
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(text)) {
+    const [d, m, y] = text.split("/");
+
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+
+  // DD-MM-YYYY
+  if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(text)) {
+    const [d, m, y] = text.split("-");
+
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+
+  return text;
+}
+
+// ============================================================
+// Shared
+// ============================================================
+
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
 
-// ─── Stepper ─────────────────────────────────────────────────────────────────
+// ============================================================
+// Stepper
+// ============================================================
+
 const STEPS = [
-  { num: "01", label: "رفع البيانات", active: true },
+  { num: "01", label: "ادخال البيانات", active: true },
   { num: "02", label: "المراجعة", active: false },
-  { num: "03", label: "الحفظ النهائي", active: false },
+  { num: "03", label: "اعتماد", active: false },
 ];
 
 function StepDots() {
@@ -30,29 +216,17 @@ function StepDots() {
       {Array.from({ length: 16 }).map((_, i) => (
         <span
           key={i}
-          className="w-[3px] h-[3px] rounded-full bg-[#a1aebe] shrink-0"
+          className="w-[3px] h-[3px] rounded-full bg-[#a1aebe]"
         />
       ))}
     </div>
   );
 }
 
-function Stepper({
-  groupMode = false,
-}: {
-  groupMode?: boolean;
-}) {
-  const steps = groupMode
-    ? STEPS
-    : [
-        { num: "01", label: "ادخال البيانات", active: true },
-        { num: "02", label: "المراجعة", active: false },
-        { num: "03", label: "اعتماد", active: false },
-      ];
-
+function Stepper() {
   return (
     <div className="flex items-start gap-0" dir="rtl">
-      {steps.map((step, idx) => (
+      {STEPS.map((step, idx) => (
         <div key={step.num} className="flex items-start">
           <div className="flex flex-col items-center gap-2">
             <div
@@ -68,25 +242,25 @@ function Stepper({
                   ...F,
                   fontSize: 14,
                   color: step.active ? "#344736" : "#2d3648",
-                  lineHeight: 1.4,
                 }}
               >
                 {step.num}
               </span>
             </div>
+
             <span
               style={{
                 ...F,
                 fontSize: 14,
                 color: step.active ? "#344736" : "#465668",
-                lineHeight: 1.4,
                 whiteSpace: "nowrap",
               }}
             >
               {step.label}
             </span>
           </div>
-          {idx < steps.length - 1 && (
+
+          {idx < STEPS.length - 1 && (
             <div className="mt-[14px]">
               <StepDots />
             </div>
@@ -97,41 +271,20 @@ function Stepper({
   );
 }
 
-// ─── Category toggle ─────────────────────────────────────────────────────────
+// ============================================================
+// Icons
+// ============================================================
+
 function SoldierIcon({ white = false }: { white?: boolean }) {
   return (
     <svg width="26" height="26" viewBox="0 0 30 30" fill="none">
-      <defs>
-        <linearGradient
-          id="g1"
-          x1="12.81"
-          x2="12.81"
-          y1="0"
-          y2="23.11"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop stopColor="#00B867" />
-          <stop offset="1" stopColor="#00522E" />
-        </linearGradient>
-        <linearGradient
-          id="g2"
-          x1="10.53"
-          x2="10.53"
-          y1="14.66"
-          y2="30"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop stopColor="#00B867" />
-          <stop offset="1" stopColor="#00522E" />
-        </linearGradient>
-      </defs>
       <path
-        d="M0 18.55C0.024 17.76 0.038 16.9 0.064 16.01C1.83 16.1 4.96 16.25 5.79 15.74C6.56 15.28 6.96 14.66 7.36 14.05C7.89 13.22 8.42 12.41 9.91 12.1C11.78 11.7 13.92 11.57 16.11 11.43C18.79 11.26 21.54 11.08 23.96 10.43C24.17 10.37 24.5 10.17 24.79 9.97C24.96 10.23 25.16 10.5 25.4 10.78C25.71 11.16 26.04 11.71 25.98 12.29C25.98 12.29 25.62 12.66 24.27 13.02C19.9 14.2 14.42 13.81 10.24 14.69C9.42 14.86 8.39 15.33 7.63 16.53C7.63 16.53 7.02 17.77 6.04 18.37C5.09 18.94 1.27 18.58 0 18.55ZM0.08 15.49C0.2 11.9 0.56 7.77 2.33 4.81C5.09 0.18 12.62 -0.93 17.38 0.72C18.92 1.25 20.54 2.19 21.71 3.85C21.71 3.85 22.16 4.47 22.6 5.22C23.59 6.91 23.63 8.05 24.52 9.54C24.25 9.71 23.97 9.89 23.82 9.93C21.45 10.57 18.73 10.74 16.08 10.91C13.87 11.05 11.71 11.19 9.8 11.59C8.1 11.95 7.52 12.85 6.92 13.77C6.56 14.33 6.19 14.9 5.52 15.3C4.83 15.73 1.79 15.58 0.08 15.49ZM4.44 11.99C4.17 11.99 3.9 12.1 3.71 12.3C3.51 12.49 3.4 12.76 3.4 13.03C3.4 13.31 3.51 13.58 3.71 13.77C3.9 13.97 4.17 14.08 4.44 14.08C4.72 14.08 4.99 13.97 5.18 13.77C5.38 13.58 5.49 13.31 5.49 13.03C5.49 12.76 5.38 12.49 5.18 12.3C4.99 12.1 4.72 11.99 4.44 11.99ZM5.06 22.54H9.98V24.93H5.06V22.54Z"
-        fill={white ? "white" : "url(#g1)"}
+        d="M0 18.55C.024 17.76.038 16.9.064 16.01c1.766.09 4.896.24 5.726-.27.77-.46 1.17-1.08 1.57-1.69.53-.83 1.06-1.64 2.55-1.95 1.87-.4 4.01-.53 6.2-.67 2.68-.17 5.43-.35 7.85-1 .21-.06.54-.26.83-.46.17.26.37.53.61.81.31.38.64.93.58 1.51 0 0-.36.37-1.71.73-4.37 1.18-9.85.79-14.03 1.67-.82.17-1.85.64-2.61 1.84 0 0-.61 1.24-1.59 1.84-.95.57-4.77.21-6.04.18ZM.08 15.49c.12-3.59.48-7.72 2.25-10.68C5.09.18 12.62-.93 17.38.72c1.54.53 3.16 1.47 4.33 3.13 0 0 .45.62.89 1.37.99 1.69 1.03 2.83 1.92 4.32-.27.17-.55.35-.7.39-2.37.64-5.09.81-7.74.98-2.21.14-4.37.28-6.28.68-1.7.36-2.28 1.26-2.88 2.18-.36.56-.73 1.13-1.4 1.53-.69.43-3.73.28-5.44.19Z"
+        fill={white ? "white" : "#00B867"}
       />
       <path
-        d="M11.56 14.98C11.84 16.91 11.97 20.56 11.94 21.74C11.93 22.31 11.72 22.23 12.56 22.23H15.04C15.04 22.23 14.98 17.56 14.66 14.66C14.42 14.67 14.18 14.69 13.95 14.71C13.15 14.77 12.35 14.86 11.56 14.98ZM6.04 18.93V22.02H9.01V15.75C8.65 16 8.34 16.34 8.09 16.77C7.71 17.52 7.02 18.37 6.31 18.81C6.23 18.85 6.14 18.9 6.04 18.93ZM6.04 25.45V28.88C6.04 29.5 6.71 30 7.53 30C8.34 30 9.01 29.5 9.01 28.88V25.45H6.04Z"
-        fill={white ? "white" : "url(#g2)"}
+        d="M11.56 14.98c.28 1.93.41 5.58.38 6.76-.01.57-.22.49.62.49h2.48s-.06-4.67-.38-7.57c-.24.01-.48.03-.71.05-.8.06-1.6.15-2.39.27ZM6.04 18.93v3.09h2.97v-6.27c-.36.25-.67.59-.92 1.02-.38.75-1.07 1.6-1.78 2.04-.08.04-.17.09-.27.12ZM6.04 25.45v3.43c0 .62.67 1.12 1.49 1.12.81 0 1.48-.5 1.48-1.12v-3.43H6.04Z"
+        fill={white ? "white" : "#00522E"}
       />
     </svg>
   );
@@ -140,45 +293,34 @@ function SoldierIcon({ white = false }: { white?: boolean }) {
 function StarIcon({ white = false }: { white?: boolean }) {
   return (
     <svg width="22" height="22" viewBox="0 0 26 26" fill="none">
-      <defs>
-        <linearGradient
-          id="gs"
-          x1="13"
-          x2="13"
-          y1="2"
-          y2="24"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop stopColor="#00B867" />
-          <stop offset="1" stopColor="#00522E" />
-        </linearGradient>
-      </defs>
       <path
-        d="M13 2L16.09 9.26L24 10.27L18.5 15.64L19.82 23.5L13 19.77L6.18 23.5L7.5 15.64L2 10.27L9.91 9.26L13 2Z"
-        fill={white ? "white" : "url(#gs)"}
-        stroke={white ? "white" : "url(#gs)"}
+        d="M13 2l3.09 7.26L24 10.27l-5.5 5.37 1.32 7.86L13 19.77 6.18 23.5l1.32-7.86L2 10.27l7.91-1.01L13 2Z"
+        fill={white ? "white" : "#00B867"}
+        stroke={white ? "white" : "#00522E"}
         strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
       />
     </svg>
   );
 }
+
+// ============================================================
+// Category Toggle
+// ============================================================
 
 function CategoryToggle({
   value,
   onChange,
 }: {
   value: SoldierCategory;
-  onChange: (v: SoldierCategory) => void;
+  onChange: (value: SoldierCategory) => void;
 }) {
   return (
     <div className="flex items-stretch rounded-[12px] overflow-hidden border border-[#eff0f6]">
-     <button
+      <button
         type="button"
         onClick={() => onChange("مجند")}
         className={[
-          "flex items-center gap-4 px-3 py-3 w-[155px] justify-end transition-colors border-r border-[#eff0f6]",
+          "flex items-center gap-4 px-3 py-3 w-[155px] justify-end",
           value === "مجند"
             ? "bg-gradient-to-b from-[#00b867] to-[#00522e]"
             : "bg-white hover:bg-gray-50",
@@ -188,20 +330,22 @@ function CategoryToggle({
           style={{
             ...F,
             fontSize: 18,
-            color: value === "مجند" ? "#f5f5f5" : "#2d3648",
+            color: value === "مجند" ? "white" : "#2d3648",
             flex: 1,
             textAlign: "right",
           }}
         >
           مجند
         </span>
+
         <SoldierIcon white={value === "مجند"} />
       </button>
+
       <button
         type="button"
         onClick={() => onChange("متطوع")}
         className={[
-          "flex items-center gap-4 px-3 py-3 w-[155px] justify-end transition-colors",
+          "flex items-center gap-4 px-3 py-3 w-[155px] justify-end",
           value === "متطوع"
             ? "bg-gradient-to-b from-[#00b867] to-[#00522e]"
             : "bg-white hover:bg-gray-50",
@@ -211,96 +355,79 @@ function CategoryToggle({
           style={{
             ...F,
             fontSize: 18,
-            color: value === "متطوع" ? "#f5f5f5" : "#2d3648",
+            color: value === "متطوع" ? "white" : "#2d3648",
             flex: 1,
             textAlign: "right",
           }}
         >
           متطوع
         </span>
+
         <StarIcon white={value === "متطوع"} />
       </button>
-      
     </div>
   );
 }
 
-// ─── Reusable Dropdown ────────────────────────────────────────────────────────
+// ============================================================
+// Dropdown
+// ============================================================
+
 function FormDropdown({
   placeholder,
   options,
   value,
   onChange,
   error,
-  disabled,
+  disabled = false,
 }: {
   placeholder: string;
-  options: string[];
+  options: Option[];
   value: string;
-  onChange: (v: string) => void;
+  onChange: (value: string) => void;
   error?: string;
   disabled?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
   return (
     <div className="flex flex-col gap-1 w-full">
-      <div className="relative w-full">
-        <button
-          type="button"
-          onClick={() => !disabled && setOpen((o) => !o)}
+      <div className="relative">
+        <select
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value)}
+          dir="rtl"
           className={[
-            "w-full h-[54px] bg-white border rounded-[8px] flex items-center gap-3 px-3 transition-colors",
+            "w-full h-[54px] appearance-none bg-white border rounded-[8px]",
+            "px-3 pl-10 outline-none transition-colors",
             disabled
-              ? "opacity-50 cursor-not-allowed border-[#e2e7f0]"
-              : "hover:border-[#a0aec0] cursor-pointer",
+              ? "bg-[#f3f4f6] cursor-not-allowed opacity-60"
+              : "cursor-pointer focus:border-[#344736]",
             error ? "border-[#ef4444]" : "border-[#e2e7f0]",
           ].join(" ")}
+          style={{
+            ...F,
+            fontSize: 16,
+            color: value ? "#4a5468" : "#a0abc0",
+          }}
         >
-          <ChevronDown
-            size={20}
-            className={`shrink-0 text-[#2d3648] transition-transform ${open ? "rotate-180" : ""}`}
-          />
-          <span
-            className="flex-1 text-right"
-            style={{ ...F, fontSize: 18, color: "##4a5468" }}
-          >
-            {value || placeholder}
-          </span>
-        </button>
-        {open && (
-          <ul className="absolute z-50 top-full mt-1 w-full bg-white border border-[#e2e7f0] rounded-[8px] shadow-lg overflow-hidden">
-            {options.map((opt) => (
-              <li key={opt}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onChange(opt);
-                    setOpen(false);
-                  }}
-                  className={[
-                    "w-full text-right px-4 py-3 transition-colors",
-                    opt === value
-                      ? "bg-[#f0f2fd] text-[#344736]"
-                      : "hover:bg-[#f5f6fb] text-[#2d3648]",
-                  ].join(" ")}
-                  style={{ ...F, fontSize: 16 }}
-                >
-                  {opt}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+          <option value="">{placeholder}</option>
+
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#344736]">
+          ▼
+        </span>
       </div>
+
       {error && (
         <p
           className="text-right px-1"
-          style={{
-            ...F,
-            fontSize: 13,
-            color: "#ef4444",
-            lineHeight: 1.4,
-          }}
+          style={{ ...F, fontSize: 13, color: "#ef4444" }}
         >
           {error}
         </p>
@@ -309,19 +436,20 @@ function FormDropdown({
   );
 }
 
-// ─── Reusable Text Input ──────────────────────────────────────────────────────
+// ============================================================
+// Input
+// ============================================================
+
 function FormInput({
   placeholder,
   value,
   onChange,
   error,
-  disabled,
 }: {
   placeholder: string;
   value: string;
-  onChange: (v: string) => void;
+  onChange: (value: string) => void;
   error?: string;
-  disabled?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1 w-full">
@@ -330,24 +458,19 @@ function FormInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        disabled={disabled}
         dir="rtl"
         className={[
-          "w-full h-[54px] bg-white border rounded-[8px] px-3 text-right outline-none focus:border-[#344736] transition-colors",
-          disabled ? "opacity-50 cursor-not-allowed" : "",
+          "w-full h-[54px] bg-white border rounded-[8px] px-3",
+          "text-right outline-none focus:border-[#344736]",
           error ? "border-[#ef4444]" : "border-[#e2e7f0]",
         ].join(" ")}
         style={{ ...F, fontSize: 18, color: "#4a5468" }}
       />
+
       {error && (
         <p
           className="text-right px-1"
-          style={{
-            ...F,
-            fontSize: 13,
-            color: "#ef4444",
-            lineHeight: 1.4,
-          }}
+          style={{ ...F, fontSize: 13, color: "#ef4444" }}
         >
           {error}
         </p>
@@ -356,72 +479,50 @@ function FormInput({
   );
 }
 
-// ─── Date Input ───────────────────────────────────────────────────────────────
+// ============================================================
+// Date
+// ============================================================
+
 function DateInput({
   value,
   onChange,
   error,
 }: {
   value: string;
-  onChange: (v: string) => void;
+  onChange: (value: string) => void;
   error?: string;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const openPicker = () => {
-    if (inputRef.current) {
-      try {
-        (inputRef.current as any).showPicker?.();
-      } catch {
-        inputRef.current.click();
-      }
-    }
-  };
-
   return (
     <div className="flex flex-col gap-1 w-full">
-      <div className="relative w-full">
-        {/* Calendar icon — clickable to open picker */}
-        <button
-          type="button"
-          onClick={openPicker}
-          className="absolute inset-y-0 right-3 flex items-center z-10"
-          tabIndex={-1}
-        >
-          <CalendarDays
-            size={20}
-            style={{ color: "#415844" }}
-          />
-        </button>
+      <div className="relative">
+        <CalendarDays
+          size={20}
+          className="absolute right-3 top-1/2 -translate-y-1/2 z-10 text-[#415844]"
+        />
 
         <input
-          ref={inputRef}
           type="date"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className={[
-            "w-full h-[54px] bg-white border rounded-[8px] pr-10 pl-3 outline-none focus:border-[#415844] transition-colors cursor-pointer",
+            "w-full h-[54px] bg-white border rounded-[8px]",
+            "pr-10 pl-3 outline-none focus:border-[#415844]",
             error ? "border-[#ef4444]" : "border-[#e2e7f0]",
           ].join(" ")}
           style={{
             ...F,
             fontSize: 18,
             color: value ? "#4a5468" : "#a0abc0",
-            colorScheme: "light",
             direction: "ltr",
             textAlign: "right",
           }}
         />
       </div>
+
       {error && (
         <p
           className="text-right px-1"
-          style={{
-            ...F,
-            fontSize: 13,
-            color: "#ef4444",
-            lineHeight: 1.4,
-          }}
+          style={{ ...F, fontSize: 13, color: "#ef4444" }}
         >
           {error}
         </p>
@@ -430,196 +531,145 @@ function DateInput({
   );
 }
 
-// ─── Field Group ─────────────────────────────────────────────────────────────
+// ============================================================
+// Field Group
+// ============================================================
+
 function FieldGroup({
   label,
-  labelColor = "#2d3648",
   children,
+  labelColor = "#2d3648",
 }: {
   label: string;
-  labelColor?: string;
   children: React.ReactNode;
+  labelColor?: string;
 }) {
   return (
     <div className="flex flex-col gap-1.5 flex-1 min-w-0">
       <label
         className="block text-right px-1"
-        style={{
-          ...F,
-          fontWeight: 700,
-          fontSize: 16,
-          color: labelColor,
-          lineHeight: 1.5,
-        }}
+        style={{ ...F, fontWeight: 700, fontSize: 16, color: labelColor }}
       >
         {label}
       </label>
+
       {children}
     </div>
   );
 }
 
-function SubHeader({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function SubHeader({ children }: { children: React.ReactNode }) {
   return (
     <p
       className="text-right w-full"
-      style={{
-        ...F,
-        fontWeight: 700,
-        fontSize: 18,
-        color: "#2d3648",
-        lineHeight: 1.5,
-      }}
+      style={{ ...F, fontWeight: 700, fontSize: 18, color: "#2d3648" }}
     >
       {children}
     </p>
   );
 }
 
-// ─── Excel Icon ──────────────────────────────────────────────────────────────
+// ============================================================
+// Excel Icon
+// ============================================================
+
 function ExcelIcon({ size = 28 }: { size?: number }) {
   return (
-    <svg
-      width={size}
-      height={size * 1.25}
-      viewBox="0 0 28 35"
-      fill="none"
+    <div
+      style={{
+        width: size,
+        height: size,
+        background: "#217346",
+        borderRadius: 5,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "white",
+        fontWeight: 800,
+        fontSize: size * 0.42,
+        fontFamily: "Arial",
+      }}
     >
-      <rect
-        x="0"
-        y="0"
-        width="20"
-        height="35"
-        rx="2"
-        fill="#E7E7E9"
-      />
-      <rect
-        x="20"
-        y="8"
-        width="8"
-        height="27"
-        rx="1"
-        fill="#E7E7E9"
-      />
-      <polygon points="20,0 28,8 20,8" fill="#A3A2A3" />
-      <rect
-        x="0"
-        y="0"
-        width="18"
-        height="22"
-        rx="2"
-        fill="#00A649"
-      />
-      <rect
-        x="0"
-        y="0"
-        width="3"
-        height="22"
-        rx="1"
-        fill="#05DB5C"
-      />
-      <text
-        x="4"
-        y="15"
-        fill="white"
-        fontSize="8"
-        fontWeight="bold"
-        fontFamily="Arial"
-      >
-        XLS
-      </text>
-    </svg>
+      X
+    </div>
   );
 }
 
-// ─── Upload Icon ────────────────────────────────────────────────────────────
-function UploadFolderIcon() {
-  return (
-    <svg width="42" height="42" viewBox="0 0 42 42" fill="none">
-      <rect width="42" height="42" rx="8" fill="#DCF4DF" />
-      <path
-        d="M8 16C8 13.8 9.8 12 12 12H18L21 15H30C32.2 15 34 16.8 34 19V28C34 30.2 32.2 32 30 32H12C9.8 32 8 30.2 8 28V16Z"
-        fill="#395945"
-      />
-      <path
-        d="M8 20H34V28C34 30.2 32.2 32 30 32H12C9.8 32 8 30.2 8 28V20Z"
-        fill="#415844"
-      />
-      <path
-        d="M21 22V28M21 22L19 24M21 22L23 24"
-        stroke="white"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-// ─── Group Upload Section ─────────────────────────────────────────────────────
-interface UploadedFile {
-  name: string;
-  size: string;
-  raw: File;
-}
+// ============================================================
+// Group Upload Section
+// ============================================================
 
 function GroupUploadSection({
   onSubmit,
+  loading,
+  uploadedFile,
+  setUploadedFile,
 }: {
   onSubmit: () => void;
+  loading: boolean;
+  uploadedFile: UploadedFile | null;
+  setUploadedFile: React.Dispatch<React.SetStateAction<UploadedFile | null>>;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploadedFile, setUploadedFile] =
-    useState<UploadedFile | null>(null);
+
   const [dragOver, setDragOver] = useState(false);
 
   const formatSize = (bytes: number): string => {
-    if (bytes >= 1024 * 1024)
+    if (bytes >= 1024 * 1024) {
       return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-    if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)}KB`;
+    }
+
+    if (bytes >= 1024) {
+      return `${(bytes / 1024).toFixed(0)}KB`;
+    }
+
     return `${bytes}B`;
   };
 
-  const handleFile = useCallback((file: File) => {
-    const ext = file.name.split(".").pop()?.toLowerCase();
-    if (!["xls", "xlsx"].includes(ext ?? "")) {
-      alert(
-        "الملفات المدعومة فقط هي ملفات الاكسيل (.xls, .xlsx)",
-      );
-      return;
-    }
-    setUploadedFile({
-      name: file.name,
-      size: formatSize(file.size),
-      raw: file,
-    });
-  }, []);
+  const handleFile = useCallback(
+    (file: File) => {
+      const ext = file.name.split(".").pop()?.toLowerCase();
 
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
+      if (!["xls", "xlsx"].includes(ext ?? "")) {
+        alert("الملفات المدعومة فقط هي ملفات الاكسيل (.xls, .xlsx)");
+        return;
+      }
+
+      setUploadedFile({
+        name: file.name,
+        size: formatSize(file.size),
+        raw: file,
+      });
+    },
+    [setUploadedFile]
+  );
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) handleFile(file);
+
+    if (file) {
+      handleFile(file);
+    }
+
     e.target.value = "";
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
+
     const file = e.dataTransfer.files?.[0];
-    if (file) handleFile(file);
+
+    if (file) {
+      handleFile(file);
+    }
   };
 
   return (
     <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full">
       <div className="flex flex-col gap-5 px-6 py-5">
-        {/* ── Header row ───────────────────────────────────────────── */}
+        {/* Header */}
         <div className="flex flex-wrap items-start justify-between gap-4 w-full">
-          {/* Right: title + description */}
           <div className="flex flex-col gap-1 items-start flex-1 min-w-0">
             <p
               style={{
@@ -632,54 +682,49 @@ function GroupUploadSection({
             >
               قيد مجموعة من خلال كشف مجمّع
             </p>
+
             <p
               style={{
                 ...F,
                 fontSize: 14,
                 color: "#717d96",
-                lineHeight: 1.4,
+                lineHeight: 1.6,
                 textAlign: "right",
               }}
             >
-              يتم استيفاء بيانات الأفراد بنموذج القيد الموحّد،
-              ثم رفع الكشف بصيغة Excel لإتمام المراجعة.
+              قم بتحميل نموذج القيد الموحّد، ثم قم بتعبئة بيانات الأفراد
+              ورفع الملف مرة أخرى لإجراء المراجعة.
             </p>
           </div>
-          {/* Left: download link */}
+
+          {/* Download template */}
           <a
-            href="https://github.com/islammagdi/Rangerforcessystem/raw/refs/heads/main/Data.xlsx"
-            download
+            href={EXCEL_TEMPLATE_URL}
+            download="Data.xlsx"
+            target="_blank"
+            rel="noopener noreferrer"
             className="flex items-center gap-1.5 shrink-0 group"
           >
-            <button
-              type="button"
-              className="flex items-center gap-1.5 shrink-0 group"
+            <Download size={18} style={{ color: "#00b867" }} />
+
+            <span
+              className="group-hover:opacity-80 transition-opacity"
+              style={{
+                ...F,
+                fontSize: 16,
+                background: "linear-gradient(to bottom, #00b867, #00522e)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+              }}
             >
-              <Download
-                size={18}
-                style={{ color: "#00b867" }}
-              />
-              <span
-                className=" group-hover:opacity-80 transition-opacity"
-                style={{
-                  ...F,
-                  fontSize: 18,
-                  background:
-                    "linear-gradient(to bottom, #00b867, #00522e)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                }}
-              >
-                تحميل نموذج القيد الموحّد
-              </span>
-            </button>
+              تحميل نموذج القيد الموحّد
+            </span>
           </a>
         </div>
 
-        {/* Divider */}
         <div className="w-full h-px bg-[#efefef]" />
 
-        {/* ── Drop zone ────────────────────────────────────────────── */}
+        {/* Drop Zone */}
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -688,49 +733,40 @@ function GroupUploadSection({
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
           className={[
-            "flex flex-col items-center justify-center gap-4 py-10 px-6 rounded-[12px] border-2 border-dashed transition-colors cursor-default",
+            "flex flex-col items-center justify-center gap-4 py-10 px-6 rounded-[12px]",
+            "border-2 border-dashed transition-colors cursor-default",
             dragOver
               ? "border-[#415844] bg-[#f0f3ff]"
               : "border-[#cbd2e0] bg-transparent",
           ].join(" ")}
         >
-          <UploadFolderIcon />
+          <Upload size={42} strokeWidth={1.5} className="text-[#415844]" />
 
           <div className="flex flex-col items-center gap-3 w-full">
             <p style={{ ...F, fontSize: 14, color: "#5B795F" }}>
-              اسحب الملف هنا أو تصفح
+              اسحب ملف Excel هنا أو تصفح
             </p>
 
-            {/* أو divider */}
             <div className="flex items-center gap-3 w-[200px]">
               <div className="flex-1 h-px bg-[#e7e7e7]" />
-              <span
-                style={{ ...F, fontSize: 12, color: "#717d96" }}
-              >
-                أو
-              </span>
+
+              <span style={{ ...F, fontSize: 12, color: "#717d96" }}>أو</span>
+
               <div className="flex-1 h-px bg-[#e7e7e7]" />
             </div>
 
-            {/* Browse button */}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className="bg-[#f7f9fc] border border-[#415844] rounded-[8px] px-3 py-1.5 transition-colors hover:bg-[#eef1fd] active:opacity-80"
             >
               <span
-                style={{
-                  ...F,
-                  fontWeight: 700,
-                  fontSize: 12,
-                  color: "#415844",
-                }}
+                style={{ ...F, fontWeight: 700, fontSize: 12, color: "#415844" }}
               >
                 تصفح الملفات
               </span>
             </button>
 
-            {/* Hidden file input — Excel only */}
             <input
               ref={fileInputRef}
               type="file"
@@ -741,36 +777,25 @@ function GroupUploadSection({
           </div>
         </div>
 
-        {/* Supported formats note */}
-        <p
-          className="text-right"
-          style={{ ...F, fontSize: 12, color: "#717d96" }}
-        >
-          الملفات المدعومة فقط هي ملفات الاكسيل
+        <p className="text-right" style={{ ...F, fontSize: 12, color: "#717d96" }}>
+          الملفات المدعومة فقط هي ملفات الاكسيل (.xls, .xlsx)
         </p>
 
-        {/* ── Uploaded file item ───────────────────────────────────── */}
+        {/* Uploaded File */}
         {uploadedFile && (
           <div className="flex items-center gap-3 bg-white border border-[#e7e7e7] rounded-[12px] px-4 py-3 w-full">
-            {/* Remove button */}
-             {/* Excel icon */}
             <div className="shrink-0">
               <ExcelIcon size={28} />
             </div>
 
-            {/* File info */}
             <div className="flex flex-col items-end flex-1 min-w-0 gap-0.5">
               <p
                 className="w-full text-right truncate"
-                style={{
-                  ...F,
-                  fontWeight: 700,
-                  fontSize: 12,
-                  color: "#2d3648",
-                }}
+                style={{ ...F, fontWeight: 700, fontSize: 12, color: "#2d3648" }}
               >
                 {uploadedFile.name}
               </p>
+
               <p
                 className="w-full text-right"
                 style={{ ...F, fontSize: 12, color: "#a0abc0" }}
@@ -778,33 +803,28 @@ function GroupUploadSection({
                 {uploadedFile.size}
               </p>
             </div>
-<button
+
+            <button
               type="button"
               onClick={() => setUploadedFile(null)}
               className="shrink-0 flex items-center justify-center w-6 h-6 rounded-full hover:bg-[#f5f5f5] transition-colors"
             >
               <X size={16} className="text-[#717d96]" />
             </button>
-           
           </div>
         )}
 
-        {/* ── Submit button ─────────────────────────────────────────── */}
+        {/* Submit */}
         <div className="flex justify-end pt-1">
           <button
             type="button"
             onClick={onSubmit}
-            disabled={!uploadedFile}
+            disabled={!uploadedFile || loading}
             className="h-[44px] px-6 rounded-[8px] flex items-center justify-center gap-2 transition-opacity hover:opacity-90 active:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{
-              background:
-                "linear-gradient(to bottom, #00b867, #00522e)",
-            }}
+            style={{ background: "linear-gradient(to bottom, #00b867, #00522e)" }}
           >
-            <span
-              style={{ ...F, fontSize: 16, color: "#f5f5f5" }}
-            >
-              مراجعة الكشف
+            <span style={{ ...F, fontSize: 16, color: "#f5f5f5" }}>
+              {loading ? "جاري قراءة الكشف..." : "مراجعة الكشف"}
             </span>
           </button>
         </div>
@@ -813,100 +833,831 @@ function GroupUploadSection({
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ============================================================
+// Page
+// ============================================================
+
 export function AddNewSoldierPage() {
   const navigate = useNavigate();
 
-  // Form state
-  const [method, setMethod] =
-    useState<RegistrationMethod>("فرد واحد");
-  const [category, setCategory] =
-    useState<SoldierCategory>("مجند");
+  // ----------------------------------------------------------
+  // Basic state
+  // ----------------------------------------------------------
+
+  const [method, setMethod] = useState<RegistrationMethod>("فرد واحد");
+
+  const [category, setCategory] = useState<SoldierCategory>("مجند");
+
   const [milId, setMilId] = useState("");
   const [rank, setRank] = useState("");
   const [name, setName] = useState("");
   const [discharge, setDischarge] = useState("");
   const [unit, setUnit] = useState("");
-  const [status, setStatus] = useState("ملحق علي القوة");
+  const [status, setStatus] = useState("");
   const [attachment, setAttachment] = useState("");
-  const [errors, setErrors] = useState<Record<string, string>>(
-    {},
+
+  // ----------------------------------------------------------
+  // Group upload
+  // ----------------------------------------------------------
+
+  const [uploadedGroupFile, setUploadedGroupFile] =
+    useState<UploadedFile | null>(null);
+
+  const [groupLoading, setGroupLoading] = useState(false);
+
+  // ----------------------------------------------------------
+  // Database state
+  // ----------------------------------------------------------
+
+  const [ranks, setRanks] = useState<Rank[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [statuses, setStatuses] = useState<ServiceStatus[]>([]);
+  const [categories, setCategories] = useState<PersonnelCategory[]>([]);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // ==========================================================
+  // Load database data
+  // ==========================================================
+
+  useEffect(() => {
+    loadFormData();
+  }, []);
+
+  async function loadFormData() {
+    try {
+      setLoading(true);
+
+      const [ranksResult, unitsResult, statusesResult, categoriesResult] =
+        await Promise.all([
+          supabase
+            .from("ranks")
+            .select("id,name,code,sort_order,is_active")
+            .eq("is_active", true)
+            .order("sort_order", { ascending: true }),
+
+          supabase
+            .from("units")
+            .select("id,name,code,unit_type,parent_unit_id,is_active")
+            .eq("is_active", true)
+            .order("name", { ascending: true }),
+
+          supabase
+            .from("service_statuses")
+            .select("id,name,code,is_active")
+            .eq("is_active", true)
+            .order("name", { ascending: true }),
+
+          supabase
+            .from("personnel_categories")
+            .select("id,name,code,is_active")
+            .eq("is_active", true)
+            .order("name", { ascending: true }),
+        ]);
+
+      if (ranksResult.error) {
+        throw ranksResult.error;
+      }
+
+      if (unitsResult.error) {
+        throw unitsResult.error;
+      }
+
+      if (statusesResult.error) {
+        throw statusesResult.error;
+      }
+
+      if (categoriesResult.error) {
+        throw categoriesResult.error;
+      }
+
+      setRanks(ranksResult.data ?? []);
+      setUnits(unitsResult.data ?? []);
+      setStatuses(statusesResult.data ?? []);
+      setCategories(categoriesResult.data ?? []);
+
+      const attachedStatus = (statusesResult.data ?? []).find(
+        (s) =>
+          s.code?.toUpperCase() === "ATTACHED" || s.name === "ملحق علي القوة"
+      );
+
+      if (attachedStatus) {
+        setStatus(attachedStatus.id);
+      }
+    } catch (error) {
+      console.error("Error loading form data:", error);
+
+      alert("حدث خطأ أثناء تحميل البيانات من قاعدة البيانات");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ==========================================================
+  // Category DB record
+  // ==========================================================
+
+  const selectedCategory = useMemo(() => {
+    return categories.find((c) => {
+      const code = c.code?.toUpperCase() ?? "";
+
+      if (category === "مجند") {
+        return (
+          c.name === "مجند" || code === "CONSCRIPT" || code === "SOLDIER"
+        );
+      }
+
+      return c.name === "متطوع" || code === "VOLUNTEER";
+    });
+  }, [categories, category]);
+
+  // ==========================================================
+  // Rank filtering
+  // ==========================================================
+
+  const filteredRanks = useMemo(() => {
+    if (category === "مجند") {
+      return ranks.filter((r) => {
+        const rankName = r.name.trim();
+        const code = r.code?.trim().toUpperCase();
+
+        return rankName === "جندي" || code === "SOLDIER";
+      });
+    }
+
+    return ranks.filter((r) => {
+      const rankName = r.name.trim();
+      const code = r.code?.trim().toUpperCase();
+
+      return rankName !== "جندي" && code !== "SOLDIER";
+    });
+  }, [ranks, category]);
+
+  // ==========================================================
+  // Unit options
+  // ==========================================================
+
+  const mainUnitOptions = useMemo(() => {
+    return units
+      .filter((u) => u.unit_type?.toUpperCase() === "MAIN")
+      .map((u) => ({ value: u.id, label: u.name }));
+  }, [units]);
+
+  const attachmentUnitOptions = useMemo(() => {
+    return units.map((u) => ({ value: u.id, label: u.name }));
+  }, [units]);
+
+  // ==========================================================
+  // Options
+  // ==========================================================
+
+  const rankOptions = useMemo(() => {
+    return filteredRanks.map((r) => ({ value: r.id, label: r.name }));
+  }, [filteredRanks]);
+
+  const statusOptions = useMemo(() => {
+    return statuses.map((s) => ({ value: s.id, label: s.name }));
+  }, [statuses]);
+
+  const selectedStatus = statuses.find((s) => s.id === status);
+
+  // ==========================================================
+  // Attachment
+  // ==========================================================
+
+  const isAttachmentEnabled =
+    selectedStatus?.code?.toUpperCase() === "ATTACHED" ||
+    selectedStatus?.name === "ملحق علي القوة";
+
+  // ==========================================================
+  // Lookup maps للمطابقة بين ملف الإكسيل وجداول قاعدة البيانات
+  // ==========================================================
+
+  const rankLookup = useMemo(() => {
+    const map = new Map<string, Rank>();
+
+    ranks.forEach((r) => {
+      map.set(normalizeExcelHeader(r.name), r);
+    });
+
+    return map;
+  }, [ranks]);
+
+  const unitLookup = useMemo(() => {
+    const map = new Map<string, Unit>();
+
+    units.forEach((u) => {
+      map.set(normalizeExcelHeader(u.name), u);
+    });
+
+    return map;
+  }, [units]);
+
+  const statusLookup = useMemo(() => {
+    const map = new Map<string, ServiceStatus>();
+
+    statuses.forEach((s) => {
+      map.set(normalizeExcelHeader(s.name), s);
+    });
+
+    return map;
+  }, [statuses]);
+
+  const categoryLookup = useMemo(() => {
+    const map = new Map<string, PersonnelCategory>();
+
+    categories.forEach((c) => {
+      map.set(normalizeExcelHeader(c.name), c);
+    });
+
+    return map;
+  }, [categories]);
+
+  // ==========================================================
+  // مطابقة صف واحد من الإكسيل مع قاعدة البيانات وتصنيفه
+  // ==========================================================
+
+  const classifyRow = useCallback(
+    (
+      row: GroupPersonnelRow,
+      existingMilitaryNumbers: Set<string>,
+      duplicateMilitaryNumbers: Set<string>
+    ): ClassifiedPersonnelRow => {
+      const errors: string[] = [];
+
+      // --------------------------------------------------
+      // حقول أساسية مفقودة
+      // --------------------------------------------------
+
+      if (!row.military_number) {
+        errors.push("الرقم العسكري مفقود");
+      }
+
+      if (!row.rank_name) {
+        errors.push("الدرجة مفقودة");
+      }
+
+      if (!row.full_name) {
+        errors.push("الاسم مفقود");
+      }
+
+      if (!row.personnel_category_name) {
+        errors.push("فئة الفرد مفقودة");
+      }
+
+      if (!row.primary_unit_name) {
+        errors.push("الوحدة الأساسية مفقودة");
+      }
+
+      if (!row.service_status_name) {
+        errors.push("الموقف الخدمي مفقود");
+      }
+
+      if (
+        row.military_number &&
+        duplicateMilitaryNumbers.has(row.military_number)
+      ) {
+        errors.push("الرقم العسكري مكرر داخل نفس الملف");
+      }
+
+      // --------------------------------------------------
+      // مطابقة القيم النصية بجداول قاعدة البيانات
+      // --------------------------------------------------
+
+      const matchedRank = row.rank_name
+        ? rankLookup.get(normalizeExcelHeader(row.rank_name))
+        : undefined;
+
+      const matchedCategory = row.personnel_category_name
+        ? categoryLookup.get(normalizeExcelHeader(row.personnel_category_name))
+        : undefined;
+
+      const matchedUnit = row.primary_unit_name
+        ? unitLookup.get(normalizeExcelHeader(row.primary_unit_name))
+        : undefined;
+
+      const matchedStatus = row.service_status_name
+        ? statusLookup.get(normalizeExcelHeader(row.service_status_name))
+        : undefined;
+
+      const matchedAttachmentUnit = row.attachment_unit_name
+        ? unitLookup.get(normalizeExcelHeader(row.attachment_unit_name))
+        : undefined;
+
+      if (row.rank_name && !matchedRank) {
+        errors.push(`الدرجة "${row.rank_name}" غير موجودة في قاعدة البيانات`);
+      }
+
+      if (row.personnel_category_name && !matchedCategory) {
+        errors.push(
+          `فئة الفرد "${row.personnel_category_name}" غير موجودة في قاعدة البيانات`
+        );
+      }
+
+      if (row.primary_unit_name && !matchedUnit) {
+        errors.push(
+          `الوحدة الأساسية "${row.primary_unit_name}" غير موجودة في قاعدة البيانات`
+        );
+      }
+
+      if (row.service_status_name && !matchedStatus) {
+        errors.push(
+          `الموقف الخدمي "${row.service_status_name}" غير موجود في قاعدة البيانات`
+        );
+      }
+
+      if (row.attachment_unit_name && !matchedAttachmentUnit) {
+        errors.push(
+          `جهة الإلحاق "${row.attachment_unit_name}" غير موجودة في قاعدة البيانات`
+        );
+      }
+
+      // --------------------------------------------------
+      // تطابق الدرجة مع الفئة (نفس منطق القيد الفردي:
+      // فئة "مجند" تقبل درجة "جندي" فقط والعكس صحيح)
+      // --------------------------------------------------
+
+      let isConscriptCategory = false;
+
+      if (matchedCategory) {
+        const code = matchedCategory.code?.toUpperCase() ?? "";
+
+        isConscriptCategory =
+          matchedCategory.name === "مجند" ||
+          code === "CONSCRIPT" ||
+          code === "SOLDIER";
+      }
+
+      if (matchedRank && matchedCategory) {
+        const rankCode = matchedRank.code?.trim().toUpperCase();
+        const isSoldierRank =
+          matchedRank.name.trim() === "جندي" || rankCode === "SOLDIER";
+
+        if (isConscriptCategory && !isSoldierRank) {
+          errors.push('فئة (مجند) يجب أن تكون الدرجة فيها "جندي" فقط');
+        }
+
+        if (!isConscriptCategory && isSoldierRank) {
+          errors.push('فئة (متطوع) لا يمكن أن تكون الدرجة فيها "جندي"');
+        }
+      }
+
+      // تاريخ التسريح مطلوب للمجندين
+      if (isConscriptCategory && !row.discharge_date) {
+        errors.push('تاريخ التسريح مطلوب لفئة "مجند"');
+      }
+
+      // جهة الإلحاق مطلوبة لو الموقف الخدمي "ملحق علي القوة"
+      const requiresAttachment =
+        matchedStatus?.code?.toUpperCase() === "ATTACHED" ||
+        matchedStatus?.name === "ملحق علي القوة";
+
+      if (requiresAttachment && !matchedAttachmentUnit) {
+        errors.push("جهة الإلحاق مطلوبة لهذا الموقف الخدمي");
+      }
+
+      // --------------------------------------------------
+      // التصنيف النهائي
+      // --------------------------------------------------
+
+      const classification: RowClassification =
+        errors.length > 0
+          ? "error"
+          : existingMilitaryNumbers.has(row.military_number)
+          ? "update"
+          : "new";
+
+      return {
+        ...row,
+        classification,
+        errors,
+        rank_id: matchedRank?.id ?? null,
+        personnel_category_id: matchedCategory?.id ?? null,
+        primary_unit_id: matchedUnit?.id ?? null,
+        service_status_id: matchedStatus?.id ?? null,
+        attachment_unit_id: matchedAttachmentUnit?.id ?? null,
+      };
+    },
+    [rankLookup, categoryLookup, unitLookup, statusLookup]
   );
 
-  const RANKS = [
-    "جندي",
-    "عريف",
-    "وكيل رقيب",
-    "رقيب",
-    "رقيب أول",
-    "مساعد أول",
-  ];
-  const UNITS = [
-    "مج العمليات الخاصة",
-    "ك ١١٣ صع",
-    "س ١٤٥ اشارة",
-    "فرع العمليات",
-    "قيادة المنطقة",
-  ];
-  const STATUS = [
-    "ملحق علي القوة",
-    "قوة الوحده",
-    "منتهي خدمته",
-  ];
-  const ATTACH = [
-    "لا يوجد",
-    "فرع العمليات",
-    "قيادة المنطقة",
-    "وحدة الدعم",
-  ];
+  // ==========================================================
+  // Category changed
+  // ==========================================================
+
+  function handleCategoryChange(value: SoldierCategory) {
+    setCategory(value);
+    setRank("");
+
+    setErrors((prev) => {
+      const next = { ...prev };
+
+      delete next.rank;
+      delete next.discharge;
+
+      return next;
+    });
+
+    if (value === "متطوع") {
+      setDischarge("");
+    }
+  }
+
+  // ==========================================================
+  // Status changed
+  // ==========================================================
+
+  function handleStatusChange(value: string) {
+    setStatus(value);
+
+    const newStatus = statuses.find((s) => s.id === value);
+
+    const enabled =
+      newStatus?.code?.toUpperCase() === "ATTACHED" ||
+      newStatus?.name === "ملحق علي القوة";
+
+    if (!enabled) {
+      setAttachment("");
+
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.attachment;
+        return next;
+      });
+    }
+  }
+
+  // ==========================================================
+  // Validation
+  // ==========================================================
 
   function validate() {
     const e: Record<string, string> = {};
-    if (!name.trim()) e.name = "الاسم مطلوب";
-    if (!rank.trim()) e.rank = "الدرجة مطلوبة";
-    if (!milId.trim()) e.milId = "الرقم العسكري مطلوب";
-    // تاريخ التسريح غير مطلوب للمتطوع
-    if (category !== "متطوع" && !discharge.trim())
+
+    if (!milId.trim()) {
+      e.milId = "الرقم العسكري مطلوب";
+    }
+
+    if (!name.trim()) {
+      e.name = "الاسم مطلوب";
+    }
+
+    if (!rank) {
+      e.rank = "الدرجة مطلوبة";
+    }
+
+    if (!unit) {
+      e.unit = "الوحدة الأساسية مطلوبة";
+    }
+
+    if (!status) {
+      e.status = "موقف الفرد مطلوب";
+    }
+
+    if (!selectedCategory) {
+      e.category = "لم يتم العثور على فئة الفرد في قاعدة البيانات";
+    }
+
+    if (category === "مجند" && !discharge) {
       e.discharge = "تاريخ التسريح مطلوب";
-    if (!unit.trim()) e.unit = "الوحدة الاساسية مطلوبة";
-    // جهة الالحاق غير مطلوبة عند "ملحق علي القوة"
-    if (status !== "ملحق علي القوة" && !attachment.trim())
-      e.attachment = "جهة الالحاق مطلوبة";
+    }
+
+    if (isAttachmentEnabled && !attachment) {
+      e.attachment = "جهة الإلحاق مطلوبة";
+    }
+
     return e;
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  // ==========================================================
+  // Individual Submit
+  // ==========================================================
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const errs = validate();
-    if (Object.keys(errs).length > 0) {
-      setErrors(errs);
+
+    const validationErrors = validate();
+
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
       return;
     }
-    setErrors({});
-    navigate("/dashboard/add-soldier/review", {
-      state: {
-        name,
-        rank,
-        milId,
-        category,
-        unit,
-        status,
-        attachment,
-        discharge,
-      },
-    });
+
+    try {
+      setSaving(true);
+      setErrors({});
+
+      const payload = {
+        military_number: milId.trim(),
+        full_name: name.trim(),
+        rank_id: rank,
+        personnel_category_id: selectedCategory!.id,
+        service_status_id: status,
+        primary_unit_id: unit,
+        attachment_unit_id: isAttachmentEnabled ? attachment : null,
+        discharge_date: category === "متطوع" ? null : discharge || null,
+        is_active: true,
+      };
+
+      const selectedRank = ranks.find((r) => r.id === rank);
+      const selectedUnit = units.find((u) => u.id === unit);
+      const selectedAttachmentUnit = units.find((u) => u.id === attachment);
+
+      navigate("/dashboard/add-soldier/review", {
+        state: {
+          ...payload,
+          personnel_category: category,
+          personnel_category_id: payload.personnel_category_id,
+          personnel_category_name: selectedCategory?.name ?? "",
+          rank_name: selectedRank?.name ?? "",
+          status_name: selectedStatus?.name ?? "",
+          primary_unit_name: selectedUnit?.name ?? "",
+          attachment_unit_name: isAttachmentEnabled
+            ? selectedAttachmentUnit?.name ?? ""
+            : "",
+        },
+      });
+    } catch (error) {
+      console.error("Submit error:", error);
+
+      alert("حدث خطأ أثناء تجهيز البيانات");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function handleGroupSubmit() {
-    navigate("/dashboard/add-soldier/group-review");
+  // ==========================================================
+  // GROUP EXCEL PARSER
+  // ==========================================================
+
+  async function handleGroupSubmit() {
+    if (!uploadedGroupFile) {
+      alert("من فضلك اختر ملف Excel أولاً");
+      return;
+    }
+
+    try {
+      setGroupLoading(true);
+
+      const arrayBuffer = await uploadedGroupFile.raw.arrayBuffer();
+
+      const workbook = XLSX.read(arrayBuffer, {
+        type: "array",
+        cellDates: true,
+      });
+
+      if (!workbook.SheetNames.length) {
+        throw new Error("ملف Excel لا يحتوي على أي ورقة");
+      }
+
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
+        firstSheet,
+        {
+          defval: "",
+          raw: true,
+        }
+      );
+
+      if (!rows.length) {
+        alert("ملف Excel فارغ ولا يحتوي على بيانات");
+        return;
+      }
+
+      // ------------------------------------------------------
+      // Check headers (خطأ حرج يوقف العملية لأن الملف غير مطابق للنموذج)
+      // ------------------------------------------------------
+
+      const originalHeaders = Object.keys(rows[0]);
+
+      const normalizedHeaders = originalHeaders.map(normalizeExcelHeader);
+
+      const missingColumns = REQUIRED_EXCEL_COLUMNS.filter((required) => {
+        const normalizedRequired = normalizeExcelHeader(required);
+
+        return !normalizedHeaders.includes(normalizedRequired);
+      });
+
+      if (missingColumns.length > 0) {
+        alert(
+          `ملف Excel غير مطابق للنموذج.\n\nالأعمدة المفقودة:\n${missingColumns.join(
+            "\n"
+          )}`
+        );
+
+        return;
+      }
+
+      // ------------------------------------------------------
+      // Create header mapping
+      // ------------------------------------------------------
+
+      const headerMap: Record<string, string> = {};
+
+      originalHeaders.forEach((header) => {
+        headerMap[normalizeExcelHeader(header)] = header;
+      });
+
+      const getValue = (
+        row: Record<string, unknown>,
+        arabicHeader: string
+      ) => {
+        const actualHeader = headerMap[normalizeExcelHeader(arabicHeader)];
+
+        return actualHeader ? row[actualHeader] : "";
+      };
+
+      // ------------------------------------------------------
+      // Parse rows
+      // ------------------------------------------------------
+
+      const parsedRows: GroupPersonnelRow[] = [];
+
+      for (let index = 0; index < rows.length; index++) {
+        const row = rows[index];
+
+        const militaryNumber = normalizeExcelValue(
+          getValue(row, "الرقم العسكري")
+        );
+
+        const rankName = normalizeExcelValue(getValue(row, "الدرجة"));
+
+        const fullName = normalizeExcelValue(getValue(row, "الاسم"));
+
+        const categoryName = normalizeExcelValue(
+          getValue(row, "فئه الفرد")
+        );
+
+        const primaryUnitName = normalizeExcelValue(
+          getValue(row, "الوحده الاساسيه")
+        );
+
+        const serviceStatusName = normalizeExcelValue(
+          getValue(row, "الموقف الخدمي")
+        );
+
+        const dischargeDate = excelDateToISO(
+          getValue(row, "تاريخ التسريح")
+        );
+
+        const attachmentUnitName = normalizeExcelValue(
+          getValue(row, "جهه الالحاق")
+        );
+
+        // تجاهل الصف الفارغ بالكامل
+        const isEmptyRow =
+          !militaryNumber &&
+          !rankName &&
+          !fullName &&
+          !categoryName &&
+          !primaryUnitName &&
+          !serviceStatusName &&
+          !dischargeDate &&
+          !attachmentUnitName;
+
+        if (isEmptyRow) {
+          continue;
+        }
+
+        parsedRows.push({
+          military_number: militaryNumber,
+          rank_name: rankName,
+          full_name: fullName,
+          personnel_category_name: categoryName,
+          primary_unit_name: primaryUnitName,
+          service_status_name: serviceStatusName,
+          discharge_date: dischargeDate,
+          attachment_unit_name: attachmentUnitName,
+          row_number: index + 2,
+        });
+      }
+
+      if (!parsedRows.length) {
+        alert("لم يتم العثور على أفراد صالحين داخل الملف");
+        return;
+      }
+
+      // ------------------------------------------------------
+      // تحديد الأرقام العسكرية المكررة داخل نفس الملف
+      // (لا توقف العملية، فقط تُصنَّف كأخطاء لهذه الصفوف)
+      // ------------------------------------------------------
+
+      const numberCounts = new Map<string, number>();
+
+      parsedRows.forEach((row) => {
+        if (!row.military_number) {
+          return;
+        }
+
+        numberCounts.set(
+          row.military_number,
+          (numberCounts.get(row.military_number) ?? 0) + 1
+        );
+      });
+
+      const duplicateMilitaryNumbers = new Set(
+        Array.from(numberCounts.entries())
+          .filter(([, count]) => count > 1)
+          .map(([number]) => number)
+      );
+
+      // ------------------------------------------------------
+      // البحث عن الأرقام العسكرية الموجودة بالفعل في قاعدة
+      // البيانات لتحديد من سيُضاف جديدًا ومن سيتم تحديث بياناته
+      // ------------------------------------------------------
+
+      const uniqueMilitaryNumbers = Array.from(
+        new Set(parsedRows.map((r) => r.military_number).filter(Boolean))
+      );
+
+      let existingMilitaryNumbers = new Set<string>();
+
+      if (uniqueMilitaryNumbers.length > 0) {
+        const { data: existingData, error: existingError } = await supabase
+          .from(PERSONNEL_TABLE_NAME)
+          .select("military_number")
+          .in("military_number", uniqueMilitaryNumbers);
+
+        if (existingError) {
+          throw existingError;
+        }
+
+        existingMilitaryNumbers = new Set(
+          (existingData ?? []).map((item: { military_number: unknown }) =>
+            String(item.military_number)
+          )
+        );
+      }
+
+      // ------------------------------------------------------
+      // تصنيف كل صف: جديد / تحديث / خطأ
+      // ------------------------------------------------------
+
+      const classifiedRows: ClassifiedPersonnelRow[] = parsedRows.map((row) =>
+        classifyRow(row, existingMilitaryNumbers, duplicateMilitaryNumbers)
+      );
+
+      const stats = {
+        total: classifiedRows.length,
+        newCount: classifiedRows.filter((r) => r.classification === "new")
+          .length,
+        updated: classifiedRows.filter((r) => r.classification === "update")
+          .length,
+        issues: classifiedRows.filter((r) => r.classification === "error")
+          .length,
+      };
+
+      // ------------------------------------------------------
+      // Navigate to group review
+      // ------------------------------------------------------
+
+      navigate("/dashboard/add-soldier/group-review", {
+        state: {
+          rows: classifiedRows,
+          stats,
+          file_name: uploadedGroupFile.name,
+          file_size: uploadedGroupFile.size,
+          // رابط مؤقت للملف نفسه عشان يفضل متاح للتحميل في صفحة النجاح بعد الاعتماد
+          file_url: URL.createObjectURL(uploadedGroupFile.raw),
+        },
+      });
+    } catch (error) {
+      console.error("Excel parsing error:", error);
+
+      alert(
+        "حدث خطأ أثناء قراءة ملف Excel. تأكد أن الملف بصيغة xls أو xlsx وأنه مطابق للنموذج."
+      );
+    } finally {
+      setGroupLoading(false);
+    }
   }
 
-  const isGroup = method === "مجموعة افراد";
-  const isAttachmentDisabled = status === "قوة الوحده";
+  // ==========================================================
+  // Loading
+  // ==========================================================
+
+  if (loading) {
+    return (
+      <div dir="rtl" className="w-full flex items-center justify-center py-20">
+        <p style={{ ...F, fontSize: 18, color: "#415844" }}>
+          جاري تحميل البيانات...
+        </p>
+      </div>
+    );
+  }
+
+  // ==========================================================
+  // UI
+  // ==========================================================
 
   return (
     <div className="flex flex-col gap-6 w-full" dir="rtl">
-      {/* ── Page title ──────────────────────────────────────────────── */}
+      {/* Title */}
+
       <h1
         className="text-center w-full"
         style={{
@@ -914,55 +1665,44 @@ export function AddNewSoldierPage() {
           fontWeight: 700,
           fontSize: "clamp(24px, 4vw, 32px)",
           color: "#2d3648",
-          lineHeight: 1.5,
         }}
       >
         قيد قوة جديدة
       </h1>
 
-      {/* ── Stepper ─────────────────────────────────────────────────── */}
+      {/* Stepper */}
+
       <div className="flex justify-center">
-        <Stepper groupMode={isGroup} />
+        <Stepper />
       </div>
 
-      {/* ── طريقة القيد ─────────────────────────────────────────────── */}
+      {/* Registration Method */}
+
       <div className="flex flex-col gap-4 items-start">
-        <p
-          style={{
-            ...F,
-            fontWeight: 700,
-            fontSize: 18,
-            color: "#2d3648",
-          }}
-        >
+        <p style={{ ...F, fontWeight: 700, fontSize: 18, color: "#2d3648" }}>
           طريقة القيد
         </p>
-        <div className="flex flex-wrap gap-4 justify-end">
-          {(
-            [, "فرد واحد","مجموعة افراد"] as RegistrationMethod[]
-          ).map((m) => (
+
+        <div className="flex flex-wrap gap-4">
+          {(["فرد واحد", "مجموعة افراد"] as RegistrationMethod[]).map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => setMethod(m)}
               className={[
-                "flex items-center gap-3 px-4 py-4 rounded-[12px] border transition-colors w-[200px]",
+                "flex items-center gap-3 px-4 py-4 rounded-[12px]",
+                "border transition-colors w-[200px]",
                 method === m
                   ? "border-[#4bff62] bg-white"
-                  : "border-[#e2e7f0] bg-white hover:border-[#a0aec0]",
+                  : "border-[#e2e7f0] bg-white",
               ].join(" ")}
             >
               <span className="shrink-0 w-5 h-5 rounded-full border-[1.5px] border-[#344736] flex items-center justify-center">
                 {method === m && (
-                  <span
-                    className="w-3 h-3 rounded-full"
-                    style={{
-                      background:
-                        "linear-gradient(to bottom, #00b867, #00522e)",
-                    }}
-                  />
+                  <span className="w-3 h-3 rounded-full bg-gradient-to-b from-[#00b867] to-[#00522e]" />
                 )}
               </span>
+
               <span
                 className="flex-1 text-right"
                 style={{ ...F, fontSize: 18, color: "#2d3648" }}
@@ -974,38 +1714,33 @@ export function AddNewSoldierPage() {
         </div>
       </div>
 
-      {/* ── Conditional content ─────────────────────────────────────── */}
-      {isGroup ? (
-        /* Group upload UI */
-        <GroupUploadSection onSubmit={handleGroupSubmit} />
-      ) : (
-        /* Individual form */
-        <form
-          onSubmit={handleSubmit}
-          className="flex flex-col gap-6"
-        >
+      {/* ====================================================
+          Individual
+      ==================================================== */}
+
+      {method === "فرد واحد" && (
+        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
           <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full">
             <div className="flex flex-col gap-6 px-6 py-5">
-              {/* Card header */}
               <div className="flex items-center justify-start gap-3 pb-3 border-b border-[#cbd2e0]">
-                <span
-                  style={{
-                    ...F,
-                    fontSize: 18,
-                    color: "#4a5468",
-                  }}
-                >
-                  البيانات الاساسية
+                <span style={{ ...F, fontSize: 18, color: "#4a5468" }}>
+                  البيانات الأساسية
                 </span>
               </div>
 
-              {/* فئة الفرد */}
               <div className="flex flex-col gap-3 items-start">
                 <SubHeader>فئة الفرد</SubHeader>
+
                 <CategoryToggle
                   value={category}
-                  onChange={setCategory}
+                  onChange={handleCategoryChange}
                 />
+
+                {errors.category && (
+                  <p style={{ ...F, fontSize: 13, color: "#ef4444" }}>
+                    {errors.category}
+                  </p>
+                )}
               </div>
 
               <SubHeader>البيانات التعريفية</SubHeader>
@@ -1017,64 +1752,63 @@ export function AddNewSoldierPage() {
                     value={milId}
                     onChange={(v) => {
                       setMilId(v);
-                      setErrors((p) => ({
-                        ...p,
-                        milId: undefined,
-                      }));
+
+                      setErrors((prev) => ({ ...prev, milId: "" }));
                     }}
                     error={errors.milId}
                   />
                 </FieldGroup>
+
                 <FieldGroup label="الدرجة">
                   <FormDropdown
-                    placeholder="اختيار الدرجة"
-                    options={RANKS}
+                    placeholder={
+                      category === "مجند" ? "جندي فقط" : "اختيار الدرجة"
+                    }
+                    options={rankOptions}
                     value={rank}
                     onChange={(v) => {
                       setRank(v);
-                      setErrors((p) => ({
-                        ...p,
-                        rank: undefined,
-                      }));
+
+                      setErrors((prev) => ({ ...prev, rank: "" }));
                     }}
                     error={errors.rank}
                   />
+
+                  {category === "مجند" && rankOptions.length === 0 && (
+                    <p style={{ ...F, fontSize: 13, color: "#ef4444" }}>
+                      لا توجد درجة جندي نشطة في جدول ranks
+                    </p>
+                  )}
                 </FieldGroup>
+
                 <FieldGroup label="الاسم">
                   <FormInput
                     placeholder="اسم الفرد"
                     value={name}
                     onChange={(v) => {
                       setName(v);
-                      setErrors((p) => ({
-                        ...p,
-                        name: undefined,
-                      }));
+
+                      setErrors((prev) => ({ ...prev, name: "" }));
                     }}
                     error={errors.name}
                   />
                 </FieldGroup>
               </div>
 
-              {/* تاريخ التسريح — مخفي عند متطوع */}
-              {category !== "متطوع" && (
+              {category === "مجند" && (
                 <div className="flex flex-col sm:flex-row gap-4">
-                  <FieldGroup
-                    label="تاريخ التسريح"
-                    labelColor="#415844"
-                  >
+                  <FieldGroup label="تاريخ التسريح" labelColor="#415844">
                     <DateInput
                       value={discharge}
                       onChange={(v) => {
                         setDischarge(v);
-                        setErrors((p) => ({
-                          ...p,
-                          discharge: undefined,
-                        }));
+
+                        setErrors((prev) => ({ ...prev, discharge: "" }));
                       }}
                       error={errors.discharge}
                     />
                   </FieldGroup>
+
                   <div className="flex-1 hidden sm:block" />
                   <div className="flex-1 hidden sm:block" />
                 </div>
@@ -1083,88 +1817,100 @@ export function AddNewSoldierPage() {
               <SubHeader>بيانات الوحدة والموقف</SubHeader>
 
               <div className="flex flex-col sm:flex-row gap-4">
-                <FieldGroup label="الوحدة الاساسية">
+                <FieldGroup label="الوحدة الأساسية">
                   <FormDropdown
                     placeholder="اختار الوحدة"
-                    options={UNITS}
+                    options={mainUnitOptions}
                     value={unit}
                     onChange={(v) => {
                       setUnit(v);
-                      setErrors((p) => ({
-                        ...p,
-                        unit: undefined,
-                      }));
+
+                      setErrors((prev) => ({ ...prev, unit: "" }));
                     }}
                     error={errors.unit}
                   />
                 </FieldGroup>
+
                 <FieldGroup label="موقف الفرد">
                   <FormDropdown
                     placeholder="اختر الموقف"
-                    options={STATUS}
+                    options={statusOptions}
                     value={status}
-                    onChange={(v) => {
-                      setStatus(v);
-                      // clear attachment when disabling
-                      if (v === "ملحق علي القوة") {
-                        setAttachment("");
-                        setErrors((p) => ({
-                          ...p,
-                          attachment: undefined,
-                        }));
-                      }
-                    }}
+                    onChange={handleStatusChange}
+                    error={errors.status}
                   />
                 </FieldGroup>
-                <FieldGroup label="جهة الالحاق">
+
+                <FieldGroup label="جهة الإلحاق">
                   <FormDropdown
                     placeholder={
-                      isAttachmentDisabled
-                        ? "غير متاح"
-                        : "اختر الوحدة"
+                      isAttachmentEnabled ? "اختر الوحدة" : "غير متاح"
                     }
-                    options={ATTACH}
-                    value={attachment}
-                    disabled={isAttachmentDisabled}
+                    options={attachmentUnitOptions}
+                    value={isAttachmentEnabled ? attachment : ""}
+                    disabled={!isAttachmentEnabled}
                     onChange={(v) => {
                       setAttachment(v);
-                      setErrors((p) => ({
-                        ...p,
-                        attachment: undefined,
-                      }));
+
+                      setErrors((prev) => ({ ...prev, attachment: "" }));
                     }}
-                    error={
-                      isAttachmentDisabled
-                        ? undefined
-                        : errors.attachment
-                    }
+                    error={isAttachmentEnabled ? errors.attachment : undefined}
                   />
                 </FieldGroup>
               </div>
 
+              {!isAttachmentEnabled && status && (
+                <div className="bg-[#f5f8f5] border border-[#dce8dd] rounded-[10px] px-4 py-3">
+                  <p style={{ ...F, fontSize: 13, color: "#415844" }}>
+                    جهة الإلحاق غير متاحة لهذا الموقف، وسيتم حفظ
+                    attachment_unit_id بقيمة NULL.
+                  </p>
+                </div>
+              )}
+
+              {category === "متطوع" && (
+                <div className="bg-[#f5f8f5] border border-[#dce8dd] rounded-[10px] px-4 py-3">
+                  <p style={{ ...F, fontSize: 13, color: "#415844" }}>
+                    الأفراد من فئة متطوع سيتم حفظ تاريخ التسريح لهم بقيمة NULL.
+                  </p>
+                </div>
+              )}
+
               <div className="flex justify-end pt-1">
                 <button
                   type="submit"
-                  className="h-[44px] px-6 rounded-[8px] flex items-center justify-center gap-2 transition-opacity hover:opacity-90 active:opacity-80"
+                  disabled={saving}
+                  className={[
+                    "h-[44px] px-6 rounded-[8px]",
+                    "flex items-center justify-center",
+                    "transition-opacity",
+                    saving ? "opacity-50 cursor-not-allowed" : "hover:opacity-90",
+                  ].join(" ")}
                   style={{
-                    background:
-                      "linear-gradient(to bottom, #00b867, #00522e)",
+                    background: "linear-gradient(to bottom, #00b867, #00522e)",
                   }}
                 >
-                  <span
-                    style={{
-                      ...F,
-                      fontSize: 16,
-                      color: "#f5f5f5",
-                    }}
-                  >
-                    المراجعة والضم
+                  <span style={{ ...F, fontSize: 16, color: "white" }}>
+                    {saving ? "جاري التجهيز..." : "المراجعة والضم"}
                   </span>
                 </button>
               </div>
             </div>
           </div>
         </form>
+      )}
+
+      {/* ====================================================
+          Group
+      ==================================================== */}
+
+      {method === "مجموعة افراد" && (
+        <GroupUploadSection
+          uploadedFile={uploadedGroupFile}
+          setUploadedFile={setUploadedGroupFile}
+          loading={groupLoading}
+          onSubmit={handleGroupSubmit}
+        />
       )}
     </div>
   );

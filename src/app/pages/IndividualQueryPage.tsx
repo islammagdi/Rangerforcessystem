@@ -8,14 +8,14 @@ import {
   ArrowLeftRight,
   Minus,
 } from "lucide-react";
-import { DeleteConfirmDialog } from "../components/dashboard/DeleteConfirmDialog";
-import {
-  getSoldiers,
-  deleteSoldier,
-} from "../data/soldiersData";
-import type { SoldierData } from "../data/soldiersData";
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+import { DeleteConfirmDialog } from "../components/dashboard/DeleteConfirmDialog";
+import { supabase } from "../../lib/supabase";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
+
 type DistributionStatus = "ملحق" | "منتهي خدمته" | "علي القوة";
 
 interface SoldierRecord {
@@ -28,57 +28,44 @@ interface SoldierRecord {
   status: DistributionStatus;
 }
 
-// Map SoldierData → SoldierRecord for table display
-function toRecord(s: SoldierData): SoldierRecord {
-  const statusMap: Record<string, DistributionStatus> = {
-    "قوة الوحده": "ملحق",
-    "منتهي خدمته": "منتهي خدمته",
-    "علي القوة": "علي القوة",
-    ملحق: "ملحق",
-  };
-  return {
-    id: s.id,
-    militaryId: s.militaryId,
-    rank: s.rank,
-    name: s.name,
-    unit: s.unit,
-    attachmentPlace: s.attachmentPlace,
-    status: statusMap[s.serviceStatus] ?? "علي القوة",
-  };
+interface PersonnelRow {
+  id: string;
+  military_number: string;
+  full_name: string;
+  personnel_category_id: string | null;
+  primary_unit_id: string | null;
+  attachment_unit_id: string | null;
+  service_status_id: string | null;
+
+  personnel_categories?: {
+    id: string;
+    name: string;
+    code: string;
+  } | null;
+
+  primary_unit?: {
+    id: string;
+    name: string;
+    code: string;
+  } | null;
+
+  attachment_unit?: {
+    id: string;
+    name: string;
+    code: string;
+  } | null;
+
+  service_statuses?: {
+    id: string;
+    name: string;
+    code: string;
+  } | null;
 }
 
-// ─── Mock Data ───────────────────────────────────────────────────────────────
-const MOCK_RESULTS: SoldierRecord[] = [
-  {
-    id: "1",
-    militaryId: "2024427700265",
-    rank: "جندي",
-    name: "اسلام مجدي عبدالستار",
-    unit: "ك ١١٣ صع",
-    attachmentPlace: "فرع العمليات",
-    status: "ملحق",
-  },
-  {
-    id: "2",
-    militaryId: "2024159308527",
-    rank: "جندي",
-    name: "احمد عادل عبدالستار",
-    unit: "مع العمليات الخاصة",
-    attachmentPlace: "لا يوجد",
-    status: "منتهي خدمته",
-  },
-  {
-    id: "3",
-    militaryId: "2024964213580",
-    rank: "مساعد أ",
-    name: "محمود اسلام عبدالله",
-    unit: "س ١٤٥ اشارة",
-    attachmentPlace: "لا يوجد",
-    status: "علي القوة",
-  },
-];
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
 
-// ─── Query basis options ─────────────────────────────────────────────────────
 const QUERY_BASIS_OPTIONS = [
   "رقم عسكري",
   "الاسم",
@@ -86,19 +73,21 @@ const QUERY_BASIS_OPTIONS = [
   "رقم الوحدة",
 ];
 
-// ─── Category options ────────────────────────────────────────────────────────
 const CATEGORIES = [
   { id: "all", label: "جميع الفئات" },
   { id: "conscript", label: "مجند" },
   { id: "volunteer", label: "متطوع" },
 ];
 
-// ─── Status badge config ─────────────────────────────────────────────────────
 const STATUS_STYLES: Record<
   DistributionStatus,
   { bg: string; text: string; dot: string }
 > = {
-  ملحق: { bg: "#ebfaea", text: "#26861d", dot: "#35C128" },
+  ملحق: {
+    bg: "#ebfaea",
+    text: "#26861d",
+    dot: "#35C128",
+  },
   "منتهي خدمته": {
     bg: "#fce9ea",
     text: "#c5481b",
@@ -111,11 +100,66 @@ const STATUS_STYLES: Record<
   },
 };
 
-// ════════════════════════════════════════════════════════════════════════════
-// Sub-components
-// ════════════════════════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
-// ─── Radio Card ──────────────────────────────────────────────────────────────
+function normalizeStatus(value?: string | null): DistributionStatus {
+  if (!value) return "علي القوة";
+
+  if (
+    value === "ملحق" ||
+    value === "قوة الوحدة" ||
+    value === "قوة الوحده"
+  ) {
+    return "ملحق";
+  }
+
+  if (
+    value === "منتهي خدمته" ||
+    value === "منتهى خدمته"
+  ) {
+    return "منتهي خدمته";
+  }
+
+  return "علي القوة";
+}
+
+function mapPersonnelToRecord(
+  person: PersonnelRow
+): SoldierRecord {
+  return {
+    id: person.id,
+    militaryId: person.military_number,
+    name: person.full_name,
+
+    // نعرض اسم الفئة كـ "درجة" حاليًا إذا لم يكن عندك
+    // عمود rank مستقل في personnel.
+    rank:
+      person.personnel_categories?.name ??
+      person.personnel_categories?.code ??
+      "",
+
+    unit:
+      person.primary_unit?.name ??
+      person.primary_unit?.code ??
+      "لا يوجد",
+
+    attachmentPlace:
+      person.attachment_unit?.name ??
+      person.attachment_unit?.code ??
+      "لا يوجد",
+
+    status: normalizeStatus(
+      person.service_statuses?.name
+    ),
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Radio Card
+// ─────────────────────────────────────────────────────────────────────────────
+
 function RadioCard({
   label,
   checked,
@@ -130,7 +174,9 @@ function RadioCard({
       type="button"
       onClick={onChange}
       className={[
-        "flex items-center gap-3 px-4 py-4 rounded-[12px] border transition-colors text-right w-full sm:w-[200px] shrink-0",
+        "flex items-center gap-3 px-4 py-4 rounded-[12px]",
+        "border transition-colors text-right",
+        "w-full sm:w-[200px] shrink-0",
         checked
           ? "border-[#4BFF62] bg-[#f0f2fd]"
           : "border-[#e2e7f0] bg-white hover:border-[#a0aec0]",
@@ -141,6 +187,7 @@ function RadioCard({
           <span className="w-2.5 h-2.5 rounded-full bg-[#4BFF62]" />
         )}
       </span>
+
       <span
         style={{
           fontFamily: "'Almarai', sans-serif",
@@ -154,7 +201,10 @@ function RadioCard({
   );
 }
 
-// ─── Custom Dropdown ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Dropdown
+// ─────────────────────────────────────────────────────────────────────────────
+
 function Dropdown({
   options,
   value,
@@ -162,20 +212,24 @@ function Dropdown({
 }: {
   options: string[];
   value: string;
-  onChange: (v: string) => void;
+  onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+
   return (
     <div className="relative w-full">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen((v) => !v)}
         className="w-full h-[54px] bg-white border border-[#e2e7f0] rounded-[8px] flex items-center gap-3 px-3 text-right hover:border-[#a0aec0] transition-colors"
       >
         <ChevronDown
           size={20}
-          className={`shrink-0 text-[#2d3648] transition-transform ${open ? "rotate-180" : ""}`}
+          className={`shrink-0 text-[#2d3648] transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
         />
+
         <span
           className="flex-1 text-right"
           style={{
@@ -187,19 +241,21 @@ function Dropdown({
           {value}
         </span>
       </button>
+
       {open && (
         <ul className="absolute z-50 top-full mt-1 w-full bg-white border border-[#e2e7f0] rounded-[8px] shadow-lg overflow-hidden">
-          {options.map((opt) => (
-            <li key={opt}>
+          {options.map((option) => (
+            <li key={option}>
               <button
                 type="button"
                 onClick={() => {
-                  onChange(opt);
+                  onChange(option);
                   setOpen(false);
                 }}
                 className={[
-                  "w-full text-right px-4 py-3 hover:bg-[#f5f6fb] transition-colors",
-                  opt === value
+                  "w-full text-right px-4 py-3",
+                  "hover:bg-[#f5f6fb] transition-colors",
+                  option === value
                     ? "bg-[#f0f2fd] text-[#4BFF62]"
                     : "text-[#2d3648]",
                 ].join(" ")}
@@ -208,7 +264,7 @@ function Dropdown({
                   fontSize: "16px",
                 }}
               >
-                {opt}
+                {option}
               </button>
             </li>
           ))}
@@ -218,28 +274,33 @@ function Dropdown({
   );
 }
 
-// ─── Status Badge ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Status Badge
+// ─────────────────────────────────────────────────────────────────────────────
+
 function StatusBadge({
   status,
 }: {
   status: DistributionStatus;
 }) {
-  const s = STATUS_STYLES[status];
+  const style = STATUS_STYLES[status];
+
   return (
     <span
       className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[16px] whitespace-nowrap"
-      style={{ backgroundColor: s.bg }}
+      style={{ backgroundColor: style.bg }}
     >
       <span
         className="shrink-0 w-2 h-2 rounded-full"
-        style={{ backgroundColor: s.dot }}
+        style={{ backgroundColor: style.dot }}
       />
+
       <span
         style={{
           fontFamily: "'Almarai', sans-serif",
           fontWeight: 700,
           fontSize: "14px",
-          color: s.text,
+          color: style.text,
         }}
       >
         {status}
@@ -248,7 +309,10 @@ function StatusBadge({
   );
 }
 
-// ─── Notification Badge ───────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Notification Badge
+// ─────────────────────────────────────────────────────────────────────────────
+
 function NotifBadge({
   label,
   dot,
@@ -275,6 +339,7 @@ function NotifBadge({
       >
         {label}
       </span>
+
       <span
         className="shrink-0 w-2 h-2 rounded-full"
         style={{ backgroundColor: dot }}
@@ -283,7 +348,10 @@ function NotifBadge({
   );
 }
 
-// ─── Table Sort Arrow ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Sort Arrow
+// ─────────────────────────────────────────────────────────────────────────────
+
 function SortArrow() {
   return (
     <ArrowDownUp
@@ -293,7 +361,10 @@ function SortArrow() {
   );
 }
 
-// ─── Checkbox ────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Checkbox
+// ─────────────────────────────────────────────────────────────────────────────
+
 function Checkbox({
   checked,
   onChange,
@@ -308,7 +379,9 @@ function Checkbox({
       type="button"
       onClick={onChange}
       className={[
-        "w-5 h-5 rounded-[4px] border-2 flex items-center justify-center transition-colors shrink-0",
+        "w-5 h-5 rounded-[4px] border-2",
+        "flex items-center justify-center",
+        "transition-colors shrink-0",
         checked || indeterminate
           ? "bg-[#4BFF62] border-[#4BFF62]"
           : "bg-white border-[#d4d8fa] hover:border-[#4BFF62]",
@@ -336,7 +409,10 @@ function Checkbox({
   );
 }
 
-// ─── Action Buttons ───────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Action Buttons
+// ─────────────────────────────────────────────────────────────────────────────
+
 function ActionButtons({
   onDelete,
   onView,
@@ -346,33 +422,36 @@ function ActionButtons({
 }) {
   return (
     <div className="flex items-center gap-2 justify-end">
-      {/* Delete */}
       <button
         type="button"
         onClick={onDelete}
         title="حذف"
-        className="w-[30px] h-[30px] rounded-[4px] flex items-center justify-center transition-opacity hover:opacity-80"
+        className="w-[30px] h-[30px] rounded-[4px] flex items-center justify-center hover:opacity-80"
         style={{ backgroundColor: "#fce8f1" }}
       >
-        <Trash2 size={14} style={{ color: "#E3282C" }} />
+        <Trash2
+          size={14}
+          style={{ color: "#E3282C" }}
+        />
       </button>
 
-      {/* View */}
       <button
         type="button"
         onClick={onView}
         title="عرض"
-        className="w-[30px] h-[30px] rounded-[4px] flex items-center justify-center transition-opacity hover:opacity-80"
+        className="w-[30px] h-[30px] rounded-[4px] flex items-center justify-center hover:opacity-80"
         style={{ backgroundColor: "#f5f5f5" }}
       >
-        <Eye size={14} style={{ color: "#2D3648" }} />
+        <Eye
+          size={14}
+          style={{ color: "#2D3648" }}
+        />
       </button>
 
-      {/* Transfer */}
       <button
         type="button"
         title="تحويل"
-        className="w-[40px] h-[30px] rounded-[4px] flex items-center justify-center transition-opacity hover:opacity-80"
+        className="w-[40px] h-[30px] rounded-[4px] flex items-center justify-center hover:opacity-80"
         style={{ backgroundColor: "#f5f5f5" }}
       >
         <ArrowLeftRight
@@ -384,7 +463,10 @@ function ActionButtons({
   );
 }
 
-// ─── Results Table ────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Results Table
+// ─────────────────────────────────────────────────────────────────────────────
+
 function ResultsTable({
   records,
   selectedIds,
@@ -401,23 +483,25 @@ function ResultsTable({
   onView: (id: string) => void;
 }) {
   const allSelected =
-    records.length > 0 && selectedIds.size === records.length;
-  const someSelected = selectedIds.size > 0 && !allSelected;
+    records.length > 0 &&
+    selectedIds.size === records.length;
 
-  const headerCellClass = [
-    "bg-white px-5 py-3 text-right whitespace-nowrap",
-    "border-b-2 border-[#d4d8fa]",
-  ].join(" ");
+  const someSelected =
+    selectedIds.size > 0 && !allSelected;
 
-  const headerTextStyle: React.CSSProperties = {
+  const headerClass =
+    "bg-white px-5 py-3 text-right whitespace-nowrap border-b-2 border-[#d4d8fa]";
+
+  const cellClass =
+    "px-5 py-3 text-right border-b border-[#eaecf0] whitespace-nowrap";
+
+  const headerStyle: React.CSSProperties = {
     fontFamily: "'Almarai', sans-serif",
     fontSize: "16px",
     color: "#717d96",
   };
 
-  const cellClass =
-    "px-5 py-3 text-right border-b border-[#eaecf0] whitespace-nowrap";
-  const cellTextStyle: React.CSSProperties = {
+  const cellStyle: React.CSSProperties = {
     fontFamily: "'Almarai', sans-serif",
     fontSize: "16px",
     color: "#2d3648",
@@ -425,11 +509,13 @@ function ResultsTable({
 
   return (
     <div className="w-full overflow-x-auto rounded-[12px] border border-[#e2e7f0] bg-white shadow-sm">
-      <table className="w-full min-w-[700px]" dir="rtl">
+      <table
+        className="w-full min-w-[900px]"
+        dir="rtl"
+      >
         <thead>
           <tr>
-            {/* Checkbox header */}
-            <th className={`${headerCellClass} w-12`}>
+            <th className={`${headerClass} w-12`}>
               <div className="flex justify-center">
                 <Checkbox
                   checked={allSelected}
@@ -439,131 +525,98 @@ function ResultsTable({
               </div>
             </th>
 
-            {/* رقم عسكري */}
-            <th className={headerCellClass}>
-              <div className="flex items-center gap-1 justify-end">
-                <span style={headerTextStyle}>رقم عسكري</span>
-                <SortArrow />
-              </div>
-            </th>
-
-            {/* درجة */}
-            <th className={headerCellClass}>
-              <div className="flex items-center gap-1 justify-end">
-                <span style={headerTextStyle}>درجة</span>
-                <SortArrow />
-              </div>
-            </th>
-
-            {/* اسم */}
-            <th className={headerCellClass}>
-              <div className="flex items-center gap-1 justify-end">
-                <span style={headerTextStyle}>اسم</span>
-                <SortArrow />
-              </div>
-            </th>
-
-            {/* الوحدة */}
-            <th className={headerCellClass}>
-              <div className="flex items-center gap-1 justify-end">
-                <span style={headerTextStyle}>الوحدة</span>
-                <SortArrow />
-              </div>
-            </th>
-
-            {/* مكان الالحاق */}
-            <th className={headerCellClass}>
-              <div className="flex items-center gap-1 justify-end">
-                <span style={headerTextStyle}>
-                  مكان الالحاق
-                </span>
-                <SortArrow />
-              </div>
-            </th>
-
-            {/* حالة التوزيع */}
-            <th className={headerCellClass}>
-              <div className="flex items-center gap-1 justify-end">
-                <span style={headerTextStyle}>
-                  حالة التوزيع
-                </span>
-                <SortArrow />
-              </div>
-            </th>
-
-            {/* الاجراء */}
-            <th className={headerCellClass}>
-              <div className="flex items-center gap-1 justify-end">
-                <span style={headerTextStyle}>الاجراء</span>
-                <SortArrow />
-              </div>
-            </th>
+            {[
+              "رقم عسكري",
+              "درجة",
+              "اسم",
+              "الوحدة",
+              "مكان الالحاق",
+              "حالة التوزيع",
+              "الاجراء",
+            ].map((title) => (
+              <th
+                key={title}
+                className={headerClass}
+              >
+                <div className="flex items-center gap-1 justify-end">
+                  <span style={headerStyle}>
+                    {title}
+                  </span>
+                  <SortArrow />
+                </div>
+              </th>
+            ))}
           </tr>
         </thead>
 
         <tbody>
-          {records.map((rec) => {
-            const isSelected = selectedIds.has(rec.id);
+          {records.map((record) => {
+            const selected = selectedIds.has(record.id);
+
             return (
               <tr
-                key={rec.id}
-                className={`transition-colors ${isSelected ? "bg-[#f5f7ff]" : "hover:bg-[#fafafa]"}`}
+                key={record.id}
+                className={
+                  selected
+                    ? "bg-[#f5f7ff]"
+                    : "hover:bg-[#fafafa]"
+                }
               >
-                {/* Checkbox */}
                 <td className={`${cellClass} w-12`}>
                   <div className="flex justify-center">
                     <Checkbox
-                      checked={isSelected}
-                      onChange={() => onToggleRow(rec.id)}
+                      checked={selected}
+                      onChange={() =>
+                        onToggleRow(record.id)
+                      }
                     />
                   </div>
                 </td>
 
-                {/* رقم عسكري — blurred */}
                 <td className={cellClass}>
-                  <span style={{ ...cellTextStyle }}>
-                    {rec.militaryId}
+                  <span style={cellStyle}>
+                    {record.militaryId}
                   </span>
                 </td>
 
-                {/* درجة */}
                 <td className={cellClass}>
-                  <span style={{ ...cellTextStyle }}>
-                    {rec.rank}
+                  <span style={cellStyle}>
+                    {record.rank}
                   </span>
                 </td>
 
-                {/* اسم — blurred */}
                 <td className={cellClass}>
-                  <span style={{ ...cellTextStyle }}>
-                    {rec.name}
+                  <span style={cellStyle}>
+                    {record.name}
                   </span>
                 </td>
 
-                {/* الوحدة — blurred */}
                 <td className={cellClass}>
-                  <span style={{ ...cellTextStyle }}>
-                    {rec.unit}
+                  <span style={cellStyle}>
+                    {record.unit}
                   </span>
                 </td>
 
-                {/* مكان الالحاق */}
                 <td className={cellClass}>
-                  <span style={cellTextStyle}>
-                    {rec.attachmentPlace}
+                  <span style={cellStyle}>
+                    {record.attachmentPlace}
                   </span>
                 </td>
 
-                {/* حالة التوزيع */}
                 <td className={cellClass}>
-                  <StatusBadge status={rec.status} />
+                  <StatusBadge
+                    status={record.status}
+                  />
                 </td>
 
-                {/* الاجراء */}
                 <td className={cellClass}>
                   <ActionButtons
-                    onDelete={() => onDelete(rec.id)}
-                    onView={() => onView(rec.id)}
+                    onDelete={() =>
+                      onDelete(record.id)
+                    }
+                    onView={() =>
+                      onView(record.id)
+                    }
                   />
                 </td>
               </tr>
@@ -575,74 +628,338 @@ function ResultsTable({
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
 // Main Page
-// ════════════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+
 export function IndividualQueryPage() {
   const navigate = useNavigate();
+
   const [selectedCategory, setSelectedCategory] =
     useState("جميع الفئات");
-  const [queryBasis, setQueryBasis] = useState("رقم عسكري");
-  const [queryText, setQueryText] = useState("");
-  const [queryTextError, setQueryTextError] = useState("");
-  const [hasSearched, setHasSearched] = useState(false);
-  const [results, setResults] = useState<SoldierRecord[]>([]);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(
-    new Set(),
-  );
 
-  // ── Delete dialog state ────────────────────────────────────────────────
-  const [deleteTargetId, setDeleteTargetId] = useState<
-    string | null
-  >(null);
+  const [queryBasis, setQueryBasis] =
+    useState("رقم عسكري");
 
-  // ── Search ──────────────────────────────────────────────────────────────
-  function handleSearch(e: React.FormEvent) {
+  const [queryText, setQueryText] =
+    useState("");
+
+  const [queryTextError, setQueryTextError] =
+    useState("");
+
+  const [searchError, setSearchError] =
+    useState("");
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [hasSearched, setHasSearched] =
+    useState(false);
+
+  const [results, setResults] =
+    useState<SoldierRecord[]>([]);
+
+  const [selectedIds, setSelectedIds] =
+    useState<Set<string>>(new Set());
+
+  const [deleteTargetId, setDeleteTargetId] =
+    useState<string | null>(null);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Search
+  // ─────────────────────────────────────────────────────────────────────────
+
+  async function handleSearch(
+    e: React.FormEvent
+  ) {
     e.preventDefault();
+
     if (!queryText.trim()) {
-      setQueryTextError("يرجى إدخال بيانات الاستعلام أولاً");
+      setQueryTextError(
+        "يرجى إدخال بيانات الاستعلام أولاً"
+      );
       return;
     }
+
     setQueryTextError("");
-    // Simulate finding results (frontend only)
-    setResults(MOCK_RESULTS);
+    setSearchError("");
+    setLoading(true);
     setHasSearched(true);
-    setSelectedIds(new Set(MOCK_RESULTS.map((r) => r.id))); // all selected by default
+    setResults([]);
+    setSelectedIds(new Set());
+
+    try {
+      /*
+       * الاستعلام الأساسي.
+       *
+       * بنجيب:
+       * personnel
+       * + personnel_categories
+       * + primary unit
+       * + attachment unit
+       * + service status
+       */
+
+      let query = supabase
+        .from("personnel")
+        .select(`
+          id,
+          military_number,
+          full_name,
+          personnel_category_id,
+          primary_unit_id,
+          attachment_unit_id,
+          service_status_id,
+
+          personnel_categories (
+            id,
+            name,
+            code
+          ),
+
+          primary_unit:units!personnel_primary_unit_id_fkey (
+            id,
+            name,
+            code
+          ),
+
+          attachment_unit:units!personnel_attachment_unit_id_fkey (
+            id,
+            name,
+            code
+          ),
+
+          service_statuses (
+            id,
+            name,
+            code
+          )
+        `);
+
+      // ─────────────────────────────────────────────────────────────────────
+      // فلتر الفئة
+      // ─────────────────────────────────────────────────────────────────────
+
+      if (selectedCategory !== "جميع الفئات") {
+        /*
+         * بدل ما نفترض UUID معين للمجند أو المتطوع،
+         * بنجيب الـ ID من personnel_categories حسب الاسم.
+         */
+
+        const categoryName =
+          selectedCategory === "مجند"
+            ? "مجند"
+            : "متطوع";
+
+        const { data: category, error: categoryError } =
+          await supabase
+            .from("personnel_categories")
+            .select("id")
+            .eq("name", categoryName)
+            .eq("is_active", true)
+            .maybeSingle();
+
+        if (categoryError) {
+          throw categoryError;
+        }
+
+        if (!category) {
+          throw new Error(
+            `لم يتم العثور على فئة "${categoryName}" في قاعدة البيانات`
+          );
+        }
+
+        query = query.eq(
+          "personnel_category_id",
+          category.id
+        );
+      }
+
+      // ─────────────────────────────────────────────────────────────────────
+      // أساس الاستعلام
+      // ─────────────────────────────────────────────────────────────────────
+
+      const value = queryText.trim();
+
+      if (queryBasis === "رقم عسكري") {
+        query = query.eq(
+          "military_number",
+          value
+        );
+      }
+
+      else if (queryBasis === "الاسم") {
+        query = query.ilike(
+          "full_name",
+          `%${value}%`
+        );
+      }
+
+      else if (queryBasis === "رقم الوحدة") {
+        /*
+         * البحث في primary_unit_id مباشرة غير ممكن
+         * لو المستخدم يكتب اسم/كود الوحدة.
+         *
+         * لذلك نبحث أولاً في units عن الاسم أو الكود.
+         */
+
+        const { data: units, error: unitsError } =
+          await supabase
+            .from("units")
+            .select("id")
+            .or(
+              `name.ilike.%${value}%,code.ilike.%${value}%`
+            )
+            .eq("is_active", true);
+
+        if (unitsError) {
+          throw unitsError;
+        }
+
+        const unitIds =
+          units?.map((unit) => unit.id) ?? [];
+
+        if (unitIds.length === 0) {
+          setResults([]);
+          setSelectedIds(new Set());
+          return;
+        }
+
+        query = query.in(
+          "primary_unit_id",
+          unitIds
+        );
+      }
+
+      else if (queryBasis === "الرقم القومي") {
+        /*
+         * لو عندك عمود الرقم القومي في personnel
+         * ضعه هنا.
+         *
+         * حاليًا الأعمدة التي أرسلتها لا تحتوي
+         * على national_id، لذلك لن أخترع اسم عمود.
+         */
+
+        setSearchError(
+          "عمود الرقم القومي غير موجود ضمن الأعمدة التي تم إرسالها لجدول personnel."
+        );
+
+        setResults([]);
+        setSelectedIds(new Set());
+        return;
+      }
+
+      // ─────────────────────────────────────────────────────────────────────
+      // Execute
+      // ─────────────────────────────────────────────────────────────────────
+
+      const { data, error } = await query;
+
+      if (error) {
+        throw error;
+      }
+
+      const records =
+        ((data ?? []) as unknown as PersonnelRow[])
+          .map(mapPersonnelToRecord);
+
+      setResults(records);
+
+      setSelectedIds(
+        new Set(records.map((record) => record.id))
+      );
+    } catch (error) {
+      console.error(
+        "Individual query error:",
+        error
+      );
+
+      setSearchError(
+        error instanceof Error
+          ? error.message
+          : "حدث خطأ أثناء تنفيذ الاستعلام"
+      );
+
+      setResults([]);
+      setSelectedIds(new Set());
+    } finally {
+      setLoading(false);
+    }
   }
 
-  // ── Selection ────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // Selection
+  // ─────────────────────────────────────────────────────────────────────────
+
   function toggleAll() {
-    if (selectedIds.size === results.length) {
+    if (
+      results.length > 0 &&
+      selectedIds.size === results.length
+    ) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(results.map((r) => r.id)));
+      setSelectedIds(
+        new Set(results.map((r) => r.id))
+      );
     }
   }
 
   function toggleRow(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+
       return next;
     });
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Delete
+  // ─────────────────────────────────────────────────────────────────────────
+
   function handleDelete(id: string) {
-    // Open dialog instead of deleting immediately
     setDeleteTargetId(id);
   }
 
-  function confirmDelete() {
-    if (deleteTargetId) {
-      setResults((prev) =>
-        prev.filter((r) => r.id !== deleteTargetId),
+  async function confirmDelete() {
+    if (!deleteTargetId) return;
+
+    try {
+      const { error } = await supabase
+        .from("personnel")
+        .delete()
+        .eq("id", deleteTargetId);
+
+      if (error) {
+        throw error;
+      }
+
+      setResults((previous) =>
+        previous.filter(
+          (record) =>
+            record.id !== deleteTargetId
+        )
       );
-      setSelectedIds((prev) => {
-        const s = new Set(prev);
-        s.delete(deleteTargetId);
-        return s;
+
+      setSelectedIds((previous) => {
+        const next = new Set(previous);
+        next.delete(deleteTargetId);
+        return next;
       });
+    } catch (error) {
+      console.error(
+        "Delete personnel error:",
+        error
+      );
+
+      alert("حدث خطأ أثناء حذف الفرد");
     }
+
     setDeleteTargetId(null);
   }
 
@@ -650,23 +967,43 @@ export function IndividualQueryPage() {
     setDeleteTargetId(null);
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // View
+  // ─────────────────────────────────────────────────────────────────────────
+
   function handleView(id: string) {
-    navigate(`/dashboard/individual-query/soldier/${id}`);
+    navigate(
+      `/dashboard/individual-query/soldier/${id}`
+    );
   }
 
-  const notFound = hasSearched && results.length === 0;
-  const found = hasSearched && results.length > 0;
+  const notFound =
+    hasSearched &&
+    !loading &&
+    results.length === 0 &&
+    !searchError;
+
+  const found =
+    hasSearched &&
+    !loading &&
+    results.length > 0;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col gap-6 w-full" dir="rtl">
-      {/* ── Delete confirmation dialog (portal-style overlay) ─────────── */}
+    <div
+      className="flex flex-col gap-6 w-full"
+      dir="rtl"
+    >
       <DeleteConfirmDialog
         open={deleteTargetId !== null}
         onCancel={cancelDelete}
         onConfirm={confirmDelete}
       />
 
-      {/* ── Page title ──────────────────────────────────────────────────── */}
+      {/* Page title */}
       <h1
         className="text-center w-full"
         style={{
@@ -680,13 +1017,13 @@ export function IndividualQueryPage() {
         الاستعلام عن بيانات فرد
       </h1>
 
-      {/* ── Search form ─────────────────────────────────────────────────── */}
+      {/* Search form */}
       <form
         onSubmit={handleSearch}
         className="flex flex-col gap-6 items-end"
       >
-        {/* ── فئة الفرد ────────────────────────────────────────────────── */}
-        <div className="flex flex-col gap-3 items-sart w-full">
+        {/* Category */}
+        <div className="flex flex-col gap-3 items-start w-full">
           <p
             style={{
               fontFamily: "'Almarai', sans-serif",
@@ -698,20 +1035,29 @@ export function IndividualQueryPage() {
           >
             فئة الفرد
           </p>
+
           <div className="flex flex-wrap gap-4 justify-start w-full">
-            {CATEGORIES.map((cat) => (
+            {CATEGORIES.map((category) => (
               <RadioCard
-                key={cat.id}
-                label={cat.label}
-                checked={selectedCategory === cat.label}
-                onChange={() => setSelectedCategory(cat.label)}
+                key={category.id}
+                label={category.label}
+                checked={
+                  selectedCategory ===
+                  category.label
+                }
+                onChange={() =>
+                  setSelectedCategory(
+                    category.label
+                  )
+                }
               />
             ))}
           </div>
         </div>
-        {/* ── Row: Dropdown → Input → Button ───────────────────────────── */}
+
+        {/* Query controls */}
         <div className="flex flex-col sm:flex-row gap-5 w-full items-end">
-          {/* 1 - أساس الاستعلام (Dropdown) — rightmost in RTL */}
+          {/* Query basis */}
           <div className="flex flex-col gap-1.5 flex-1 min-w-0 w-full">
             <label
               style={{
@@ -725,6 +1071,7 @@ export function IndividualQueryPage() {
             >
               أساس الاستعلام
             </label>
+
             <Dropdown
               options={QUERY_BASIS_OPTIONS}
               value={queryBasis}
@@ -732,7 +1079,7 @@ export function IndividualQueryPage() {
             />
           </div>
 
-          {/* 2 - البيان (Input) */}
+          {/* Search value */}
           <div className="flex flex-col gap-1.5 flex-1 min-w-0 w-full">
             <label
               style={{
@@ -746,16 +1093,35 @@ export function IndividualQueryPage() {
             >
               البيان
             </label>
+
             <input
               type="text"
               value={queryText}
               onChange={(e) => {
                 setQueryText(e.target.value);
-                if (queryTextError) setQueryTextError("");
+
+                if (queryTextError) {
+                  setQueryTextError("");
+                }
+
+                if (searchError) {
+                  setSearchError("");
+                }
               }}
-              placeholder="بيانات الاستعلام"
+              placeholder={
+                queryBasis === "رقم عسكري"
+                  ? "أدخل الرقم العسكري"
+                  : queryBasis === "الاسم"
+                    ? "أدخل الاسم"
+                    : queryBasis ===
+                        "رقم الوحدة"
+                      ? "أدخل اسم أو كود الوحدة"
+                      : "بيانات الاستعلام"
+              }
               className={[
-                "w-full h-[54px] bg-white border rounded-[8px] px-3 text-right outline-none focus:border-[#4BFF62] transition-colors",
+                "w-full h-[54px] bg-white border rounded-[8px]",
+                "px-3 text-right outline-none",
+                "focus:border-[#4BFF62] transition-colors",
                 queryTextError
                   ? "border-[#ef4444]"
                   : "border-[#e2e7f0]",
@@ -767,6 +1133,7 @@ export function IndividualQueryPage() {
               }}
               dir="rtl"
             />
+
             {queryTextError && (
               <p
                 className="text-right"
@@ -774,7 +1141,6 @@ export function IndividualQueryPage() {
                   fontFamily: "'Almarai', sans-serif",
                   fontSize: "13px",
                   color: "#ef4444",
-                  lineHeight: 1.4,
                 }}
               >
                 {queryTextError}
@@ -782,10 +1148,11 @@ export function IndividualQueryPage() {
             )}
           </div>
 
-          {/* 3 - زر الاستعلام — leftmost in RTL */}
+          {/* Search button */}
           <button
             type="submit"
-            className="shrink-0 w-full sm:w-[150px] h-[52px] rounded-[8px] flex items-center justify-center transition-opacity hover:opacity-90 active:opacity-80"
+            disabled={loading}
+            className="shrink-0 w-full sm:w-[150px] h-[52px] rounded-[8px] flex items-center justify-center transition-opacity hover:opacity-90 disabled:opacity-50"
             style={{
               background:
                 "linear-gradient(to bottom, #00b867, #00522e)",
@@ -794,17 +1161,31 @@ export function IndividualQueryPage() {
               color: "#f5f5f5",
             }}
           >
-            استعلام
+            {loading ? "جاري البحث..." : "استعلام"}
           </button>
         </div>
       </form>
 
-      {/* ── Search result area ───────────────────────────────────────────── */}
+      {/* Error */}
+      {searchError && (
+        <div
+          className="w-full rounded-[10px] px-4 py-3"
+          style={{
+            background: "#fce8f1",
+            color: "#90132a",
+            fontFamily: "'Almarai', sans-serif",
+            fontSize: "14px",
+          }}
+        >
+          {searchError}
+        </div>
+      )}
+
+      {/* Results */}
       {hasSearched && (
         <div className="flex flex-col gap-4">
-          {/* ── Status row ─────────────────────────────────────────────── */}
+          {/* Status */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            {/* Left: selected count */}
             <p
               style={{
                 fontFamily: "'Almarai', sans-serif",
@@ -818,40 +1199,28 @@ export function IndividualQueryPage() {
                 : ""}
             </p>
 
-            {/* Right: notification badges */}
             <div className="flex flex-wrap gap-3 items-center justify-end">
-              {(notFound || found) && (
-                <>
-                  {notFound && (
-                    <NotifBadge
-                      label="لم يتم العثور علي نتائج استعلام"
-                      dot="#E3282C"
-                      bg="#fce8f1"
-                      text="#90132a"
-                    />
-                  )}
-                  {found && (
-                    <>
-                      <NotifBadge
-                        label="لم يتم العثور علي نتائج استعلام"
-                        dot="#E3282C"
-                        bg="#fce8f1"
-                        text="#90132a"
-                      />
-                      <NotifBadge
-                        label={`تم العثور علي ${results.length} نتائج استعلام`}
-                        dot="#35C128"
-                        bg="#ebfaea"
-                        text="#26861d"
-                      />
-                    </>
-                  )}
-                </>
+              {notFound && (
+                <NotifBadge
+                  label="لم يتم العثور علي نتائج استعلام"
+                  dot="#E3282C"
+                  bg="#fce8f1"
+                  text="#90132a"
+                />
+              )}
+
+              {found && (
+                <NotifBadge
+                  label={`تم العثور علي ${results.length} نتائج استعلام`}
+                  dot="#35C128"
+                  bg="#ebfaea"
+                  text="#26861d"
+                />
               )}
             </div>
           </div>
 
-          {/* ── Table ──────────────────────────────────────────────────── */}
+          {/* Table */}
           {found && (
             <ResultsTable
               records={results}
@@ -863,7 +1232,7 @@ export function IndividualQueryPage() {
             />
           )}
 
-          {/* ── Empty state ─────────────────────────────────────────────── */}
+          {/* Empty */}
           {notFound && (
             <div className="w-full py-16 flex flex-col items-center gap-3 bg-white rounded-[12px] border border-[#e2e7f0]">
               <p

@@ -1,44 +1,39 @@
-/**
- * UnitBarChart — pure SVG implementation with hover tooltips.
- */
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "../../../lib/supabase";
 
-const chartData = [
-  { name: "س 680 اشارة",     value: 432,  active: false },
-  { name: "ميس 4",            value: 189,  active: false },
-  { name: "س 145 اشارة",     value: 460,  active: false },
-  { name: "مج عمليات خاصة", value: 276,  active: false },
-  { name: "كـ 50 صع",        value: 636,  active: true  },
-  { name: "كـ 23 صع",        value: 151,  active: false },
-  { name: "كـ 143 صع",       value: 397,  active: false },
-];
+interface ChartData {
+  name: string;
+  value: number;
+}
 
-// ── Layout constants ────────────────────────────────────────────────────────
-const SVG_W   = 600;
-const SVG_H   = 280;
+// ── Layout ────────────────────────────────────────────────────────────────
+const SVG_W = 600;
+const SVG_H = 280;
 const PAD_TOP = 60;
 const PAD_BOT = 40;
-const PAD_L   = 44;
-const PAD_R   = 16;
+const PAD_L = 44;
+const PAD_R = 16;
 
 const CHART_W = SVG_W - PAD_L - PAD_R;
 const CHART_H = SVG_H - PAD_TOP - PAD_BOT;
 
-const MAX_VAL = 800;
 const Y_TICKS = [0, 200, 400, 800];
 
 const BAR_GAP_RATIO = 0.35;
-const n             = chartData.length;
-const SLOT_W        = CHART_W / n;
-const BAR_W         = SLOT_W * (1 - BAR_GAP_RATIO);
 
-function valueToY(v: number) {
-  return PAD_TOP + CHART_H - (v / MAX_VAL) * CHART_H;
-}
+// ── Helpers ───────────────────────────────────────────────────────────────
 
-function roundedTopPath(x: number, y: number, w: number, h: number, r: number) {
+function roundedTopPath(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+) {
   if (h <= 0) return "";
+
   r = Math.min(r, w / 2, h);
+
   return [
     `M ${x + r},${y}`,
     `H ${x + w - r}`,
@@ -55,17 +50,26 @@ function truncate(text: string, max = 9) {
   return text.length > max ? text.slice(0, max) + "…" : text;
 }
 
-// ── Tooltip bubble (drawn in SVG coords) ────────────────────────────────────
-function TooltipBubble({ cx, barY, value }: { cx: number; barY: number; value: number }) {
-  const label   = value.toLocaleString();
+// ── Tooltip ───────────────────────────────────────────────────────────────
+
+function TooltipBubble({
+  cx,
+  barY,
+  value,
+}: {
+  cx: number;
+  barY: number;
+  value: number;
+}) {
+  const label = value.toLocaleString("en-US");
   const bubbleW = Math.max(label.length * 9, 56);
   const bubbleH = 34;
-  const bx      = cx - bubbleW / 2;
-  const by      = barY - bubbleH - 14;
+
+  const bx = cx - bubbleW / 2;
+  const by = barY - bubbleH - 14;
 
   return (
     <g style={{ pointerEvents: "none" }}>
-      {/* Shadow rect */}
       <rect
         x={bx + 2}
         y={by + 3}
@@ -74,14 +78,23 @@ function TooltipBubble({ cx, barY, value }: { cx: number; barY: number; value: n
         rx={8}
         fill="rgba(0,0,0,0.08)"
       />
-      {/* Bubble */}
-      <rect x={bx} y={by} width={bubbleW} height={bubbleH} rx={8} fill="#00B867" />
-      {/* Arrow */}
-      <polygon
-        points={`${cx - 6},${barY - 14} ${cx + 6},${barY - 14} ${cx},${barY - 4}`}
+
+      <rect
+        x={bx}
+        y={by}
+        width={bubbleW}
+        height={bubbleH}
+        rx={8}
         fill="#00B867"
       />
-      {/* Value text */}
+
+      <polygon
+        points={`${cx - 6},${barY - 14} ${cx + 6},${
+          barY - 14
+        } ${cx},${barY - 4}`}
+        fill="#00B867"
+      />
+
       <text
         x={cx}
         y={by + bubbleH / 2 + 5}
@@ -96,13 +109,177 @@ function TooltipBubble({ cx, barY, value }: { cx: number; barY: number; value: n
   );
 }
 
-// ── Component ────────────────────────────────────────────────────────────────
+// ── Component ─────────────────────────────────────────────────────────────
+
 export function UnitBarChart() {
+  const [chartData, setChartData] = useState<ChartData[]>([]);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadUnitData();
+  }, []);
+
+  async function loadUnitData() {
+    try {
+      setLoading(true);
+
+      // ============================================================
+      // 1. جلب حالة ATTACHED
+      // ============================================================
+
+      const { data: statuses, error: statusesError } =
+        await supabase
+          .from("service_statuses")
+          .select("id, code")
+          .eq("code", "ATTACHED")
+          .single();
+
+      if (statusesError) {
+        console.error(
+          "خطأ في جلب حالة ATTACHED:",
+          statusesError
+        );
+
+        setChartData([]);
+        return;
+      }
+
+      if (!statuses) {
+        console.error(
+          "لم يتم العثور على حالة ATTACHED"
+        );
+
+        setChartData([]);
+        return;
+      }
+
+      const attachedStatusId = statuses.id;
+
+      // ============================================================
+      // 2. جلب الأفراد الموجودين كخوارج فقط
+      //
+      // الخوارج = ATTACHED فقط
+      //
+      // OUTSIDE_FORCE لا يدخل
+      // DISCHARGED لا يدخل
+      // UNIT_FORCE لا يدخل
+      // ============================================================
+
+      const { data, error } = await supabase
+        .from("personnel")
+        .select(`
+          id,
+          service_status_id,
+          primary_unit_id,
+          units:primary_unit_id (
+            id,
+            name
+          )
+        `)
+        .eq("service_status_id", attachedStatusId)
+        .eq("is_active", true);
+
+      if (error) {
+        console.error(
+          "خطأ في تحميل بيانات الوحدات:",
+          error
+        );
+
+        setChartData([]);
+        return;
+      }
+
+      const personnel = data ?? [];
+
+      // ============================================================
+      // 3. تجميع الخوارج حسب الوحدة الأساسية
+      // ============================================================
+
+      const grouped = new Map<string, number>();
+
+      personnel.forEach((person: any) => {
+        const unitName =
+          person.units?.name || "بدون وحدة";
+
+        grouped.set(
+          unitName,
+          (grouped.get(unitName) || 0) + 1
+        );
+      });
+
+      // ============================================================
+      // 4. تحويل البيانات للرسم
+      // ============================================================
+
+      const result: ChartData[] = Array.from(
+        grouped.entries()
+      )
+        .map(([name, value]) => ({
+          name,
+          value,
+        }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 7);
+
+      setChartData(result);
+
+      console.log(
+        "توزيع الخوارج على الوحدات:",
+        result
+      );
+    } catch (error) {
+      console.error(
+        "خطأ غير متوقع في UnitBarChart:",
+        error
+      );
+
+      setChartData([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ============================================================
+  // إعدادات الرسم
+  // ============================================================
+
+  const n = chartData.length || 1;
+
+  const SLOT_W = CHART_W / n;
+
+  const BAR_W =
+    SLOT_W * (1 - BAR_GAP_RATIO);
+
+  // أعلى قيمة موجودة
+  const highestValue =
+    chartData.length > 0
+      ? Math.max(
+          ...chartData.map((item) => item.value)
+        )
+      : 0;
+
+  // تحديد أعلى محور بشكل ديناميكي
+  const maxValue =
+    highestValue > 800
+      ? Math.ceil(highestValue / 200) * 200
+      : 800;
+
+  function dynamicValueToY(v: number) {
+    return (
+      PAD_TOP +
+      CHART_H -
+      (v / maxValue) * CHART_H
+    );
+  }
 
   return (
     <div className="bg-white flex-1 rounded-[20px] border border-[#eff0f6] flex flex-col p-6 gap-4 min-w-0 overflow-hidden">
-      {/* Title */}
+
+      {/* ========================================================
+          Title
+      ======================================================== */}
+
       <p
         className="text-right"
         style={{
@@ -115,90 +292,214 @@ export function UnitBarChart() {
         توزيع الخوارج على الوحدات
       </p>
 
-      {/* SVG chart */}
-      <div dir="ltr" style={{ width: "100%", overflow: "hidden" }}>
-        <svg
-          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-          width="100%"
-          preserveAspectRatio="xMidYMid meet"
-          aria-label="توزيع الخوارج على الوحدات"
-          style={{ overflow: "visible" }}
+      {/* ========================================================
+          Loading
+      ======================================================== */}
+
+      {loading && (
+        <div
+          className="flex items-center justify-center"
+          style={{ height: 280 }}
         >
-          {/* ── Y-axis grid lines & labels ───────────────────────────────── */}
-          {Y_TICKS.map((tick) => {
-            const ty = valueToY(tick);
-            return (
-              <g key={`ytick-${tick}`}>
-                <line
-                  x1={PAD_L} y1={ty} x2={SVG_W - PAD_R} y2={ty}
-                  stroke="#E5E5EF" strokeDasharray="4 7" strokeWidth={1}
-                />
-                <text
-                  x={PAD_L - 6} y={ty + 4}
-                  textAnchor="end" fill="#615e83"
-                  fontSize={12} fontFamily="'Almarai', sans-serif"
+          <span
+            style={{
+              color: "#717d96",
+              fontFamily: "'Almarai', sans-serif",
+              fontSize: "14px",
+            }}
+          >
+            جاري تحميل البيانات...
+          </span>
+        </div>
+      )}
+
+      {/* ========================================================
+          Empty
+      ======================================================== */}
+
+      {!loading && chartData.length === 0 && (
+        <div
+          className="flex items-center justify-center"
+          style={{ height: 280 }}
+        >
+          <span
+            style={{
+              color: "#717d96",
+              fontFamily: "'Almarai', sans-serif",
+              fontSize: "14px",
+            }}
+          >
+            لا توجد بيانات خوارج لعرضها
+          </span>
+        </div>
+      )}
+
+      {/* ========================================================
+          Chart
+      ======================================================== */}
+
+      {!loading && chartData.length > 0 && (
+        <div
+          dir="ltr"
+          style={{
+            width: "100%",
+            overflow: "hidden",
+          }}
+        >
+          <svg
+            viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+            width="100%"
+            preserveAspectRatio="xMidYMid meet"
+            aria-label="توزيع الخوارج على الوحدات"
+            style={{ overflow: "visible" }}
+          >
+
+            {/* ==================================================
+                Grid
+            ================================================== */}
+
+            {Y_TICKS.map((tick) => {
+              if (tick > maxValue) return null;
+
+              const ty =
+                dynamicValueToY(tick);
+
+              return (
+                <g key={`ytick-${tick}`}>
+                  <line
+                    x1={PAD_L}
+                    y1={ty}
+                    x2={SVG_W - PAD_R}
+                    y2={ty}
+                    stroke="#E5E5EF"
+                    strokeDasharray="4 7"
+                    strokeWidth={1}
+                  />
+
+                  <text
+                    x={PAD_L - 6}
+                    y={ty + 4}
+                    textAnchor="end"
+                    fill="#615e83"
+                    fontSize={12}
+                    fontFamily="'Almarai', sans-serif"
+                  >
+                    {tick}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* ==================================================
+                Bars
+            ================================================== */}
+
+            {chartData.map((entry, i) => {
+              const slotX =
+                PAD_L + i * SLOT_W;
+
+              const barX =
+                slotX +
+                (SLOT_W - BAR_W) / 2;
+
+              const barY =
+                dynamicValueToY(
+                  entry.value
+                );
+
+              const barH =
+                PAD_TOP +
+                CHART_H -
+                barY;
+
+              const cx =
+                barX + BAR_W / 2;
+
+              const isHovered =
+                hoveredIndex === i;
+
+              const fill = isHovered
+                ? "#00B867"
+                : "#93C199";
+
+              const path =
+                roundedTopPath(
+                  barX,
+                  barY,
+                  BAR_W,
+                  barH,
+                  7
+                );
+
+              const labelY =
+                PAD_TOP +
+                CHART_H +
+                16;
+
+              return (
+                <g
+                  key={`bar-${entry.name}`}
+                  style={{
+                    cursor: "pointer",
+                  }}
+                  onMouseEnter={() =>
+                    setHoveredIndex(i)
+                  }
+                  onMouseLeave={() =>
+                    setHoveredIndex(null)
+                  }
                 >
-                  {tick}
-                </text>
-              </g>
-            );
-          })}
 
-          {/* ── Bars ─────────────────────────────────────────────────────── */}
-          {chartData.map((entry, i) => {
-            const slotX   = PAD_L + i * SLOT_W;
-            const barX    = slotX + (SLOT_W - BAR_W) / 2;
-            const barY    = valueToY(entry.value);
-            const barH    = PAD_TOP + CHART_H - barY;
-            const cx      = barX + BAR_W / 2;
-            const isHovered = hoveredIndex === i;
-            const fill    = isHovered
-              ? "#00B867"
-              : "#93C199";
-            const path    = roundedTopPath(barX, barY, BAR_W, barH, 7);
-            const labelY  = PAD_TOP + CHART_H + 16;
+                  {/* Hit area */}
 
-            return (
-              <g
-                key={`bar-${entry.name}`}
-                style={{ cursor: "pointer" }}
-                onMouseEnter={() => setHoveredIndex(i)}
-                onMouseLeave={() => setHoveredIndex(null)}
-              >
-                {/* Invisible wider hit area */}
-                <rect
-                  x={slotX}
-                  y={PAD_TOP}
-                  width={SLOT_W}
-                  height={CHART_H}
-                  fill="transparent"
-                />
+                  <rect
+                    x={slotX}
+                    y={PAD_TOP}
+                    width={SLOT_W}
+                    height={CHART_H}
+                    fill="transparent"
+                  />
 
-                {/* Bar */}
-                <path
-                  d={path}
-                  fill={fill}
-                  style={{ transition: "fill 0.15s ease" }}
-                />
+                  {/* Bar */}
 
-                {/* Hover tooltip */}
-                {isHovered && (
-                  <TooltipBubble cx={cx} barY={barY} value={entry.value} />
-                )}
+                  <path
+                    d={path}
+                    fill={fill}
+                    style={{
+                      transition:
+                        "fill 0.15s ease",
+                    }}
+                  />
 
-                {/* X-axis label */}
-                <text
-                  x={cx} y={labelY}
-                  textAnchor="middle" fill="#615e83"
-                  fontSize={11} fontFamily="'Almarai', sans-serif"
-                >
-                  {truncate(entry.name)}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
-      </div>
+                  {/* Tooltip */}
+
+                  {isHovered && (
+                    <TooltipBubble
+                      cx={cx}
+                      barY={barY}
+                      value={entry.value}
+                    />
+                  )}
+
+                  {/* Unit name */}
+
+                  <text
+                    x={cx}
+                    y={labelY}
+                    textAnchor="middle"
+                    fill="#615e83"
+                    fontSize={11}
+                    fontFamily="'Almarai', sans-serif"
+                  >
+                    {truncate(entry.name)}
+                  </text>
+
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+      )}
     </div>
   );
 }

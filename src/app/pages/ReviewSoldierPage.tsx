@@ -1,276 +1,351 @@
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { LoadingOverlay } from "../components/LoadingOverlay";
+import { supabase } from "../../lib/supabase";
 
-// ─── Shared style ─────────────────────────────────────────────────────────────
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
 
-// ─── Stepper ─────────────────────────────────────────────────────────────────
-function CheckIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M9 12L11 14L15 10M12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3Z"
-        stroke="white"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+interface ReviewFormData {
+  military_number: string;
+  full_name: string;
+  rank_id: string;
+  personnel_category_id: string;
+  personnel_category: string;
+  service_status_id: string;
+  primary_unit_id: string;
+  attachment_unit_id: string | null;
+  discharge_date: string | null;
+
+  rank_name: string;
+  status_name: string;
+  primary_unit_name: string;
+  attachment_unit_name: string;
 }
 
-function StepDots({ color = "#A1AEBE" }: { color?: string }) {
-  return (
-    <div className="flex items-center gap-[3px] mx-2">
-      {Array.from({ length: 14 }).map((_, i) => (
-        <span
-          key={i}
-          className="w-[3px] h-[3px] rounded-full shrink-0"
-          style={{ backgroundColor: color }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function Stepper() {
-  return (
-    <div
-      className="flex items-start justify-center gap-0"
-      dir="rtl"
-    >
-      {/* Step 01 — ادخال البيانات (completed) */}
-      <div className="flex flex-col items-center gap-2">
-        <div
-          className="w-8 h-8 rounded-full flex items-center justify-center"
-          style={{
-            background:
-              "linear-gradient(to bottom, #00b867, #00522e)",
-          }}
-        >
-          <CheckIcon />
-        </div>
-        <span
-          style={{
-            ...F,
-            fontSize: 14,
-            fontWeight: 700,
-            background:
-              "linear-gradient(to bottom, #00b867, #00522e)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-          }}
-        >
-          ادخال البيانات
-        </span>
-      </div>
-
-      <div className="mt-[14px]">
-        <StepDots color="#2d3648" />
-      </div>
-
-      {/* Step 02 — المراجعة (active) */}
-      <div className="flex flex-col items-center gap-2">
-        <div className="w-8 h-8 rounded-full flex items-center justify-center border-2 border-[#344736] bg-white">
-          <span
-            style={{ ...F, fontSize: 14, color: "#344736" }}
-          >
-            02
-          </span>
-        </div>
-        <span style={{ ...F, fontSize: 14, color: "#344736" }}>
-          المراجعة
-        </span>
-      </div>
-
-      <div className="mt-[14px]">
-        <StepDots />
-      </div>
-
-      {/* Step 03 — اعتماد (inactive) */}
-      <div className="flex flex-col items-center gap-2">
-        <div className="w-8 h-8 rounded-full flex items-center justify-center border-2 border-[#a1aebe] bg-white">
-          <span
-            style={{ ...F, fontSize: 14, color: "#2d3648" }}
-          >
-            03
-          </span>
-        </div>
-        <span style={{ ...F, fontSize: 14, color: "#465668" }}>
-          اعتماد
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ─── Info Row ─────────────────────────────────────────────────────────────────
-function InfoRow({
-  label,
-  value,
-  blurred = false,
-  bold = false,
-}: {
-  label: string;
-  value: string;
-  blurred?: boolean;
-  bold?: boolean;
-}) {
-  return (
-    <div className="flex items-start gap-2 justify-start flex-1 min-w-0">
-      <span
-        className="w-[130px] shrink-0 text-right"
-        style={{ ...F, fontSize: 18, color: "#717d96" }}
-      >
-        {label}
-      </span>
-      <span style={{ ...F, fontSize: 18, color: "#172e78" }}>
-        :
-      </span>
-      <span
-        className={blurred ? "blur-[7px] select-none" : ""}
-        style={{
-          ...F,
-          fontSize: 18,
-          color: "#2d3648",
-          whiteSpace: "nowrap",
-          fontWeight: bold ? 700 : 400,
-        }}
-      >
-        {value}
-      </span>
-    </div>
-  );
-}
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 export function ReviewSoldierPage() {
   const location = useLocation();
   const navigate = useNavigate();
+
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const form = (location.state as {
-    name: string;
-    rank: string;
-    milId: string;
-    category: string;
-    unit: string;
-    status: string;
-    attachment: string;
-    discharge: string;
-  } | null) ?? {
-    name: "اسلام مجدى عبدالستار السيد حجاج",
-    rank: "جندي",
-    milId: "2024427700265",
-    category: "مجند",
-    unit: "مج العمليات الخاصة",
-    status: "قوة الوحده",
-    attachment: "لا يوجد",
-    discharge: "2025 - 3 - 1",
-  };
+  const form =
+    (location.state as ReviewFormData | null) ?? null;
 
-  // Called when user taps "اعتماد القيد"
-  const handleConfirm = useCallback(() => {
-    setIsLoading(true);
-    // after 5 s the overlay calls onDone → navigate to success page
-  }, []);
+  const handleConfirm = useCallback(async () => {
+    if (!form) return;
 
-  // Called by LoadingOverlay after 5 s
-  const handleLoadingDone = useCallback(() => {
-    navigate("/dashboard/add-soldier/success", { state: form });
-  }, [navigate, form]);
+    try {
+      setIsLoading(true);
+      setError("");
+
+      const militaryNumber =
+        form.military_number.trim();
+
+      // =====================================================
+      // 1. فحص الرقم العسكري قبل الحفظ
+      // =====================================================
+
+      const { data: existingPersonnel, error: checkError } =
+        await supabase
+          .from("personnel")
+          .select("id")
+          .eq("military_number", militaryNumber)
+          .maybeSingle();
+
+      if (checkError) {
+        throw checkError;
+      }
+
+      if (existingPersonnel) {
+        setError(
+          `الرقم العسكري ${militaryNumber} مسجل بالفعل ولا يمكن تكراره.`
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      // =====================================================
+      // 2. تجهيز البيانات للحفظ
+      // =====================================================
+
+      const payload = {
+        military_number: militaryNumber,
+        full_name: form.full_name.trim(),
+
+        rank_id: form.rank_id,
+
+        personnel_category_id:
+          form.personnel_category_id,
+
+        service_status_id:
+          form.service_status_id,
+
+        primary_unit_id:
+          form.primary_unit_id,
+
+        attachment_unit_id:
+          form.attachment_unit_id || null,
+
+        // المتطوع يتم حفظ تاريخ تسريحه NULL
+        discharge_date:
+          form.personnel_category === "متطوع"
+            ? null
+            : form.discharge_date || null,
+
+        is_active: true,
+      };
+
+      // =====================================================
+      // 3. الحفظ النهائي في personnel
+      // =====================================================
+
+      const { data: insertedPersonnel, error: insertError } =
+        await supabase
+          .from("personnel")
+          .insert(payload)
+          .select(`
+            id,
+            created_at,
+            military_number,
+            full_name,
+            rank_id,
+            personnel_category_id,
+            service_status_id,
+            primary_unit_id,
+            attachment_unit_id,
+            discharge_date,
+            is_active,
+            updated_at
+          `)
+          .single();
+
+      if (insertError) {
+
+        // حماية إضافية في حالة حدوث duplicate
+        // بسبب إدخال آخر في نفس اللحظة
+        if (insertError.code === "23505") {
+          setError(
+            `الرقم العسكري ${militaryNumber} مسجل بالفعل ولا يمكن تكراره.`
+          );
+          setIsLoading(false);
+          return;
+        }
+
+        throw insertError;
+      }
+
+      // =====================================================
+      // 4. الانتقال للصفحة النهائية
+      //    مع البيانات التي تم حفظها فعليًا
+      // =====================================================
+
+      navigate(
+        "/dashboard/add-soldier/success",
+        {
+          state: {
+            personnel: insertedPersonnel,
+
+            // البيانات المعروضة للمستخدم
+            military_number:
+              insertedPersonnel.military_number,
+
+            full_name:
+              insertedPersonnel.full_name,
+
+            rank_name:
+              form.rank_name,
+
+            personnel_category:
+              form.personnel_category,
+
+            status_name:
+              form.status_name,
+
+            primary_unit_name:
+              form.primary_unit_name,
+
+            attachment_unit_name:
+              form.attachment_unit_name,
+
+            discharge_date:
+              insertedPersonnel.discharge_date,
+          },
+        }
+      );
+    } catch (err) {
+      console.error(
+        "Error saving personnel:",
+        err
+      );
+
+      setError(
+        "حدث خطأ أثناء حفظ بيانات الفرد، برجاء المحاولة مرة أخرى."
+      );
+
+      setIsLoading(false);
+    }
+  }, [form, navigate]);
+
+  if (!form) {
+    return (
+      <div
+        dir="rtl"
+        className="flex flex-col items-center gap-5 py-20"
+      >
+        <p
+          style={{
+            ...F,
+            fontSize: 18,
+            color: "#2d3648",
+          }}
+        >
+          لا توجد بيانات للمراجعة
+        </p>
+
+        <button
+          type="button"
+          onClick={() =>
+            navigate("/dashboard/add-soldier")
+          }
+          className="px-6 h-[44px] rounded-[8px]"
+          style={{
+            background:
+              "linear-gradient(to bottom, #00b867, #00522e)",
+          }}
+        >
+          <span
+            style={{
+              ...F,
+              color: "white",
+            }}
+          >
+            العودة لصفحة الإضافة
+          </span>
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-6 w-full" dir="rtl">
-      {/* Loading overlay — rendered in DOM but only "shown" when isLoading */}
+    <div
+      className="flex flex-col gap-6 w-full"
+      dir="rtl"
+    >
       {isLoading && (
         <LoadingOverlay
-          onDone={handleLoadingDone}
+          onDone={() => {}}
           durationMs={5000}
         />
       )}
 
-      {/* ── Page title ──────────────────────────────────────────────────── */}
       <h1
-        className="text-center w-full"
+        className="text-center"
         style={{
           ...F,
           fontWeight: 700,
-          fontSize: "clamp(24px, 4vw, 32px)",
+          fontSize: 32,
           color: "#2d3648",
-          lineHeight: 1.5,
         }}
       >
         قيد قوة جديدة
       </h1>
 
-      {/* ── Stepper ─────────────────────────────────────────────────────── */}
-      <div className="flex justify-center">
-        <Stepper />
-      </div>
-
-      {/* ── Review Card ─────────────────────────────────────────────────── */}
       <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full">
         <div className="flex flex-col gap-6 px-6 py-5">
-          {/* Card header */}
-          <div className="flex flex-col gap-3 items-start w-full">
-            <p
-              className="text-right w-full"
-              style={{
-                ...F,
-                fontSize: 18,
-                color: "#2d3648",
-                lineHeight: 1.5,
-              }}
-            >
-              مراجعة البيانات
-            </p>
-            <div className="w-full h-px bg-[#cbd2e0]" />
-          </div>
 
-          {/* Row 1 */}
-          <div className="flex flex-wrap gap-6">
-            <InfoRow label="الدرجة" value={form.rank} />
-            <InfoRow label="الرقم العسكري" value={form.milId} />
-          </div>
-          {/* Row 2 */}
-          <div className="flex flex-wrap gap-6">
-            <InfoRow label="فئة الفرد" value={form.category} />
-            <InfoRow label="الاسم" value={form.name} />
-          </div>
-          {/* Row 3 */}
-          <div className="flex flex-wrap gap-6">
+          <p
+            style={{
+              ...F,
+              fontSize: 18,
+              color: "#2d3648",
+              fontWeight: 700,
+            }}
+          >
+            مراجعة البيانات
+          </p>
+
+          <div className="w-full h-px bg-[#cbd2e0]" />
+
+          {/* البيانات */}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+            <InfoRow
+              label="الرقم العسكري"
+              value={form.military_number}
+            />
+
+            <InfoRow
+              label="الاسم"
+              value={form.full_name}
+            />
+
+            <InfoRow
+              label="فئة الفرد"
+              value={form.personnel_category}
+            />
+
+            <InfoRow
+              label="الدرجة"
+              value={form.rank_name}
+            />
+
             <InfoRow
               label="الموقف الخدمي"
-              value={form.status}
-              bold
+              value={form.status_name}
             />
+
             <InfoRow
-              label="الوحدة الاساسية"
-              value={form.unit}
+              label="الوحدة الأساسية"
+              value={form.primary_unit_name}
             />
-          </div>
-          {/* Row 4 */}
-          <div className="flex flex-wrap gap-6">
+
             <InfoRow
-              label="جهة الالحاق"
-              value={form.attachment}
+              label="جهة الإلحاق"
+              value={
+                form.attachment_unit_name ||
+                "لا يوجد"
+              }
             />
+
             <InfoRow
               label="تاريخ التسريح"
-              value={form.discharge}
+              value={
+                form.discharge_date
+                  ? form.discharge_date
+                  : "لا يوجد"
+              }
             />
+
           </div>
 
-          {/* ── اعتماد القيد button ──────────────────────────────────── */}
-          <div className="flex justify-end py-2">
+          {/* رسالة الخطأ */}
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-[10px] px-4 py-3">
+              <p
+                style={{
+                  ...F,
+                  color: "#dc2626",
+                  fontSize: 14,
+                }}
+              >
+                {error}
+              </p>
+            </div>
+          )}
+
+          {/* اعتماد */}
+
+          <div className="flex justify-end pt-3">
             <button
+              type="button"
               onClick={handleConfirm}
               disabled={isLoading}
-              className="flex items-center justify-center px-5 min-h-[44px] rounded-[8px] transition-opacity hover:opacity-90 active:opacity-80 disabled:opacity-60"
+              className="h-[44px] px-6 rounded-[8px] disabled:opacity-50"
               style={{
                 background:
                   "linear-gradient(to bottom, #00b867, #00522e)",
@@ -279,17 +354,53 @@ export function ReviewSoldierPage() {
               <span
                 style={{
                   ...F,
+                  color: "white",
                   fontSize: 16,
-                  color: "#f5f5f5",
-                  lineHeight: 1.5,
                 }}
               >
-                اعتماد القيد
+                {isLoading
+                  ? "جاري الحفظ..."
+                  : "اعتماد القيد"}
               </span>
             </button>
           </div>
+
         </div>
       </div>
+    </div>
+  );
+}
+
+function InfoRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex gap-2">
+      <span
+        style={{
+          ...F,
+          color: "#717d96",
+          fontSize: 16,
+          minWidth: 130,
+        }}
+      >
+        {label}:
+      </span>
+
+      <span
+        style={{
+          ...F,
+          color: "#2d3648",
+          fontSize: 16,
+          fontWeight: 600,
+        }}
+      >
+        {value || "غير محدد"}
+      </span>
     </div>
   );
 }

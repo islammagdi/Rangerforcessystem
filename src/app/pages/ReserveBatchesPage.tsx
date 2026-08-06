@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ChevronDown,
   X,
@@ -7,84 +8,433 @@ import {
   AlertTriangle,
   ArrowLeftRight,
 } from "lucide-react";
-import { getSoldiers } from "../data/soldiersData";
+import { supabase } from "../../lib/supabase";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
 
-// ─── Shared Dropdown ──────────────────────────────────────────────────────────
+type ReserveBatch = {
+  id: string;
+  batch_date: string;
+  name: string | null;
+  is_active: boolean;
+};
+
+type DocumentState =
+  | "تم الاستلام"
+  | "لم يتم الاستلام"
+  | "تالف";
+
+type SoldierStatus =
+  | "بالخدمة"
+  | "منتهي خدمته";
+
+type Soldier = {
+  id: string;
+  militaryId: string;
+  rank: string;
+  name: string;
+  unit: string;
+  receivedKariza: DocumentState;
+  receivedLicense: DocumentState;
+  status: SoldierStatus;
+};
+
+const DISCHARGED_STATUS_ID =
+  "ac8ddfa3-1578-455b-9b6a-b056260fcb1f";
+
+function formatBatchDate(date: string) {
+  const [year, month, day] = date.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+function documentStateToDb(value: DocumentState) {
+  if (value === "تم الاستلام") {
+    return "DELIVERED";
+  }
+
+  if (value === "تالف") {
+    return "DAMAGED";
+  }
+
+  return "PENDING";
+}
+
+function dbStateToDocumentState(
+  value: string | null
+): DocumentState {
+  if (value === "DELIVERED") {
+    return "تم الاستلام";
+  }
+
+  if (value === "DAMAGED") {
+    return "تالف";
+  }
+
+  return "لم يتم الاستلام";
+}
+
 function BatchDropdown({
   value,
   options,
   onChange,
+  disabled = false,
 }: {
   value: string;
-  options: string[];
+  options: { label: string; value: string }[];
   onChange: (v: string) => void;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+
   return (
     <div className="relative flex-1 min-w-[200px]">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full h-[54px] bg-white border border-[#e2e7f0] rounded-[8px] flex items-center gap-2 px-3 hover:border-[#a0aec0] transition-colors"
+        disabled={disabled}
+        onClick={() =>
+          !disabled && setOpen((o) => !o)
+        }
+        className="w-full h-[54px] bg-white border border-[#e2e7f0] rounded-[8px] flex items-center gap-2 px-3 hover:border-[#a0aec0] transition-colors disabled:bg-[#f5f6f8] disabled:cursor-not-allowed"
         dir="rtl"
       >
         <ChevronDown
           size={18}
-          className={`shrink-0 text-[#2d3648] transition-transform ${open ? "rotate-180" : ""}`}
+          className={`shrink-0 text-[#2d3648] transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
         />
+
         <span
           className="flex-1 text-right"
-          style={{ ...F, fontSize: 17, color: "#2d3648" }}
+          style={{
+            ...F,
+            fontSize: 17,
+            color: value
+              ? "#2d3648"
+              : "#a1aebe",
+          }}
         >
-          {value}
+          {value || "اختر تاريخ التسريح"}
         </span>
       </button>
-      {open && (
+
+      {open && !disabled && (
         <ul
-          className="absolute z-50 top-full mt-1 w-full bg-white border border-[#e2e7f0] rounded-[8px] shadow-lg overflow-hidden"
+          className="absolute z-50 top-full mt-1 w-full bg-white border border-[#e2e7f0] rounded-[8px] shadow-lg overflow-hidden max-h-[300px] overflow-y-auto"
           dir="rtl"
         >
-          {options.map((opt) => (
-            <li key={opt}>
-              <button
-                type="button"
-                onClick={() => {
-                  onChange(opt);
-                  setOpen(false);
-                }}
-                className={[
-                  "w-full text-right px-4 py-2.5 transition-colors",
-                  opt === value
-                    ? "bg-[#f0f2fd] text-[#1f3d97]"
-                    : "hover:bg-[#f5f6fb] text-[#2d3648]",
-                ].join(" ")}
-                style={{ ...F, fontSize: 15 }}
-              >
-                {opt}
-              </button>
+          {options.length === 0 ? (
+            <li
+              className="px-4 py-3 text-right"
+              style={{
+                ...F,
+                fontSize: 14,
+                color: "#a1aebe",
+              }}
+            >
+              لا توجد دفعات
             </li>
-          ))}
+          ) : (
+            options.map((opt) => (
+              <li key={opt.value}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(opt.value);
+                    setOpen(false);
+                  }}
+                  className={[
+                    "w-full text-right px-4 py-2.5 transition-colors",
+                    opt.value === value
+                      ? "bg-[#f0f2fd] text-[#1f3d97]"
+                      : "hover:bg-[#f5f6fb] text-[#2d3648]",
+                  ].join(" ")}
+                  style={{
+                    ...F,
+                    fontSize: 15,
+                  }}
+                >
+                  {opt.label}
+                </button>
+              </li>
+            ))
+          )}
         </ul>
       )}
     </div>
   );
 }
 
-// ─── Stat Card ────────────────────────────────────────────────────────────────
+/* =========================================================
+   DOCUMENT DROPDOWN
+   Portal + Fixed
+   ========================================================= */
+
+function DocumentDropdown({
+  value,
+  onChange,
+}: {
+  value: DocumentState;
+  onChange: (value: DocumentState) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const buttonRef =
+    useRef<HTMLButtonElement>(null);
+
+  const [menuPosition, setMenuPosition] =
+    useState({
+      top: 0,
+      left: 0,
+      openUp: true,
+    });
+
+  const options: DocumentState[] = [
+    "تم الاستلام",
+    "لم يتم الاستلام",
+    "تالف",
+  ];
+
+  const colors: Record<
+    DocumentState,
+    string
+  > = {
+    "تم الاستلام": "#166534",
+    "لم يتم الاستلام": "#9a3412",
+    "تالف": "#991b1b",
+  };
+
+  const backgrounds: Record<
+    DocumentState,
+    string
+  > = {
+    "تم الاستلام": "#dcfce7",
+    "لم يتم الاستلام": "#fff7ed",
+    "تالف": "#fee2e2",
+  };
+
+  function updateMenuPosition() {
+    if (!buttonRef.current) {
+      return;
+    }
+
+    const rect =
+      buttonRef.current.getBoundingClientRect();
+
+    const menuWidth = 150;
+
+    // ارتفاع تقريبي للقائمة
+    const menuHeight = 108;
+
+    const gap = 4;
+
+    const spaceAbove = rect.top;
+
+    const spaceBelow =
+      window.innerHeight - rect.bottom;
+
+    // نفضل الفتح لأعلى
+    const openUp =
+      spaceAbove >= menuHeight + gap ||
+      spaceAbove > spaceBelow;
+
+    let top: number;
+
+    if (openUp) {
+      top =
+        rect.top -
+        menuHeight -
+        gap;
+    } else {
+      top =
+        rect.bottom +
+        gap;
+    }
+
+    // منع خروج القائمة من الشاشة عموديًا
+    top = Math.max(
+      4,
+      Math.min(
+        top,
+        window.innerHeight -
+          menuHeight -
+          4
+      )
+    );
+
+    // محاذاة يمين القائمة مع يمين الزر
+    let left =
+      rect.right -
+      menuWidth;
+
+    // منع خروج القائمة من الشاشة أفقيًا
+    left = Math.max(
+      4,
+      Math.min(
+        left,
+        window.innerWidth -
+          menuWidth -
+          4
+      )
+    );
+
+    setMenuPosition({
+      top,
+      left,
+      openUp,
+    });
+  }
+
+  function handleToggle() {
+    if (!open) {
+      updateMenuPosition();
+    }
+
+    setOpen((prev) => !prev);
+  }
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    updateMenuPosition();
+
+    const handleScroll = () => {
+      updateMenuPosition();
+    };
+
+    const handleResize = () => {
+      updateMenuPosition();
+    };
+
+    /*
+      true مهمة جدًا هنا لأنها تلتقط Scroll
+      الخاص بالـ div الذي يحتوي على الجدول أيضًا.
+    */
+    window.addEventListener(
+      "scroll",
+      handleScroll,
+      true
+    );
+
+    window.addEventListener(
+      "resize",
+      handleResize
+    );
+
+    return () => {
+      window.removeEventListener(
+        "scroll",
+        handleScroll,
+        true
+      );
+
+      window.removeEventListener(
+        "resize",
+        handleResize
+      );
+    };
+  }, [open]);
+
+  const dropdownMenu = open
+    ? createPortal(
+        <div
+          dir="rtl"
+          style={{
+            position: "fixed",
+            top: menuPosition.top,
+            left: menuPosition.left,
+            width: 150,
+            zIndex: 999999,
+            background: "#ffffff",
+            border:
+              "1px solid #e2e7f0",
+            borderRadius: 7,
+            boxShadow:
+              "0 10px 30px rgba(0, 0, 0, 0.16)",
+            overflow: "hidden",
+          }}
+        >
+          {options.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => {
+                onChange(option);
+                setOpen(false);
+              }}
+              className="w-full px-3 py-2.5 text-right hover:bg-[#f5f7fa] transition-colors"
+              style={{
+                ...F,
+                fontSize: 11,
+                color: colors[option],
+                background:
+                  "#ffffff",
+              }}
+            >
+              {option}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )
+    : null;
+
+  return (
+    <>
+      <div
+        className="inline-block min-w-[130px]"
+        dir="rtl"
+      >
+        <button
+          ref={buttonRef}
+          type="button"
+          onClick={handleToggle}
+          className="w-full h-[34px] px-2 rounded-[6px] flex items-center justify-between gap-2 border"
+          style={{
+            background:
+              backgrounds[value],
+            borderColor:
+              "#e2e7f0",
+            color:
+              colors[value],
+            ...F,
+            fontSize: 11,
+          }}
+        >
+          <ChevronDown
+            size={13}
+            className={`transition-transform ${
+              open
+                ? "rotate-180"
+                : ""
+            }`}
+          />
+
+          <span>
+            {value}
+          </span>
+        </button>
+      </div>
+
+      {dropdownMenu}
+    </>
+  );
+}
+
+/* ========================================================= */
+
 function StatCard({
   icon,
   label,
   value,
-  sub,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
-  sub?: string;
 }) {
   return (
     <div
@@ -102,18 +452,23 @@ function StatCard({
         >
           {value}
         </p>
-        <p style={{ ...F, fontSize: 13, color: "#717d96" }}>
+
+        <p
+          style={{
+            ...F,
+            fontSize: 13,
+            color: "#717d96",
+          }}
+        >
           {label}
         </p>
-        {sub && (
-          <p style={{ ...F, fontSize: 12, color: "#a1aebe" }}>
-            {sub}
-          </p>
-        )}
       </div>
+
       <div
         className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center"
-        style={{ background: "#dcfce7" }}
+        style={{
+          background: "#dcfce7",
+        }}
       >
         {icon}
       </div>
@@ -121,7 +476,6 @@ function StatCard({
   );
 }
 
-// ─── Progress Card ────────────────────────────────────────────────────────────
 function ProgressCard({
   icon,
   label,
@@ -133,7 +487,13 @@ function ProgressCard({
   current: number;
   total: number;
 }) {
-  const pct = Math.round((current / total) * 100);
+  const pct =
+    total > 0
+      ? Math.round(
+          (current / total) * 100
+        )
+      : 0;
+
   return (
     <div
       className="bg-white flex-1 min-w-[200px] rounded-[20px] border border-[#eff0f6] px-5 py-4"
@@ -149,23 +509,43 @@ function ProgressCard({
               fontWeight: 700,
             }}
           >
-            {current.toLocaleString("ar-EG")}{" "}
-            <span style={{ fontSize: 14, color: "#717d96" }}>
-              من {total.toLocaleString("ar-EG")}
+            {current.toLocaleString(
+              "ar-EG"
+            )}{" "}
+            <span
+              style={{
+                fontSize: 14,
+                color: "#717d96",
+              }}
+            >
+              من{" "}
+              {total.toLocaleString(
+                "ar-EG"
+              )}
             </span>
           </p>
-          <p style={{ ...F, fontSize: 13, color: "#717d96" }}>
+
+          <p
+            style={{
+              ...F,
+              fontSize: 13,
+              color: "#717d96",
+            }}
+          >
             {label}
           </p>
         </div>
+
         <div
           className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center"
-          style={{ background: "#dcfce7" }}
+          style={{
+            background: "#dcfce7",
+          }}
         >
           {icon}
         </div>
       </div>
-      {/* Progress bar */}
+
       <div className="mt-3 w-full bg-[#eff0f6] rounded-full h-2">
         <div
           className="h-2 rounded-full"
@@ -176,9 +556,14 @@ function ProgressCard({
           }}
         />
       </div>
+
       <p
         className="mt-1 text-right"
-        style={{ ...F, fontSize: 11, color: "#a1aebe" }}
+        style={{
+          ...F,
+          fontSize: 11,
+          color: "#a1aebe",
+        }}
       >
         {pct}%
       </p>
@@ -186,26 +571,27 @@ function ProgressCard({
   );
 }
 
-// ─── Confirm Dialog (انهاء خدمة) ──────────────────────────────────────────────
 function EndServiceDialog({
   onCancel,
   onConfirm,
+  saving,
 }: {
   onCancel: () => void;
   onConfirm: () => void;
+  saving: boolean;
 }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      dir="rtl"
-    >
-      <div className="bg-white rounded-[16px] p-5 w-[90%] max-w-sm flex flex-col gap-4 shadow-xl">
-        {/* Header */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div
+        className="bg-white rounded-[16px] p-5 w-[90%] max-w-sm flex flex-col gap-4 shadow-xl"
+        dir="rtl"
+      >
         <div className="flex items-center gap-2">
           <AlertTriangle
             size={20}
             className="shrink-0 text-[#e3282c]"
           />
+
           <span
             className="flex-1 text-right"
             style={{
@@ -217,17 +603,17 @@ function EndServiceDialog({
           >
             تحذير
           </span>
-          
-             <button
+
+          <button
             type="button"
             onClick={onCancel}
-            className="shrink-0 text-[#ccc] hover:text-[#888] transition-colors"
+            disabled={saving}
+            className="shrink-0 text-[#ccc] hover:text-[#888]"
           >
             <X size={18} />
           </button>
         </div>
 
-        {/* Body */}
         <p
           style={{
             ...F,
@@ -237,31 +623,38 @@ function EndServiceDialog({
             lineHeight: 1.6,
           }}
         >
-          هل انت متأكد من انهاء خدمة الافراد المحددين؟
+          هل انت متأكد من انهاء خدمة
+          الافراد المحددين؟
         </p>
 
-        {/* Footer */}
         <div className="flex items-center gap-2">
-          {/* Confirm */}
           <button
             type="button"
             onClick={onConfirm}
-            className="px-4 py-2 rounded-[8px] transition-opacity hover:opacity-90"
+            disabled={saving}
+            className="px-4 py-2 rounded-[8px] disabled:opacity-50"
             style={{
               background: "#e3282c",
               ...F,
               fontSize: 16,
-              color: "#f5f5f5",
+              color: "#fff",
             }}
           >
-            انهاء خدمة الافراد
+            {saving
+              ? "جاري الحفظ..."
+              : "انهاء خدمة الافراد"}
           </button>
-          {/* Cancel */}
+
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 rounded-[42px] transition-colors hover:bg-[#f5f5f5]"
-            style={{ ...F, fontSize: 16, color: "#888" }}
+            disabled={saving}
+            className="px-4 py-2 rounded-[8px] disabled:opacity-50"
+            style={{
+              ...F,
+              fontSize: 16,
+              color: "#888",
+            }}
           >
             الغاء
           </button>
@@ -271,41 +664,63 @@ function EndServiceDialog({
   );
 }
 
-// ─── Transfer Dialog (ترحيل دفعة) ─────────────────────────────────────────────
-const BATCH_OPTIONS = [
-  "2-2026",
-  "3-2026",
-  "4-2026",
-  "5-2026",
-  "6-2026",
-];
-
 function TransferDialog({
+  batches,
   onCancel,
   onConfirm,
 }: {
+  batches: ReserveBatch[];
   onCancel: () => void;
-  onConfirm: () => void;
+  onConfirm: (batchId: string) => void;
 }) {
-  const [targetBatch, setTargetBatch] = useState("3-2026");
+  const [targetBatch, setTargetBatch] =
+    useState("");
+
+  const options = batches.map(
+    (batch) => ({
+      value: batch.id,
+      label:
+        batch.name ||
+        `دفعة ${formatBatchDate(
+          batch.batch_date
+        )}`,
+    })
+  );
+
+  const selectedTarget = batches.find(
+    (b) => b.id === targetBatch
+  );
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      dir="rtl"
-    >
-      <div className="bg-white rounded-[24px] p-6 w-[90%] max-w-sm flex flex-col gap-6 shadow-xl items-center">
-        {/* Icon */}
-        <div
-          className="w-10 h-10 flex items-center justify-center rounded-full"
-          style={{ background: "#dcfce7" }}
-        >
-          <ArrowLeftRight
-            size={20}
-            style={{ color: "#00b867" }}
-          />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div
+        className="bg-white rounded-[24px] p-6 w-[90%] max-w-sm flex flex-col gap-6 shadow-xl"
+        dir="rtl"
+      >
+        <div className="flex justify-between items-center">
+          <div
+            className="w-10 h-10 flex items-center justify-center rounded-full"
+            style={{
+              background: "#dcfce7",
+            }}
+          >
+            <ArrowLeftRight
+              size={20}
+              style={{
+                color: "#00b867",
+              }}
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={onCancel}
+            className="text-[#aaa]"
+          >
+            <X size={20} />
+          </button>
         </div>
 
-        {/* Title */}
         <div className="flex flex-col gap-1.5 items-center text-center">
           <p
             style={{
@@ -317,30 +732,52 @@ function TransferDialog({
           >
             ترحيل دفعة
           </p>
-          <p style={{ ...F, fontSize: 13, color: "#404040" }}>
-            يرجي اختيار دفعة الترحيل الجديدة للافراد
+
+          <p
+            style={{
+              ...F,
+              fontSize: 13,
+              color: "#404040",
+            }}
+          >
+            يرجى اختيار دفعة الترحيل الجديدة
+            للأفراد
           </p>
         </div>
 
-        {/* Dropdown */}
         <BatchDropdown
-          value={targetBatch}
-          options={BATCH_OPTIONS}
+          value={
+            selectedTarget
+              ? selectedTarget.name ||
+                `دفعة ${formatBatchDate(
+                  selectedTarget.batch_date
+                )}`
+              : ""
+          }
+          options={options}
           onChange={setTargetBatch}
         />
 
-        {/* Confirm button */}
         <button
           type="button"
-          onClick={onConfirm}
-          className="w-full h-[52px] rounded-[8px] flex items-center justify-center transition-opacity hover:opacity-90"
+          disabled={!targetBatch}
+          onClick={() =>
+            onConfirm(targetBatch)
+          }
+          className="w-full h-[52px] rounded-[8px] flex items-center justify-center disabled:opacity-50"
           style={{
             background:
               "linear-gradient(to bottom, #00b867, #00522e)",
           }}
         >
-          <span style={{ ...F, fontSize: 16, color: "#fff" }}>
-            ترحيل الافراد
+          <span
+            style={{
+              ...F,
+              fontSize: 16,
+              color: "#fff",
+            }}
+          >
+            حفظ وترحيل الأفراد
           </span>
         </button>
       </div>
@@ -348,10 +785,14 @@ function TransferDialog({
   );
 }
 
-// ─── Sort Icon ────────────────────────────────────────────────────────────────
 function SortIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 16 16"
+      fill="none"
+    >
       <path
         d="M8 3v10M8 13l-3-3M8 13l3-3"
         stroke="#A0ABC0"
@@ -363,96 +804,331 @@ function SortIcon() {
   );
 }
 
-// ─── Soldiers Table ───────────────────────────────────────────────────────────
-const MOCK_SOLDIERS = [
-  {
-    id: "1",
-    militaryId: "2024427700265",
-    rank: "جندي",
-    name: "اسلام مجدي عبدالستار السيد",
-    unit: "قيا مع العمليات الخاصة",
-    receivedKariza: true,
-    receivedLicense: true,
-    status: "بالخدمة" as const,
-  },
-  {
-    id: "2",
-    militaryId: "2024159308527",
-    rank: "جندي",
-    name: "اسلام مجدي عبدالستار السيد",
-    unit: "قيا مع 145 صع",
-    receivedKariza: true,
-    receivedLicense: true,
-    status: "منتهي خدمته" as const,
-  },
-  {
-    id: "3",
-    militaryId: "2024964213580",
-    rank: "جندي",
-    name: "اسلام مجدي عبدالستار السيد",
-    unit: "سرية القيادة",
-    receivedKariza: true,
-    receivedLicense: true,
-    status: "بالخدمة" as const,
-  },
-];
-
-type SoldierStatus = "بالخدمة" | "منتهي خدمته";
-
-function StatusBadge({ status }: { status: SoldierStatus }) {
-  const active = status === "بالخدمة";
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full"
-      style={{
-        background: active ? "#dcfce7" : "#fce9ea",
-        ...F,
-        fontSize: 11,
-        fontWeight: 700,
-        color: active ? "#166534" : "#9d2e15",
-      }}
-    >
-      <span
-        className="inline-block w-1.5 h-1.5 rounded-full"
-        style={{ background: active ? "#16a34a" : "#E37032" }}
-      />
-      {status}
-    </span>
-  );
-}
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
-const DISCHARGE_BATCHES = [
-  "2-2026",
-  "3-2026",
-  "4-2026",
-  "5-2026",
-  "6-2026",
-];
-
 export function ReserveBatchesPage() {
-  const [selectedBatch, setSelectedBatch] = useState("2-2026");
-  const [showResults, setShowResults] = useState(false);
-  const [checkedRows, setCheckedRows] = useState<Set<string>>(
-    new Set(),
-  );
-  const [allChecked, setAllChecked] = useState(false);
+  const [batches, setBatches] =
+    useState<ReserveBatch[]>([]);
 
-  const [showEndDialog, setShowEndDialog] = useState(false);
-  const [showTransferDialog, setShowTransferDialog] =
+  const [loadingBatches, setLoadingBatches] =
+    useState(true);
+
+  const [batchError, setBatchError] =
+    useState("");
+
+  const [selectedBatch, setSelectedBatch] =
+    useState("");
+
+  const [showResults, setShowResults] =
     useState(false);
-  const [successMsg, setSuccessMsg] = useState("");
 
-  // For editable checkboxes in table
-  const [soldierData, setSoldierData] = useState(
-    MOCK_SOLDIERS.map((s) => ({ ...s })),
+  const [checkedRows, setCheckedRows] =
+    useState<Set<string>>(new Set());
+
+  const [allChecked, setAllChecked] =
+    useState(false);
+
+  const [showEndDialog, setShowEndDialog] =
+    useState(false);
+
+  const [
+    showTransferDialog,
+    setShowTransferDialog,
+  ] = useState(false);
+
+  const [successMsg, setSuccessMsg] =
+    useState("");
+
+  const [soldierData, setSoldierData] =
+    useState<Soldier[]>([]);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  useEffect(() => {
+    async function loadBatches() {
+      setLoadingBatches(true);
+      setBatchError("");
+
+      const { data, error } =
+        await supabase
+          .from("reserve_batches")
+          .select(
+            "id, batch_date, name, is_active"
+          )
+          .order("batch_date", {
+            ascending: true,
+          });
+
+      if (error) {
+        setBatchError(
+          `خطأ في قراءة دفعات الرديف: ${error.message}`
+        );
+
+        setBatches([]);
+        setLoadingBatches(false);
+        return;
+      }
+
+      const rows: ReserveBatch[] =
+        (data ?? []).map(
+          (row: any) => ({
+            id: row.id,
+            batch_date:
+              row.batch_date,
+            name: row.name,
+            is_active:
+              row.is_active === true,
+          })
+        );
+
+      setBatches(rows);
+
+      if (rows.length > 0) {
+        setSelectedBatch(
+          rows[0].id
+        );
+      }
+
+      setLoadingBatches(false);
+    }
+
+    loadBatches();
+  }, []);
+
+  const selectedBatchObject =
+    batches.find(
+      (b) => b.id === selectedBatch
+    );
+
+  const batchOptions = batches.map(
+    (batch) => ({
+      value: batch.id,
+      label:
+        batch.name ||
+        `دفعة ${formatBatchDate(
+          batch.batch_date
+        )}`,
+    })
   );
+
+  const selectedBatchLabel =
+    selectedBatchObject
+      ? selectedBatchObject.name ||
+        `دفعة ${formatBatchDate(
+          selectedBatchObject.batch_date
+        )}`
+      : "";
+
+  async function loadSoldiers() {
+    if (!selectedBatchObject) {
+      return;
+    }
+
+    setShowResults(true);
+    setBatchError("");
+
+    const { data, error } =
+      await supabase
+        .from("personnel")
+        .select(`
+          id,
+          military_number,
+          full_name,
+          discharge_date,
+          is_active,
+          service_status_id,
+          rank_id,
+          primary_unit_id,
+          units:primary_unit_id (
+            id,
+            name
+          )
+        `)
+        .eq(
+          "discharge_date",
+          selectedBatchObject.batch_date
+        )
+        .order("full_name", {
+          ascending: true,
+        });
+
+    if (error) {
+      console.error(
+        "personnel error:",
+        error
+      );
+
+      setBatchError(
+        `حدث خطأ أثناء جلب الأفراد: ${error.message}`
+      );
+
+      setSoldierData([]);
+      return;
+    }
+
+    const personnel = data ?? [];
+
+    if (personnel.length === 0) {
+      setSoldierData([]);
+      setCheckedRows(new Set());
+      setAllChecked(false);
+      return;
+    }
+
+    const personnelIds =
+      personnel.map(
+        (person: any) =>
+          person.id
+      );
+
+    const {
+      data: documents,
+      error: documentsError,
+    } = await supabase
+      .from(
+        "reserve_batch_documents"
+      )
+      .select(`
+        personnel_id,
+        document_type,
+        status
+      `)
+      .eq(
+        "reserve_batch_id",
+        selectedBatchObject.id
+      )
+      .in(
+        "personnel_id",
+        personnelIds
+      );
+
+    if (documentsError) {
+      console.error(
+        "reserve_batch_documents error:",
+        documentsError
+      );
+
+      setBatchError(
+        `حدث خطأ أثناء جلب حالات المستندات: ${documentsError.message}`
+      );
+
+      return;
+    }
+
+    const documentMap =
+      new Map<
+        string,
+        {
+          kariza?: string;
+          license?: string;
+        }
+      >();
+
+    (documents ?? []).forEach(
+      (doc: any) => {
+        if (
+          !documentMap.has(
+            doc.personnel_id
+          )
+        ) {
+          documentMap.set(
+            doc.personnel_id,
+            {}
+          );
+        }
+
+        const current =
+          documentMap.get(
+            doc.personnel_id
+          )!;
+
+        if (
+          doc.document_type ===
+          "KARIZA"
+        ) {
+          current.kariza =
+            doc.status;
+        }
+
+        if (
+          doc.document_type ===
+          "LICENSE"
+        ) {
+          current.license =
+            doc.status;
+        }
+      }
+    );
+
+    const mapped: Soldier[] =
+      personnel.map(
+        (person: any) => {
+          const docs =
+            documentMap.get(
+              person.id
+            );
+
+          return {
+            id: person.id,
+
+            militaryId:
+              person.military_number ||
+              "-",
+
+            rank: "جندي",
+
+            name:
+              person.full_name ||
+              "-",
+
+            unit:
+              person.units?.name ||
+              "-",
+
+            receivedKariza:
+              dbStateToDocumentState(
+                docs?.kariza ||
+                  null
+              ),
+
+            receivedLicense:
+              dbStateToDocumentState(
+                docs?.license ||
+                  null
+              ),
+
+            status:
+              person.service_status_id ===
+              DISCHARGED_STATUS_ID
+                ? "منتهي خدمته"
+                : person.is_active ===
+                    false
+                  ? "منتهي خدمته"
+                  : "بالخدمة",
+          };
+        }
+      );
+
+    setSoldierData(mapped);
+    setCheckedRows(new Set());
+    setAllChecked(false);
+  }
 
   function toggleRow(id: string) {
     setCheckedRows((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+
+      setAllChecked(
+        next.size > 0 &&
+          next.size ===
+            soldierData.length
+      );
+
       return next;
     });
   }
@@ -462,68 +1138,518 @@ export function ReserveBatchesPage() {
       setCheckedRows(new Set());
       setAllChecked(false);
     } else {
-      setCheckedRows(new Set(soldierData.map((s) => s.id)));
+      setCheckedRows(
+        new Set(
+          soldierData.map(
+            (s) => s.id
+          )
+        )
+      );
+
       setAllChecked(true);
     }
   }
 
-  function handleEndService() {
-    if (checkedRows.size === 0) return;
-    setShowEndDialog(true);
-  }
-
-  function confirmEndService() {
-    setSoldierData((prev) =>
-      prev.map((s) =>
-        checkedRows.has(s.id)
-          ? { ...s, status: "منتهي خدمته" as const }
-          : s,
-      ),
-    );
-    setCheckedRows(new Set());
-    setAllChecked(false);
-    setShowEndDialog(false);
-    setSuccessMsg("تم انهاء خدمة الافراد المحددين بنجاح");
-    setTimeout(() => setSuccessMsg(""), 3000);
-  }
-
-  function handleTransfer() {
-    if (checkedRows.size === 0) return;
-    setShowTransferDialog(true);
-  }
-
-  function confirmTransfer() {
-    setShowTransferDialog(false);
-    setCheckedRows(new Set());
-    setSuccessMsg("تم ترحيل الافراد المحددين بنجاح");
-    setTimeout(() => setSuccessMsg(""), 3000);
-  }
-
   function toggleSoldierField(
     id: string,
-    field: "receivedKariza" | "receivedLicense",
+    field:
+      | "receivedKariza"
+      | "receivedLicense",
+    value: DocumentState
   ) {
     setSoldierData((prev) =>
       prev.map((s) =>
-        s.id === id ? { ...s, [field]: !s[field] } : s,
-      ),
+        s.id === id
+          ? {
+              ...s,
+              [field]: value,
+            }
+          : s
+      )
     );
+  }
+
+  async function handleSaveChanges() {
+    if (!selectedBatchObject) {
+      setBatchError(
+        "يرجى اختيار دفعة أولاً"
+      );
+      return;
+    }
+
+    if (soldierData.length === 0) {
+      setSuccessMsg(
+        "لا توجد بيانات لحفظها"
+      );
+
+      setTimeout(
+        () => setSuccessMsg(""),
+        3000
+      );
+
+      return;
+    }
+
+    setSaving(true);
+    setBatchError("");
+
+    try {
+      const documentsToSave: any[] =
+        [];
+
+      soldierData.forEach(
+        (soldier) => {
+          documentsToSave.push({
+            personnel_id:
+              soldier.id,
+
+            reserve_batch_id:
+              selectedBatchObject.id,
+
+            document_type:
+              "KARIZA",
+
+            status:
+              documentStateToDb(
+                soldier.receivedKariza
+              ),
+
+            updated_at:
+              new Date().toISOString(),
+          });
+
+          documentsToSave.push({
+            personnel_id:
+              soldier.id,
+
+            reserve_batch_id:
+              selectedBatchObject.id,
+
+            document_type:
+              "LICENSE",
+
+            status:
+              documentStateToDb(
+                soldier.receivedLicense
+              ),
+
+            updated_at:
+              new Date().toISOString(),
+          });
+        }
+      );
+
+      const { error } =
+        await supabase
+          .from(
+            "reserve_batch_documents"
+          )
+          .upsert(
+            documentsToSave,
+            {
+              onConflict:
+                "personnel_id,reserve_batch_id,document_type",
+            }
+          );
+
+      if (error) {
+        throw error;
+      }
+
+      setSuccessMsg(
+        "تم حفظ جميع التعديلات بنجاح"
+      );
+
+      setTimeout(
+        () => setSuccessMsg(""),
+        3000
+      );
+    } catch (error: any) {
+      console.error(
+        "save all documents error:",
+        error
+      );
+
+      setBatchError(
+        `حدث خطأ أثناء حفظ التعديلات: ${
+          error?.message ||
+          "خطأ غير معروف"
+        }`
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleEndService() {
+    if (checkedRows.size === 0) {
+      return;
+    }
+
+    setShowEndDialog(true);
+  }
+
+  async function confirmEndService() {
+    if (!selectedBatchObject) {
+      setBatchError(
+        "لم يتم اختيار الدفعة"
+      );
+      return;
+    }
+
+    const ids =
+      Array.from(checkedRows);
+
+    if (ids.length === 0) {
+      return;
+    }
+
+    setSaving(true);
+    setBatchError("");
+
+    try {
+      const {
+        error: personnelError,
+      } = await supabase
+        .from("personnel")
+        .update({
+          is_active: false,
+
+          service_status_id:
+            DISCHARGED_STATUS_ID,
+
+          updated_at:
+            new Date().toISOString(),
+        })
+        .in("id", ids);
+
+      if (personnelError) {
+        throw personnelError;
+      }
+
+      const {
+        data: existingDocuments,
+        error: documentsFetchError,
+      } = await supabase
+        .from(
+          "reserve_batch_documents"
+        )
+        .select(`
+          personnel_id,
+          document_type,
+          status
+        `)
+        .eq(
+          "reserve_batch_id",
+          selectedBatchObject.id
+        )
+        .in(
+          "personnel_id",
+          ids
+        );
+
+      if (documentsFetchError) {
+        throw documentsFetchError;
+      }
+
+      const existingMap =
+        new Map<
+          string,
+          {
+            kariza?: string;
+            license?: string;
+          }
+        >();
+
+      (
+        existingDocuments ?? []
+      ).forEach((doc: any) => {
+        if (
+          !existingMap.has(
+            doc.personnel_id
+          )
+        ) {
+          existingMap.set(
+            doc.personnel_id,
+            {}
+          );
+        }
+
+        const item =
+          existingMap.get(
+            doc.personnel_id
+          )!;
+
+        if (
+          doc.document_type ===
+          "KARIZA"
+        ) {
+          item.kariza =
+            doc.status;
+        }
+
+        if (
+          doc.document_type ===
+          "LICENSE"
+        ) {
+          item.license =
+            doc.status;
+        }
+      });
+
+      const documentsToUpsert: any[] =
+        [];
+
+      ids.forEach(
+        (personnelId) => {
+          const existing =
+            existingMap.get(
+              personnelId
+            );
+
+          documentsToUpsert.push({
+            personnel_id:
+              personnelId,
+
+            reserve_batch_id:
+              selectedBatchObject.id,
+
+            document_type:
+              "KARIZA",
+
+            status:
+              existing?.kariza ||
+              "PENDING",
+
+            updated_at:
+              new Date().toISOString(),
+          });
+
+          documentsToUpsert.push({
+            personnel_id:
+              personnelId,
+
+            reserve_batch_id:
+              selectedBatchObject.id,
+
+            document_type:
+              "LICENSE",
+
+            status:
+              existing?.license ||
+              "PENDING",
+
+            updated_at:
+              new Date().toISOString(),
+          });
+        }
+      );
+
+      const {
+        error: documentsUpsertError,
+      } = await supabase
+        .from(
+          "reserve_batch_documents"
+        )
+        .upsert(
+          documentsToUpsert,
+          {
+            onConflict:
+              "personnel_id,reserve_batch_id,document_type",
+          }
+        );
+
+      if (documentsUpsertError) {
+        throw documentsUpsertError;
+      }
+
+      setSoldierData((prev) =>
+        prev.map((soldier) =>
+          checkedRows.has(
+            soldier.id
+          )
+            ? {
+                ...soldier,
+                status:
+                  "منتهي خدمته",
+              }
+            : soldier
+        )
+      );
+
+      setCheckedRows(
+        new Set()
+      );
+
+      setAllChecked(false);
+
+      setShowEndDialog(false);
+
+      setSuccessMsg(
+        "تم إنهاء خدمة الأفراد المحددين وتحديث حالتهم بنجاح"
+      );
+
+      setTimeout(
+        () => setSuccessMsg(""),
+        3000
+      );
+
+      await loadSoldiers();
+    } catch (error: any) {
+      console.error(
+        "end service error:",
+        error
+      );
+
+      setBatchError(
+        `حدث خطأ أثناء إنهاء الخدمة: ${
+          error?.message ||
+          "خطأ غير معروف"
+        }`
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleTransfer() {
+    if (checkedRows.size === 0) {
+      return;
+    }
+
+    setShowTransferDialog(true);
+  }
+
+  async function confirmTransfer(
+    targetBatchId: string
+  ) {
+    const targetBatch =
+      batches.find(
+        (b) =>
+          b.id ===
+          targetBatchId
+      );
+
+    if (!targetBatch) {
+      return;
+    }
+
+    const ids =
+      Array.from(checkedRows);
+
+    setSaving(true);
+    setBatchError("");
+
+    const { error } =
+      await supabase
+        .from("personnel")
+        .update({
+          discharge_date:
+            targetBatch.batch_date,
+
+          updated_at:
+            new Date().toISOString(),
+        })
+        .in("id", ids);
+
+    setSaving(false);
+
+    if (error) {
+      setBatchError(
+        `حدث خطأ أثناء ترحيل الأفراد: ${error.message}`
+      );
+      return;
+    }
+
+    setShowTransferDialog(false);
+
+    setCheckedRows(
+      new Set()
+    );
+
+    setAllChecked(false);
+
+    setSuccessMsg(
+      `تم ترحيل الأفراد إلى ${
+        targetBatch.name ||
+        formatBatchDate(
+          targetBatch.batch_date
+        )
+      } بنجاح`
+    );
+
+    setTimeout(
+      () => setSuccessMsg(""),
+      3000
+    );
+
+    await loadSoldiers();
+  }
+
+  function handlePrint() {
+    window.print();
   }
 
   const thClass =
     "px-4 py-3 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]";
+
   const tdClass =
     "px-4 py-3 text-right border-b border-[#e2e7f0]";
 
   return (
-    <div className="flex flex-col gap-5 w-full pb-10" dir="rtl">
-      {/* Title */}
+    <div
+      className="flex flex-col gap-5 w-full pb-10"
+      dir="rtl"
+    >
+      <style>
+        {`
+          @media print {
+            body * {
+              visibility: hidden !important;
+            }
+
+            .reserve-print-area,
+            .reserve-print-area * {
+              visibility: visible !important;
+            }
+
+            .reserve-print-area {
+              position: absolute;
+              left: 0;
+              top: 0;
+              width: 100%;
+            }
+
+            .no-print {
+              display: none !important;
+            }
+
+            table {
+              width: 100% !important;
+              min-width: 0 !important;
+              font-size: 10px !important;
+            }
+
+            th,
+            td {
+              padding: 6px !important;
+            }
+
+            @page {
+              size: A4 landscape;
+              margin: 10mm;
+            }
+          }
+        `}
+      </style>
+
       <h1
         className="text-center"
         style={{
           ...F,
           fontWeight: 700,
-          fontSize: "clamp(22px,4vw,32px)",
+          fontSize:
+            "clamp(22px,4vw,32px)",
           color: "#2d3648",
           lineHeight: 1.5,
         }}
@@ -531,24 +1657,58 @@ export function ReserveBatchesPage() {
         دفعات الرديف
       </h1>
 
-      {/* Batch selector row */}
-      <div className="flex flex-wrap items-end gap-3 justify-start">
+      <div className="flex flex-wrap items-end gap-3 justify-start no-print">
         <div className="flex flex-col gap-1.5 flex-1 min-w-[200px] max-w-xs">
           <label
-            style={{ ...F, fontSize: 14, color: "#717d96" }}
+            style={{
+              ...F,
+              fontSize: 14,
+              color: "#717d96",
+            }}
           >
             اختر تاريخ التسريح
           </label>
-          <BatchDropdown
-            value={selectedBatch}
-            options={DISCHARGE_BATCHES}
-            onChange={setSelectedBatch}
-          />
+
+          {loadingBatches ? (
+            <div
+              className="h-[54px] bg-white border border-[#e2e7f0] rounded-[8px] flex items-center px-3"
+              style={{
+                ...F,
+                fontSize: 14,
+                color: "#a1aebe",
+              }}
+            >
+              جاري تحميل الدفعات...
+            </div>
+          ) : (
+            <BatchDropdown
+              value={
+                selectedBatchLabel
+              }
+              options={
+                batchOptions
+              }
+              onChange={
+                setSelectedBatch
+              }
+              disabled={
+                batches.length ===
+                0
+              }
+            />
+          )}
         </div>
+
         <button
           type="button"
-          onClick={() => setShowResults(true)}
-          className="h-[54px] px-6 rounded-[8px] flex items-center justify-center transition-opacity hover:opacity-90 shrink-0"
+          disabled={
+            !selectedBatch ||
+            loadingBatches
+          }
+          onClick={
+            loadSoldiers
+          }
+          className="h-[54px] px-6 rounded-[8px] flex items-center justify-center transition-opacity hover:opacity-90 shrink-0 disabled:opacity-50"
           style={{
             background:
               "linear-gradient(to bottom, #00b867, #00522e)",
@@ -561,403 +1721,573 @@ export function ReserveBatchesPage() {
         </button>
       </div>
 
-      {/* Success toast */}
+      {batchError && (
+        <div
+          className="w-full rounded-[10px] px-4 py-3"
+          style={{
+            background: "#fce9ea",
+            color: "#9d2e15",
+            ...F,
+            fontSize: 14,
+          }}
+        >
+          {batchError}
+        </div>
+      )}
+
       {successMsg && (
         <div
           className="w-full rounded-[10px] px-4 py-3 flex items-center gap-2 justify-end"
-          style={{ background: "#dcfce7" }}
+          style={{
+            background:
+              "#dcfce7",
+          }}
         >
           <span
-            style={{ ...F, fontSize: 14, color: "#166534" }}
+            style={{
+              ...F,
+              fontSize: 14,
+              color: "#166534",
+            }}
           >
             {successMsg}
           </span>
         </div>
       )}
 
-      {/* Results */}
-      {showResults && (
-        <>
-          {/* Stats row */}
-          <div className="flex flex-wrap gap-4 w-full">
-            {/* Batch info */}
-            <StatCard
-              icon={
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                >
-                  <rect
-                    x="3"
-                    y="4"
-                    width="18"
-                    height="18"
-                    rx="2"
-                    stroke="#00b867"
-                    strokeWidth="2"
-                  />
-                  <path
-                    d="M16 2v4M8 2v4M3 10h18"
-                    stroke="#00b867"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              }
-              label="دفعة الرديف"
-              value={selectedBatch}
-            />
-            {/* Total count */}
-            <StatCard
-              icon={
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                >
-                  <circle
-                    cx="9"
-                    cy="7"
-                    r="4"
-                    stroke="#00b867"
-                    strokeWidth="2"
-                  />
-                  <path
-                    d="M3 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"
-                    stroke="#00b867"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                  <circle
-                    cx="17"
-                    cy="7"
-                    r="3"
-                    stroke="#00b867"
-                    strokeWidth="2"
-                  />
-                  <path
-                    d="M21 21v-2a3 3 0 00-2.5-2.97"
-                    stroke="#00b867"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              }
-              label="عدد الجنود المسرحين"
-              value="1,850"
-            />
-          </div>
+      {showResults &&
+        selectedBatchObject && (
+          <div className="reserve-print-area">
+            <div className="hidden print:block text-center mb-5">
+              <h2
+                style={{
+                  ...F,
+                  fontSize: 22,
+                  fontWeight: 700,
+                }}
+              >
+                كشف أفراد دفعة الرديف
+              </h2>
 
-          {/* Progress cards */}
-          <div className="flex flex-wrap gap-4 w-full">
-            <ProgressCard
-              icon={
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                >
-                  <path
-                    d="M12 2a5 5 0 110 10A5 5 0 0112 2z"
-                    stroke="#00b867"
-                    strokeWidth="2"
-                  />
-                  <path
-                    d="M2 20a10 10 0 0120 0"
-                    stroke="#00b867"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              }
-              label="تم تسليم الشخصية العسكرية"
-              current={978}
-              total={1850}
-            />
-            <ProgressCard
-              icon={
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                >
-                  <rect
-                    x="2"
-                    y="6"
-                    width="20"
-                    height="14"
-                    rx="2"
-                    stroke="#00b867"
-                    strokeWidth="2"
-                  />
-                  <path
-                    d="M7 6V4a2 2 0 012-2h6a2 2 0 012 2v2"
-                    stroke="#00b867"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              }
-              label="تم تسليم تحقيق رخصة القيادة"
-              current={38}
-              total={120}
-            />
-          </div>
+              <p
+                style={{
+                  ...F,
+                  fontSize: 14,
+                }}
+              >
+                {selectedBatchObject.name ||
+                  `دفعة ${formatBatchDate(
+                    selectedBatchObject.batch_date
+                  )}`}
+              </p>
+            </div>
 
-          {/* Action buttons */}
-          <div className="flex flex-wrap items-end gap-3">
-            <button
-              type="button"
-              onClick={handleEndService}
-              className="h-[44px] px-5 rounded-[8px] flex items-center justify-center shrink-0 transition-opacity hover:opacity-90"
-              style={{
-                background:
-                  "linear-gradient(to bottom, #00b867, #00522e)",
-                ...F,
-                fontSize: 15,
-                color: "#fff",
-              }}
-            >
-              انهاء خدمة الافراد
-            </button>
-            {/* ترحيل دفعه */}
-            <button
-              type="button"
-              onClick={handleTransfer}
-              className="h-[44px] px-5 rounded-[8px] border border-[#e2e7f0] bg-white transition-colors hover:bg-[#f5f6fb] flex items-center justify-center shrink-0"
-              style={{ ...F, fontSize: 15, color: "#2d3648" }}
-            >
-              ترحيل دفعه
-            </button>
-            {/* طباعة الكشف */}
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="h-[44px] px-5 rounded-[8px] border border-[#e2e7f0] bg-white transition-colors hover:bg-[#f5f6fb] flex items-center justify-center shrink-0"
-              style={{ ...F, fontSize: 15, color: "#2d3648" }}
-            >
-              طباعة الكشف
-            </button>
-            {/* انهاء خدمة الافراد */}
-            
-          </div>
-
-          {/* Table */}
-          <div className="bg-white rounded-[12px] border border-[#e2e7f0] w-full overflow-x-auto">
-            <table
-              className="w-full min-w-[700px] border-collapse"
-              dir="rtl"
-            >
-              <thead>
-                <tr>
-                  <th className={thClass} style={{ width: 44 }}>
-                    <button type="button" onClick={toggleAll}>
-                      {allChecked ? (
-                        <CheckSquare
-                          size={16}
-                          style={{ color: "#1f3d97" }}
-                        />
-                      ) : (
-                        <Square
-                          size={16}
-                          style={{ color: "#a1aebe" }}
-                        />
-                      )}
-                    </button>
-                  </th>
-                  {[
-                    "م",
-                    "رقم عسكري",
-                    "درجة",
-                    "اسم",
-                    "الوحدة",
-                    "استلام كارنيه",
-                    "استلام رخصه",
-                    "حالة الفرد",
-                  ].map((h) => (
-                    <th key={h} className={thClass}>
-                      <div className="flex items-center gap-1 justify-start">
-                        <span
-                          style={{
-                            ...F,
-                            fontSize: 13,
-                            color: "#717d96",
-                          }}
-                        >
-                          {h}
-                        </span>
-                        <SortIcon />
-                      </div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {soldierData.map((soldier, idx) => (
-                  <tr
-                    key={soldier.id}
-                    className="hover:bg-[#fafbff] transition-colors"
+            <div className="flex flex-wrap gap-4 w-full no-print">
+              <StatCard
+                icon={
+                  <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
                   >
-                    <td className={tdClass}>
+                    <rect
+                      x="3"
+                      y="4"
+                      width="18"
+                      height="18"
+                      rx="2"
+                      stroke="#00b867"
+                      strokeWidth="2"
+                    />
+
+                    <path
+                      d="M16 2v4M8 2v4M3 10h18"
+                      stroke="#00b867"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                }
+                label="دفعة الرديف"
+                value={
+                  selectedBatchObject.name ||
+                  formatBatchDate(
+                    selectedBatchObject.batch_date
+                  )
+                }
+              />
+
+              <StatCard
+                icon={
+                  <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                  >
+                    <circle
+                      cx="9"
+                      cy="7"
+                      r="4"
+                      stroke="#00b867"
+                      strokeWidth="2"
+                    />
+
+                    <path
+                      d="M3 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"
+                      stroke="#00b867"
+                      strokeWidth="2"
+                    />
+                  </svg>
+                }
+                label="عدد الجنود"
+                value={soldierData.length.toLocaleString(
+                  "ar-EG"
+                )}
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-4 w-full mt-4 no-print">
+              <ProgressCard
+                icon={
+                  <CheckSquare
+                    size={20}
+                    color="#00b867"
+                  />
+                }
+                label="تم تسليم الكارنيه"
+                current={
+                  soldierData.filter(
+                    (s) =>
+                      s.receivedKariza ===
+                      "تم الاستلام"
+                  ).length
+                }
+                total={
+                  soldierData.length
+                }
+              />
+
+              <ProgressCard
+                icon={
+                  <CheckSquare
+                    size={20}
+                    color="#00b867"
+                  />
+                }
+                label="تم تسليم الرخصة"
+                current={
+                  soldierData.filter(
+                    (s) =>
+                      s.receivedLicense ===
+                      "تم الاستلام"
+                  ).length
+                }
+                total={
+                  soldierData.length
+                }
+              />
+            </div>
+
+            <div className="flex flex-wrap items-end gap-3 mt-4 no-print">
+              <button
+                type="button"
+                onClick={
+                  handleEndService
+                }
+                disabled={
+                  checkedRows.size ===
+                    0 ||
+                  saving
+                }
+                className="h-[44px] px-5 rounded-[8px] flex items-center justify-center shrink-0 disabled:opacity-50"
+                style={{
+                  background:
+                    "linear-gradient(to bottom, #00b867, #00522e)",
+                  ...F,
+                  fontSize: 15,
+                  color: "#fff",
+                }}
+              >
+                انهاء خدمة الافراد
+              </button>
+
+              <button
+                type="button"
+                onClick={
+                  handleTransfer
+                }
+                disabled={
+                  checkedRows.size ===
+                    0 ||
+                  saving
+                }
+                className="h-[44px] px-5 rounded-[8px] border border-[#e2e7f0] bg-white disabled:opacity-50"
+                style={{
+                  ...F,
+                  fontSize: 15,
+                  color: "#2d3648",
+                }}
+              >
+                ترحيل دفعة
+              </button>
+
+              <button
+                type="button"
+                onClick={
+                  handlePrint
+                }
+                className="h-[44px] px-5 rounded-[8px] border border-[#e2e7f0] bg-white"
+                style={{
+                  ...F,
+                  fontSize: 15,
+                  color: "#2d3648",
+                }}
+              >
+                طباعة الكشف
+              </button>
+            </div>
+
+            <div className="bg-white rounded-[12px] border border-[#e2e7f0] w-full overflow-x-auto mt-4">
+              <table
+                className="w-full min-w-[1100px] border-collapse"
+                dir="rtl"
+              >
+                <thead>
+                  <tr>
+                    <th
+                      className={`${thClass} no-print`}
+                      style={{
+                        width: 44,
+                      }}
+                    >
                       <button
                         type="button"
-                        onClick={() => toggleRow(soldier.id)}
-                      >
-                        {checkedRows.has(soldier.id) ? (
-                          <CheckSquare
-                            size={16}
-                            style={{ color: "#1f3d97" }}
-                          />
-                        ) : (
-                          <Square
-                            size={16}
-                            style={{ color: "#a1aebe" }}
-                          />
-                        )}
-                      </button>
-                    </td>
-                    <td className={tdClass}>
-                      <span
-                        style={{
-                          ...F,
-                          fontSize: 13,
-                          color: "#2d3648",
-                        }}
-                      >
-                        {idx + 1}
-                      </span>
-                    </td>
-                    <td className={tdClass}>
-                      <span
-                        style={{
-                          ...F,
-                          fontSize: 13,
-                          color: "#2d3648",
-                        }}
-                      >
-                        {soldier.militaryId}
-                      </span>
-                    </td>
-                    <td className={tdClass}>
-                      <span
-                        style={{
-                          ...F,
-                          fontSize: 13,
-                          color: "#2d3648",
-                        }}
-                      >
-                        {soldier.rank}
-                      </span>
-                    </td>
-                    <td className={tdClass}>
-                      <span
-                        style={{
-                          ...F,
-                          fontSize: 13,
-                          color: "#2d3648",
-                        }}
-                      >
-                        {soldier.name}
-                      </span>
-                    </td>
-                    <td className={tdClass}>
-                      <span
-                        style={{
-                          ...F,
-                          fontSize: 13,
-                          color: "#2d3648",
-                        }}
-                      >
-                        {soldier.unit}
-                      </span>
-                    </td>
-                    {/* Kariza checkbox */}
-                    <td className={tdClass + " text-center"}>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          toggleSoldierField(
-                            soldier.id,
-                            "receivedKariza",
-                          )
+                        onClick={
+                          toggleAll
                         }
                       >
-                        {soldier.receivedKariza ? (
+                        {allChecked ? (
                           <CheckSquare
                             size={16}
-                            style={{ color: "#00b867" }}
+                            color="#1f3d97"
                           />
                         ) : (
                           <Square
                             size={16}
-                            style={{ color: "#a1aebe" }}
+                            color="#a1aebe"
                           />
                         )}
                       </button>
-                    </td>
-                    {/* License checkbox */}
-                    <td className={tdClass + " text-center"}>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          toggleSoldierField(
-                            soldier.id,
-                            "receivedLicense",
-                          )
+                    </th>
+
+                    {[
+                      "م",
+                      "رقم عسكري",
+                      "درجة",
+                      "اسم",
+                      "الوحدة",
+                      "استلام كارنيه",
+                      "استلام رخصة",
+                      "حالة الفرد",
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        className={
+                          thClass
                         }
                       >
-                        {soldier.receivedLicense ? (
-                          <CheckSquare
-                            size={16}
-                            style={{ color: "#00b867" }}
-                          />
-                        ) : (
-                          <Square
-                            size={16}
-                            style={{ color: "#a1aebe" }}
-                          />
-                        )}
-                      </button>
-                    </td>
-                    <td className={tdClass}>
-                      <StatusBadge status={soldier.status} />
-                    </td>
+                        <div className="flex items-center gap-1">
+                          <span
+                            style={{
+                              ...F,
+                              fontSize: 13,
+                              color:
+                                "#717d96",
+                            }}
+                          >
+                            {h}
+                          </span>
+
+                          <SortIcon />
+                        </div>
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+
+                <tbody>
+                  {soldierData.length ===
+                  0 ? (
+                    <tr>
+                      <td
+                        colSpan={9}
+                        className="py-10 text-center"
+                        style={{
+                          ...F,
+                          fontSize: 15,
+                          color:
+                            "#a1aebe",
+                        }}
+                      >
+                        لا يوجد أفراد في
+                        هذه الدفعة
+                      </td>
+                    </tr>
+                  ) : (
+                    soldierData.map(
+                      (
+                        soldier,
+                        idx
+                      ) => (
+                        <tr
+                          key={
+                            soldier.id
+                          }
+                          className="hover:bg-[#fafbff]"
+                        >
+                          <td
+                            className={`${tdClass} no-print`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() =>
+                                toggleRow(
+                                  soldier.id
+                                )
+                              }
+                            >
+                              {checkedRows.has(
+                                soldier.id
+                              ) ? (
+                                <CheckSquare
+                                  size={
+                                    16
+                                  }
+                                  color="#1f3d97"
+                                />
+                              ) : (
+                                <Square
+                                  size={
+                                    16
+                                  }
+                                  color="#a1aebe"
+                                />
+                              )}
+                            </button>
+                          </td>
+
+                          <td
+                            className={
+                              tdClass
+                            }
+                          >
+                            <span
+                              style={{
+                                ...F,
+                                fontSize: 13,
+                              }}
+                            >
+                              {idx + 1}
+                            </span>
+                          </td>
+
+                          <td
+                            className={
+                              tdClass
+                            }
+                          >
+                            <span
+                              style={{
+                                ...F,
+                                fontSize: 13,
+                              }}
+                            >
+                              {
+                                soldier.militaryId
+                              }
+                            </span>
+                          </td>
+
+                          <td
+                            className={
+                              tdClass
+                            }
+                          >
+                            <span
+                              style={{
+                                ...F,
+                                fontSize: 13,
+                              }}
+                            >
+                              {
+                                soldier.rank
+                              }
+                            </span>
+                          </td>
+
+                          <td
+                            className={
+                              tdClass
+                            }
+                          >
+                            <span
+                              style={{
+                                ...F,
+                                fontSize: 13,
+                              }}
+                            >
+                              {
+                                soldier.name
+                              }
+                            </span>
+                          </td>
+
+                          <td
+                            className={
+                              tdClass
+                            }
+                          >
+                            <span
+                              style={{
+                                ...F,
+                                fontSize: 13,
+                              }}
+                            >
+                              {
+                                soldier.unit
+                              }
+                            </span>
+                          </td>
+
+                          <td
+                            className={`${tdClass} text-center`}
+                          >
+                            <DocumentDropdown
+                              value={
+                                soldier.receivedKariza
+                              }
+                              onChange={(
+                                value
+                              ) =>
+                                toggleSoldierField(
+                                  soldier.id,
+                                  "receivedKariza",
+                                  value
+                                )
+                              }
+                            />
+                          </td>
+
+                          <td
+                            className={`${tdClass} text-center`}
+                          >
+                            <DocumentDropdown
+                              value={
+                                soldier.receivedLicense
+                              }
+                              onChange={(
+                                value
+                              ) =>
+                                toggleSoldierField(
+                                  soldier.id,
+                                  "receivedLicense",
+                                  value
+                                )
+                              }
+                            />
+                          </td>
+
+                          <td
+                            className={
+                              tdClass
+                            }
+                          >
+                            <span
+                              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full"
+                              style={{
+                                background:
+                                  soldier.status ===
+                                  "بالخدمة"
+                                    ? "#dcfce7"
+                                    : "#fce9ea",
+
+                                ...F,
+
+                                fontSize: 11,
+
+                                fontWeight: 700,
+
+                                color:
+                                  soldier.status ===
+                                  "بالخدمة"
+                                    ? "#166534"
+                                    : "#9d2e15",
+                              }}
+                            >
+                              {
+                                soldier.status
+                              }
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    )
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end mt-4 no-print">
+              <button
+                type="button"
+                onClick={
+                  handleSaveChanges
+                }
+                disabled={saving}
+                className="h-[44px] px-6 rounded-[8px] border border-[#e2e7f0] bg-white disabled:opacity-50"
+                style={{
+                  ...F,
+                  fontSize: 15,
+                  color: "#2d3648",
+                }}
+              >
+                {saving
+                  ? "جاري الحفظ..."
+                  : "حفظ التعديلات"}
+              </button>
+            </div>
           </div>
+        )}
 
-          {/* Save button */}
-          <button
-            type="button"
-            onClick={() =>
-              setSuccessMsg("تم حفظ التعديلات بنجاح")
-            }
-            className="h-[44px] px-6 rounded-[8px] border border-[#e2e7f0] bg-white transition-colors hover:bg-[#f5f6fb] self-end"
-            style={{ ...F, fontSize: 15, color: "#2d3648" }}
-          >
-            حفظ التعديلات
-          </button>
-        </>
-      )}
-
-      {/* Dialogs */}
       {showEndDialog && (
         <EndServiceDialog
-          onCancel={() => setShowEndDialog(false)}
-          onConfirm={confirmEndService}
+          onCancel={() =>
+            !saving &&
+            setShowEndDialog(
+              false
+            )
+          }
+          onConfirm={
+            confirmEndService
+          }
+          saving={saving}
         />
       )}
+
       {showTransferDialog && (
         <TransferDialog
-          onCancel={() => setShowTransferDialog(false)}
-          onConfirm={confirmTransfer}
+          batches={batches}
+          onCancel={() =>
+            !saving &&
+            setShowTransferDialog(
+              false
+            )
+          }
+          onConfirm={
+            confirmTransfer
+          }
         />
       )}
     </div>

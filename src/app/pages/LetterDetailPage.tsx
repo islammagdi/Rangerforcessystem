@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router";
 import {
   Trash2,
@@ -6,21 +6,50 @@ import {
   Upload,
   FileText,
   X,
+  Loader2,
 } from "lucide-react";
-import { getLetterById } from "../data/lettersData";
-import imgEagle from "figma:asset/af406d517dfa4e5b22e9993bd61d8e4e002646b6.png";
+
+import { supabase } from "../../lib/supabase";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
 
-// ─── Status Badge ──────────────────────────────────────────────────────────────
+/* =========================================================
+   TYPES
+========================================================= */
+
+type LetterStatus = "موثق" | "غير موثق";
+
+type Soldier = {
+  rank: string;
+  name: string;
+  unit: string;
+  attachmentUnit: string;
+};
+
+type LetterView = {
+  id: string;
+  type: string;
+  letterNumber: string;
+  destination: string;
+  date: string;
+  soldiersCount: number;
+  soldiers: Soldier[];
+  status: LetterStatus;
+};
+
+/* =========================================================
+   STATUS BADGE
+========================================================= */
+
 function StatusBadge({
   status,
 }: {
-  status: "موثق" | "غير موثق";
+  status: LetterStatus;
 }) {
   const isVerified = status === "موثق";
+
   return (
     <span
       className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full"
@@ -44,7 +73,10 @@ function StatusBadge({
   );
 }
 
-// ─── Sort Icon ────────────────────────────────────────────────────────────────
+/* =========================================================
+   SORT ICON
+========================================================= */
+
 function SortIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
@@ -59,7 +91,10 @@ function SortIcon() {
   );
 }
 
-// ─── Info Pair ─────────────────────────────────────────────────────────────────
+/* =========================================================
+   INFO PAIR
+========================================================= */
+
 function InfoPair({
   label,
   value,
@@ -85,237 +120,318 @@ function InfoPair({
       >
         {label}
       </span>
-      <span style={{ ...F, fontSize: 16, color: "#172e78" }}>
+
+      <span
+        style={{
+          ...F,
+          fontSize: 16,
+          color: "#172e78",
+        }}
+      >
         :
       </span>
+
       {badge ?? (
-        <span style={{ ...F, fontSize: 16, color: "#2d3648" }}>
-          {value}
+        <span
+          style={{
+            ...F,
+            fontSize: 16,
+            color: "#2d3648",
+          }}
+        >
+          {value || "-"}
         </span>
       )}
     </div>
   );
 }
 
-// ─── Letter Paper Preview ─────────────────────────────────────────────────────
-function LetterPaper({
-  letter,
+/* =========================================================
+   SIGNED FILE PREVIEW
+========================================================= */
+
+function SignedFilePreview({
+  url,
+  fileType,
 }: {
-  letter: NonNullable<ReturnType<typeof getLetterById>>;
+  url: string;
+  fileType?: string;
 }) {
+  if (!url) return null;
+
+  const isPdf =
+    fileType === "application/pdf" ||
+    url.toLowerCase().includes(".pdf");
+
+  if (isPdf) {
+    return (
+      <div className="w-full rounded-[12px] overflow-hidden border border-[#e2e7f0] bg-white">
+        <iframe
+          src={url}
+          title="الخطاب الموقع"
+          className="w-full"
+          style={{
+            height: "700px",
+            border: "none",
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div
-      className="bg-white border border-[#ddd] rounded-[4px] p-6 w-full shadow-sm"
-      dir="rtl"
-      style={{ fontFamily: "'Almarai', sans-serif" }}
-    >
-      {/* Header */}
-      <div className="justify-between flex items-start gap-4 pb-3 border-b border-[#e0e0e0] mb-4">
-        
-        <div className="flex flex-col gap-0.5 flex-1 text-right">
-          <p
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: "#1a1a1a",
-            }}
-          >
-            قيادة قوات الصاعقة
-          </p>
-          <p style={{ fontSize: 11, color: "#333" }}>
-            فــــرع التنظيـــــم والإدارة
-          </p>
-          <p style={{ fontSize: 11, color: "#333" }}>
-            التاريــــــــــــــخ : {letter.date}
-          </p>
-        </div>
-        <div className="shrink-0 w-12 h-12">
-          <img
-            src={imgEagle}
-            alt="شعار الجمهورية"
-            className="w-full h-full object-contain"
-          />
-        </div>
-      </div>
-
-      {/* Recipient */}
-      <div className="flex flex-col gap-0.5 flex-1 text-center">
-<p
+    <div className="w-full flex justify-center">
+      <img
+        src={url}
+        alt="صورة الخطاب الموقع"
+        className="max-w-full rounded-[12px] border border-[#e2e7f0]"
         style={{
-          fontSize: 12,
-          fontWeight: 700,
-          color: "#1a1a1a",
-          marginBottom: 8,
+          maxHeight: "700px",
+          objectFit: "contain",
         }}
-      >
-        إلى / {letter.destination}
-      </p>
-
-      </div>
-      
-      {/* Body */}
-      <p
-        style={{
-          fontSize: 11,
-          color: "#333",
-          lineHeight: 1.8,
-          marginBottom: 8,
-        }}
-      >
-        قدم لكم اليوم {letter.date} الأفراد المذكور أسماؤهم
-        وبياناتهم من التكليف الأميرية ذلك لهم للعمل (
-        {letter.reason || "أوامر قيادة"}) بالأماكن الموضحة قرين
-        كل منهم وذلك بناءً على أوامر الأركان وبياناتهم كالتالي:
-      </p>
-
-      {/* Soldiers table */}
-      <table
-        className="w-full border-collapse mb-4"
-        style={{ fontSize: 10 }}
-      >
-        <thead>
-          <tr
-            style={{
-              background: "#f5f5f5",
-              borderBottom: "1px solid #ddd",
-            }}
-          >
-            {[
-              "م",
-              "الدرجة",
-              "الاسم",
-              "الوحدة",
-               "وحدة الالحاق",
-              "ملاحظات",
-    
-            ].map((h) => (
-              <th
-                key={h}
-                style={{
-                  padding: "4px 6px",
-                  textAlign: "right",
-                  borderRight: "1px solid #ddd",
-                  color: "#444",
-                }}
-              >
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {letter.soldiers.map((s, idx) => (
-            <tr
-              key={idx}
-              style={{ borderBottom: "1px solid #eee" }}
-            >
-               <td
-                style={{
-                  padding: "4px 6px",
-                  borderRight: "1px solid #eee",
-                  textAlign: "center",
-                }}
-              >
-                {idx + 1}
-              </td>
-               <td
-                style={{
-                  padding: "4px 6px",
-                  borderRight: "1px solid #eee",
-                }}
-              >
-                {s.rank}
-              </td>
-               <td
-                style={{
-                  padding: "4px 6px",
-                  borderRight: "1px solid #eee",
-                }}
-              >
-                {s.name}
-              </td>
-              <td
-                style={{
-                  padding: "4px 6px",
-                  borderRight: "1px solid #eee",
-                }}
-              >
-                {s.unit}
-              </td>
-               <td
-                style={{
-                  padding: "4px 6px",
-                  borderRight: "1px solid #eee",
-                }}
-              >
-                {s.attachmentUnit}
-              </td>
-              <td
-                style={{
-                  padding: "4px 6px",
-                  borderRight: "1px solid #eee",
-                }}
-              ></td>
-              
-             
-              
-             
-             
-             
-            </tr>
-          ))}
-        </tbody>
-      </table>
- <div className="flex flex-col gap-0.5 flex-1 text-center">
-     <p
-        style={{
-          fontSize: 11,
-          color: "#333",
-          marginBottom: 12,
-        }}
-      >
-        مع وافر التحية ،،،
-      </p>
-      </div>
- 
-
-      {/* Signature */}
-      <div className="flex flex-col items-end gap-0.5">
-        <p style={{ fontSize: 11, color: "#333" }}>
-          التوقيع (....................................)
-        </p>
-        <p style={{ fontSize: 11, color: "#333" }}>
-          عقيد/محمد سمير عبدالغني
-        </p>
-        <p style={{ fontSize: 11, color: "#333" }}>
-          رئــيس فرع التنظيم والإدارة
-        </p>
-      </div>
+      />
     </div>
   );
 }
 
-// ─── Upload Area (Unverified) ─────────────────────────────────────────────────
-function UploadArea({ onSave }: { onSave: () => void }) {
+/* =========================================================
+   UPLOAD AREA
+========================================================= */
+
+function UploadArea({
+  letterId,
+  onSave,
+}: {
+  letterId: string;
+  onSave: (fileUrl: string, fileType: string) => void;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
+
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   function handleFile(f: File) {
+    setError("");
+
+    const allowedTypes = [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+    ];
+
+    if (!allowedTypes.includes(f.type)) {
+      setError(
+        "نوع الملف غير مدعوم. يرجى اختيار PDF أو JPG أو PNG."
+      );
+      return;
+    }
+
     setFile(f);
   }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragging(false);
-    const f = e.dataTransfer.files[0];
-    if (f) handleFile(f);
+
+    const droppedFile = e.dataTransfer.files?.[0];
+
+    if (droppedFile) {
+      handleFile(droppedFile);
+    }
+  }
+
+  async function handleSave() {
+    if (!file) {
+      setError("يرجى اختيار صورة الخطاب الموقع أولاً.");
+      return;
+    }
+
+    if (!letterId) {
+      setError("معرف الخطاب غير موجود.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError("");
+
+      /* =====================================================
+         1. CURRENT USER
+      ===================================================== */
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        throw userError;
+      }
+
+      if (!user) {
+        throw new Error("يجب تسجيل الدخول أولاً.");
+      }
+
+      /* =====================================================
+         2. VERIFY LETTER
+      ===================================================== */
+
+      const {
+        data: existingLetter,
+        error: existingLetterError,
+      } = await supabase
+        .from("letters")
+        .select("id,status")
+        .eq("id", letterId)
+        .maybeSingle();
+
+      if (existingLetterError) {
+        throw new Error(
+          `فشل قراءة الخطاب: ${existingLetterError.message}`
+        );
+      }
+
+      if (!existingLetter) {
+        throw new Error(
+          "لم يتم العثور على الخطاب في قاعدة البيانات."
+        );
+      }
+
+      /* =====================================================
+         3. FILE PATH
+      ===================================================== */
+
+      const extension =
+        file.name.split(".").pop()?.toLowerCase() || "file";
+
+      const filePath =
+        `${letterId}/signed-${Date.now()}.${extension}`;
+
+      /* =====================================================
+         4. STORAGE UPLOAD
+      ===================================================== */
+
+      const { error: uploadError } =
+        await supabase.storage
+          .from("letter-attachments")
+          .upload(filePath, file, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: file.type,
+          });
+
+      if (uploadError) {
+        throw new Error(
+          `فشل رفع الملف: ${uploadError.message}`
+        );
+      }
+
+      /* =====================================================
+         5. SAVE ATTACHMENT
+      ===================================================== */
+
+      const { error: attachmentError } =
+        await supabase
+          .from("letter_attachments")
+          .insert({
+            letter_id: letterId,
+            file_path: filePath,
+            file_name: file.name,
+            file_type: file.type,
+            uploaded_by: user.id,
+          });
+
+      if (attachmentError) {
+        await supabase.storage
+          .from("letter-attachments")
+          .remove([filePath]);
+
+        throw new Error(
+          `فشل حفظ بيانات الصورة: ${attachmentError.message}`
+        );
+      }
+
+      /* =====================================================
+         6. UPDATE LETTER STATUS
+      ===================================================== */
+
+      const { error: updateError } =
+        await supabase
+          .from("letters")
+          .update({
+            status: "DOCUMENTED",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", letterId);
+
+      if (updateError) {
+        throw new Error(
+          `تم رفع الصورة ولكن فشل تحديث حالة الخطاب: ${updateError.message}`
+        );
+      }
+
+      /* =====================================================
+         7. CREATE SIGNED URL
+      ===================================================== */
+
+      const {
+        data: signedUrlData,
+        error: signedUrlError,
+      } = await supabase.storage
+        .from("letter-attachments")
+        .createSignedUrl(
+          filePath,
+          60 * 60 * 24
+        );
+
+      if (signedUrlError) {
+        throw new Error(
+          `تم حفظ الخطاب ولكن فشل إنشاء رابط الصورة: ${signedUrlError.message}`
+        );
+      }
+
+      if (!signedUrlData?.signedUrl) {
+        throw new Error(
+          "تم حفظ الخطاب ولكن لم يتم الحصول على رابط الصورة."
+        );
+      }
+
+      /* =====================================================
+         8. SUCCESS
+      ===================================================== */
+
+      onSave(
+        signedUrlData.signedUrl,
+        file.type
+      );
+
+      setFile(null);
+
+    } catch (err) {
+      console.error(
+        "LETTER SAVE ERROR:",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "حدث خطأ غير متوقع أثناء حفظ الخطاب."
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <div className="flex flex-col gap-4 w-full">
-      {/* Warning text */}
-      <div className="text-center" dir="rtl">
+
+      <div
+        className="text-center"
+        dir="rtl"
+      >
         <p
           style={{
             ...F,
@@ -325,8 +441,9 @@ function UploadArea({ onSave }: { onSave: () => void }) {
             marginBottom: 4,
           }}
         >
-          هذا الخطاب غير موثق حق الآن.
+          هذا الخطاب غير موثق حتى الآن.
         </p>
+
         <p
           style={{
             ...F,
@@ -339,52 +456,94 @@ function UploadArea({ onSave }: { onSave: () => void }) {
         </p>
       </div>
 
-      {/* Drop zone */}
       <div
         onDragOver={(e) => {
           e.preventDefault();
           setDragging(true);
         }}
-        onDragLeave={() => setDragging(false)}
+        onDragLeave={() => {
+          setDragging(false);
+        }}
         onDrop={handleDrop}
-        onClick={() => inputRef.current?.click()}
+        onClick={() => {
+          if (!saving) {
+            inputRef.current?.click();
+          }
+        }}
         className="w-full rounded-[12px] flex flex-col items-center justify-center gap-3 py-8 px-4 cursor-pointer transition-colors"
         style={{
-          border: `2px dashed ${dragging ? "#395945" : "#cbd2e0"}`,
-          background: dragging ? "#f0f4ff" : "#fff",
+          border: `2px dashed ${
+            dragging ? "#395945" : "#cbd2e0"
+          }`,
+          background: dragging
+            ? "#f0f4ff"
+            : "#fff",
         }}
       >
         <input
           ref={inputRef}
           type="file"
-          accept=".pdf,.jpg,.png"
+          accept=".pdf,.jpg,.jpeg,.png"
           hidden
           onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleFile(f);
+            const selectedFile =
+              e.target.files?.[0];
+
+            if (selectedFile) {
+              handleFile(selectedFile);
+            }
           }}
         />
+
         {file ? (
-          <div className="flex items-center gap-3">
-            <FileText size={24} style={{ color: "#395945" }} />
+          <div
+            className="flex items-center gap-3"
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+          >
+            <FileText
+              size={24}
+              style={{
+                color: "#395945",
+              }}
+            />
+
             <span
-              style={{ ...F, fontSize: 14, color: "#2d3648" }}
+              style={{
+                ...F,
+                fontSize: 14,
+                color: "#2d3648",
+              }}
             >
               {file.name}
             </span>
+
             <button
               type="button"
+              disabled={saving}
               onClick={(e) => {
                 e.stopPropagation();
                 setFile(null);
               }}
             >
-              <X size={16} style={{ color: "#ef4444" }} />
+              <X
+                size={16}
+                style={{
+                  color: "#ef4444",
+                }}
+              />
             </button>
           </div>
         ) : (
           <>
-            <Upload size={28} style={{ color: "#395945" }} />
+            <Upload
+              size={28}
+              style={{
+                color: "#395945",
+              }}
+            />
+
             <p
               style={{
                 ...F,
@@ -395,13 +554,25 @@ function UploadArea({ onSave }: { onSave: () => void }) {
             >
               اسحب الملف هنا أو تصفح
             </p>
-            <p style={{ ...F, fontSize: 12, color: "#a1aebe" }}>
+
+            <p
+              style={{
+                ...F,
+                fontSize: 12,
+                color: "#a1aebe",
+              }}
+            >
               أو
             </p>
+
             <button
               type="button"
-              className="px-4 py-1.5 rounded-[6px] border border-[#395945] transition-colors hover:bg-[#f0f4ff]"
-              style={{ ...F, fontSize: 14, color: "#395945" }}
+              className="px-4 py-1.5 rounded-[6px] border border-[#395945]"
+              style={{
+                ...F,
+                fontSize: 14,
+                color: "#395945",
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 inputRef.current?.click();
@@ -413,31 +584,548 @@ function UploadArea({ onSave }: { onSave: () => void }) {
         )}
       </div>
 
-      {/* Save button */}
+      {error && (
+        <div
+          dir="rtl"
+          className="w-full rounded-[8px] px-4 py-3"
+          style={{
+            background: "#fef2f2",
+            border: "1px solid #fecaca",
+            color: "#b91c1c",
+            ...F,
+            fontSize: 14,
+          }}
+        >
+          {error}
+        </div>
+      )}
+
       <button
         type="button"
-        onClick={onSave}
-        className="w-full h-[52px] rounded-[8px] flex items-center justify-center transition-opacity hover:opacity-90 active:opacity-80"
+        onClick={handleSave}
+        disabled={saving || !file}
+        className="w-full h-[52px] rounded-[8px] flex items-center justify-center gap-2"
         style={{
           background:
-            "linear-gradient(to bottom, #00b867, #00522e)",
+            saving || !file
+              ? "#9ca3af"
+              : "linear-gradient(to bottom, #00b867, #00522e)",
+          cursor:
+            saving || !file
+              ? "not-allowed"
+              : "pointer",
         }}
       >
-        <span style={{ ...F, fontSize: 16, color: "#fff" }}>
-          حفظ التعديلات
+        {saving && (
+          <Loader2
+            size={18}
+            className="animate-spin"
+            style={{
+              color: "#fff",
+            }}
+          />
+        )}
+
+        <span
+          style={{
+            ...F,
+            fontSize: 16,
+            color: "#fff",
+          }}
+        >
+          {saving
+            ? "جاري حفظ الخطاب..."
+            : "حفظ التعديلات"}
         </span>
       </button>
     </div>
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+/* =========================================================
+   PAGE
+========================================================= */
+
 export function LetterDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const letter = getLetterById(id ?? "");
+
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  const [letter, setLetter] =
+    useState<LetterView | null>(null);
 
   const [saved, setSaved] = useState(false);
+
+  const [signedFileUrl, setSignedFileUrl] =
+    useState("");
+
+  const [signedFileType, setSignedFileType] =
+    useState("");
+
+  /* =======================================================
+     LOAD LETTER
+  ======================================================= */
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadLetterData() {
+      if (!id) {
+        setLoadError("معرف الخطاب غير موجود.");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setLoadError("");
+
+        /* =================================================
+           1. LETTER
+        ================================================= */
+
+        const {
+          data: dbLetter,
+          error: letterError,
+        } = await supabase
+          .from("letters")
+          .select(`
+            id,
+            letter_number,
+            letter_type_id,
+            letter_date,
+            issuing_unit_id,
+            attachment_unit_id,
+            personnel_count,
+            status,
+            reason,
+            branch_head_id,
+            branch_head_name,
+            branch_head_rank
+          `)
+          .eq("id", id)
+          .maybeSingle();
+
+        if (letterError) {
+          throw new Error(
+            `فشل قراءة الخطاب: ${letterError.message}`
+          );
+        }
+
+        if (!dbLetter) {
+          throw new Error(
+            "لم يتم العثور على الخطاب في قاعدة البيانات."
+          );
+        }
+
+        /* =================================================
+           2. LETTER TYPE
+        ================================================= */
+
+        const {
+          data: letterType,
+          error: letterTypeError,
+        } = await supabase
+          .from("letter_types")
+          .select("id,name,code")
+          .eq("id", dbLetter.letter_type_id)
+          .maybeSingle();
+
+        if (letterTypeError) {
+          throw new Error(
+            `فشل قراءة نوع الخطاب: ${letterTypeError.message}`
+          );
+        }
+
+        /* =================================================
+           3. ISSUING UNIT
+        ================================================= */
+
+        let destination = "";
+
+        if (dbLetter.issuing_unit_id) {
+          const {
+            data: issuingUnit,
+            error: issuingUnitError,
+          } = await supabase
+            .from("units")
+            .select("id,name,code")
+            .eq("id", dbLetter.issuing_unit_id)
+            .maybeSingle();
+
+          if (issuingUnitError) {
+            throw new Error(
+              `فشل قراءة جهة الخطاب: ${issuingUnitError.message}`
+            );
+          }
+
+          destination =
+            issuingUnit?.name ||
+            issuingUnit?.code ||
+            "";
+        }
+
+        /* =================================================
+           4. LETTER PERSONNEL
+        ================================================= */
+
+        const {
+          data: letterPersonnel,
+          error: letterPersonnelError,
+        } = await supabase
+          .from("letter_personnel")
+          .select("personnel_id,created_at")
+          .eq("letter_id", id)
+          .order("created_at", {
+            ascending: true,
+          });
+
+        if (letterPersonnelError) {
+          throw new Error(
+            `فشل قراءة أفراد الخطاب: ${letterPersonnelError.message}`
+          );
+        }
+
+        const personnelIds =
+          (letterPersonnel || [])
+            .map((item) => item.personnel_id)
+            .filter(Boolean);
+
+        /* =================================================
+           5. PERSONNEL
+        ================================================= */
+
+        let personnelRows: any[] = [];
+
+        if (personnelIds.length > 0) {
+          const {
+            data,
+            error,
+          } = await supabase
+            .from("personnel")
+            .select(`
+              id,
+              full_name,
+              military_number,
+              rank_id,
+              primary_unit_id,
+              attachment_unit_id
+            `)
+            .in("id", personnelIds);
+
+          if (error) {
+            throw new Error(
+              `فشل قراءة بيانات الأفراد: ${error.message}`
+            );
+          }
+
+          personnelRows = data || [];
+        }
+
+        /* =================================================
+           6. RANKS
+        ================================================= */
+
+        const rankIds = [
+          ...new Set(
+            personnelRows
+              .map((person) => person.rank_id)
+              .filter(Boolean)
+          ),
+        ];
+
+        let rankRows: any[] = [];
+
+        if (rankIds.length > 0) {
+          const {
+            data,
+            error,
+          } = await supabase
+            .from("ranks")
+            .select("id,name,code")
+            .in("id", rankIds);
+
+          if (error) {
+            throw new Error(
+              `فشل قراءة الرتب: ${error.message}`
+            );
+          }
+
+          rankRows = data || [];
+        }
+
+        /* =================================================
+           7. UNITS
+        ================================================= */
+
+        const unitIds = [
+          ...new Set(
+            personnelRows
+              .flatMap((person) => [
+                person.primary_unit_id,
+                person.attachment_unit_id,
+              ])
+              .filter(Boolean)
+          ),
+        ];
+
+        let unitRows: any[] = [];
+
+        if (unitIds.length > 0) {
+          const {
+            data,
+            error,
+          } = await supabase
+            .from("units")
+            .select("id,name,code")
+            .in("id", unitIds);
+
+          if (error) {
+            throw new Error(
+              `فشل قراءة الوحدات: ${error.message}`
+            );
+          }
+
+          unitRows = data || [];
+        }
+
+        /* =================================================
+           8. MAP LOOKUPS
+        ================================================= */
+
+        const rankMap = new Map(
+          rankRows.map((rank) => [
+            rank.id,
+            rank.name || rank.code || "",
+          ])
+        );
+
+        const unitMap = new Map(
+          unitRows.map((unit) => [
+            unit.id,
+            unit.name || unit.code || "",
+          ])
+        );
+
+        const personnelMap = new Map(
+          personnelRows.map((person) => [
+            person.id,
+            person,
+          ])
+        );
+
+        /* =================================================
+           9. BUILD SOLDIERS
+        ================================================= */
+
+        const soldiers: Soldier[] =
+          personnelIds
+            .map((personnelId) => {
+              const person =
+                personnelMap.get(personnelId);
+
+              if (!person) return null;
+
+              return {
+                rank:
+                  rankMap.get(person.rank_id) || "-",
+
+                name:
+                  person.full_name || "-",
+
+                unit:
+                  unitMap.get(
+                    person.primary_unit_id
+                  ) || "-",
+
+                attachmentUnit:
+                  unitMap.get(
+                    person.attachment_unit_id
+                  ) || "-",
+              };
+            })
+            .filter(Boolean) as Soldier[];
+
+        /* =================================================
+           10. LATEST ATTACHMENT
+        ================================================= */
+
+        const {
+          data: attachment,
+          error: attachmentError,
+        } = await supabase
+          .from("letter_attachments")
+          .select(`
+            id,
+            file_path,
+            file_name,
+            file_type,
+            uploaded_at
+          `)
+          .eq("letter_id", id)
+          .order("uploaded_at", {
+            ascending: false,
+          })
+          .limit(1)
+          .maybeSingle();
+
+        if (attachmentError) {
+          throw new Error(
+            `فشل قراءة مرفق الخطاب: ${attachmentError.message}`
+          );
+        }
+
+        /* =================================================
+           11. SIGNED URL
+        ================================================= */
+
+        let attachmentUrl = "";
+
+        if (attachment?.file_path) {
+          const {
+            data: signedData,
+            error: signedError,
+          } = await supabase.storage
+            .from("letter-attachments")
+            .createSignedUrl(
+              attachment.file_path,
+              60 * 60 * 24
+            );
+
+          if (signedError) {
+            console.error(
+              "SIGNED URL ERROR:",
+              signedError
+            );
+          } else {
+            attachmentUrl =
+              signedData?.signedUrl || "";
+          }
+        }
+
+        /* =================================================
+           12. STATUS
+        ================================================= */
+
+        const documented =
+          dbLetter.status === "DOCUMENTED";
+
+        /* =================================================
+           13. BUILD VIEW MODEL
+        ================================================= */
+
+        const viewLetter: LetterView = {
+          id: dbLetter.id,
+
+          type:
+            letterType?.name ||
+            letterType?.code ||
+            "-",
+
+          letterNumber:
+            String(dbLetter.letter_number),
+
+          destination:
+            destination || "-",
+
+          date:
+            dbLetter.letter_date || "-",
+
+          soldiersCount:
+            dbLetter.personnel_count ??
+            soldiers.length,
+
+          soldiers,
+
+          status:
+            documented
+              ? "موثق"
+              : "غير موثق",
+        };
+
+        if (!mounted) return;
+
+        setLetter(viewLetter);
+        setSaved(documented);
+
+        setSignedFileUrl(
+          attachmentUrl
+        );
+
+        setSignedFileType(
+          attachment?.file_type || ""
+        );
+
+      } catch (error) {
+        console.error(
+          "LOAD LETTER DATA ERROR:",
+          error
+        );
+
+        if (mounted) {
+          setLetter(null);
+          setSaved(false);
+          setSignedFileUrl("");
+          setSignedFileType("");
+
+          setLoadError(
+            error instanceof Error
+              ? error.message
+              : "حدث خطأ أثناء تحميل بيانات الخطاب."
+          );
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadLetterData();
+
+    return () => {
+      mounted = false;
+    };
+  }, [id]);
+
+  /* =======================================================
+     LOADING
+  ======================================================= */
+
+  if (loading) {
+    return (
+      <div
+        className="flex items-center justify-center py-20"
+        dir="rtl"
+      >
+        <div className="flex items-center gap-3">
+          <Loader2
+            size={24}
+            className="animate-spin"
+            style={{
+              color: "#395945",
+            }}
+          />
+
+          <span
+            style={{
+              ...F,
+              fontSize: 16,
+              color: "#4a5468",
+            }}
+          >
+            جاري تحميل بيانات الخطاب...
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  /* =======================================================
+     ERROR
+  ======================================================= */
 
   if (!letter) {
     return (
@@ -445,14 +1133,38 @@ export function LetterDetailPage() {
         className="flex flex-col items-center justify-center py-20 gap-4"
         dir="rtl"
       >
-        <p style={{ ...F, fontSize: 18, color: "#717d96" }}>
-          لم يتم العثور على الخطاب
+        <FileText
+          size={45}
+          style={{
+            color: "#395945",
+          }}
+        />
+
+        <p
+          style={{
+            ...F,
+            fontSize: 18,
+            color: "#717d96",
+            textAlign: "center",
+          }}
+        >
+          {loadError ||
+            "لم يتم العثور على الخطاب."}
         </p>
+
         <button
           type="button"
-          onClick={() => navigate("/dashboard/letters-archive")}
-          className="px-6 py-2 rounded-[8px] border border-[#395945] hover:bg-[#f0f4ff] transition-colors"
-          style={{ ...F, fontSize: 15, color: "#1f3d97" }}
+          onClick={() =>
+            navigate(
+              "/dashboard/letters-archive"
+            )
+          }
+          className="px-6 py-2 rounded-[8px] border border-[#395945]"
+          style={{
+            ...F,
+            fontSize: 15,
+            color: "#1f3d97",
+          }}
         >
           العودة لسجل الخطابات
         </button>
@@ -460,15 +1172,33 @@ export function LetterDetailPage() {
     );
   }
 
-  const isVerified = letter.status === "موثق";
+  /* =======================================================
+     STATUS
+  ======================================================= */
+
+  const isVerified =
+    saved || letter.status === "موثق";
+
   const thClass =
     "px-4 py-3 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]";
+
   const tdClass =
     "px-4 py-3 text-right border-b border-[#e2e7f0]";
 
+  /* =======================================================
+     RENDER
+  ======================================================= */
+
   return (
-    <div className="flex flex-col gap-6 w-full pb-10" dir="rtl">
-      {/* Title */}
+    <div
+      className="flex flex-col gap-6 w-full pb-10"
+      dir="rtl"
+    >
+
+      {/* ===================================================
+          TITLE
+      =================================================== */}
+
       <h1
         className="text-center"
         style={{
@@ -482,247 +1212,386 @@ export function LetterDetailPage() {
         بيانات الخطاب
       </h1>
 
-      {/* ── Section: بيانات الخطاب ──────────────────────────────────────── */}
+      {/* ===================================================
+          LETTER DATA
+      =================================================== */}
+
       <section className="bg-white rounded-[20px] border border-[#eff0f6] w-full overflow-hidden">
-        {/* Card header with action buttons */}
+
         <div
           className="flex items-center justify-between px-5 py-4 border-b border-[#e2e7f0]"
           dir="rtl"
         >
-          {/* Action buttons */}
-          {/* Section label */}
           <span
-            style={{ ...F, fontSize: 16, color: "#4a5468" }}
+            style={{
+              ...F,
+              fontSize: 16,
+              color: "#4a5468",
+            }}
           >
             بيانات الخطاب
           </span>
+
           <div className="flex items-center gap-3">
+
             <button
               type="button"
               title="طباعة"
-              onClick={() => window.print()}
-              className="w-9 h-9 rounded-[8px] flex items-center justify-center transition-colors hover:opacity-80"
-              style={{ backgroundColor: "#ebedfd" }}
+              onClick={() =>
+                window.print()
+              }
+              className="w-9 h-9 rounded-[8px] flex items-center justify-center"
+              style={{
+                backgroundColor: "#ebedfd",
+              }}
             >
-              <Printer size={15} style={{ color: "#2d3648" }} />
+              <Printer
+                size={15}
+                style={{
+                  color: "#2d3648",
+                }}
+              />
             </button>
+
             <button
               type="button"
               title="حذف"
               onClick={() =>
-                navigate("/dashboard/letters-archive")
+                navigate(
+                  "/dashboard/letters-archive"
+                )
               }
-              className="w-9 h-9 rounded-[8px] flex items-center justify-center transition-colors hover:opacity-80"
-              style={{ backgroundColor: "#fce8f1" }}
+              className="w-9 h-9 rounded-[8px] flex items-center justify-center"
+              style={{
+                backgroundColor: "#fce8f1",
+              }}
             >
-              <Trash2 size={15} style={{ color: "#e3282c" }} />
+              <Trash2
+                size={15}
+                style={{
+                  color: "#e3282c",
+                }}
+              />
             </button>
+
           </div>
         </div>
 
-        {/* Info grid */}
         <div
           className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 px-6 py-5"
           dir="rtl"
         >
+
           <InfoPair
             label="نوع الخطاب"
-            value={
-              letter.type === "إلحاق"
-                ? "إلحاق فرد"
-                : "إنهاء إلحاق فرد"
-            }
+            value={letter.type}
           />
+
           <InfoPair
             label="رقم الخطاب"
-            value={letter.letterNumber.slice(-5)}
+            value={letter.letterNumber}
           />
+
           <InfoPair
             label="جهة الخطاب"
             value={letter.destination}
           />
+
           <InfoPair
             label="تاريخ الخطاب"
-            value={letter.date.replace(/-/g, " - ")}
+            value={letter.date}
           />
+
           <InfoPair
             label="حالة الخطاب"
-            badge={<StatusBadge status={letter.status} />}
+            badge={
+              <StatusBadge
+                status={
+                  isVerified
+                    ? "موثق"
+                    : "غير موثق"
+                }
+              />
+            }
           />
+
           <InfoPair
-            label="عدد الافراد"
-            value={String(letter.soldiersCount)}
+            label="عدد الأفراد"
+            value={String(
+              letter.soldiersCount
+            )}
           />
+
         </div>
       </section>
 
-      {/* ── Section: بيانات الافراد ─────────────────────────────────────── */}
+      {/* ===================================================
+          PERSONNEL
+      =================================================== */}
+
       <section className="bg-white rounded-[20px] border border-[#eff0f6] w-full overflow-hidden">
+
         <div className="flex items-center justify-start px-5 py-4 border-b border-[#e2e7f0]">
           <span
-            style={{ ...F, fontSize: 16, color: "#4a5468" }}
+            style={{
+              ...F,
+              fontSize: 16,
+              color: "#4a5468",
+            }}
           >
-            بيانات الافراد
+            بيانات الأفراد
           </span>
         </div>
+
         <div className="overflow-x-auto">
+
           <table className="w-full min-w-[450px] border-collapse">
+
             <thead>
               <tr>
-                {["درجة", "اسم", "الوحدة", "وحدة الالحاق"].map(
-                  (h) => (
-                    <th key={h} className={thClass}>
-                      <div className="flex items-start gap-1 justify-start">
+
+                {[
+                  "درجة",
+                  "اسم",
+                  "الوحدة",
+                  "وحدة الإلحاق",
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className={thClass}
+                  >
+                    <div className="flex items-start gap-1 justify-start">
+
+                      <span
+                        style={{
+                          ...F,
+                          fontSize: 14,
+                          color: "#717d96",
+                        }}
+                      >
+                        {h}
+                      </span>
+
+                      <SortIcon />
+
+                    </div>
+                  </th>
+                ))}
+
+              </tr>
+            </thead>
+
+            <tbody>
+
+              {letter.soldiers.length > 0 ? (
+                letter.soldiers.map(
+                  (soldier, idx) => (
+                    <tr
+                      key={idx}
+                      className="hover:bg-[#fafbff]"
+                    >
+
+                      <td className={tdClass}>
                         <span
                           style={{
                             ...F,
                             fontSize: 14,
-                            color: "#717d96",
+                            color: "#2d3648",
                           }}
                         >
-                          {h}
+                          {soldier.rank}
                         </span>
-                        <SortIcon />
-                      </div>
-                    </th>
-                  ),
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {letter.soldiers.map((soldier, idx) => (
-                <tr
-                  key={idx}
-                  className="hover:bg-[#fafbff] transition-colors"
-                >
-                  <td className={tdClass}>
+                      </td>
+
+                      <td className={tdClass}>
+                        <span
+                          style={{
+                            ...F,
+                            fontSize: 14,
+                            color: "#2d3648",
+                          }}
+                        >
+                          {soldier.name}
+                        </span>
+                      </td>
+
+                      <td className={tdClass}>
+                        <span
+                          style={{
+                            ...F,
+                            fontSize: 14,
+                            color: "#2d3648",
+                          }}
+                        >
+                          {soldier.unit}
+                        </span>
+                      </td>
+
+                      <td className={tdClass}>
+                        <span
+                          style={{
+                            ...F,
+                            fontSize: 14,
+                            color: "#2d3648",
+                          }}
+                        >
+                          {soldier.attachmentUnit}
+                        </span>
+                      </td>
+
+                    </tr>
+                  )
+                )
+              ) : (
+                <tr>
+                  <td
+                    colSpan={4}
+                    className="px-4 py-8 text-center"
+                  >
                     <span
                       style={{
                         ...F,
                         fontSize: 14,
-                        color: "#2d3648",
+                        color: "#717d96",
                       }}
                     >
-                      {soldier.rank}
-                    </span>
-                  </td>
-                  <td className={tdClass}>
-                    <span
-                      style={{
-                        ...F,
-                        fontSize: 14,
-                        color: "#2d3648",
-                      }}
-                    >
-                      {soldier.name}
-                    </span>
-                  </td>
-                  <td className={tdClass}>
-                    <span
-                      style={{
-                        ...F,
-                        fontSize: 14,
-                        color: "#2d3648",
-                      }}
-                    >
-                      {soldier.unit}
-                    </span>
-                  </td>
-                  <td className={tdClass}>
-                    <span
-                      style={{
-                        ...F,
-                        fontSize: 14,
-                        color: "#2d3648",
-                      }}
-                    >
-                      {soldier.attachmentUnit}
+                      لا يوجد أفراد مرتبطون بهذا الخطاب.
                     </span>
                   </td>
                 </tr>
-              ))}
+              )}
+
             </tbody>
+
           </table>
+
         </div>
       </section>
 
-      {/* ── Section: صورة الخطاب ────────────────────────────────────────── */}
+      {/* ===================================================
+          SIGNED LETTER
+      =================================================== */}
+
       <section className="bg-white rounded-[20px] border border-[#eff0f6] w-full overflow-hidden">
+
         <div className="flex items-center justify-start px-5 py-4 border-b border-[#e2e7f0]">
+
           <span
-            style={{ ...F, fontSize: 16, color: "#4a5468" }}
+            style={{
+              ...F,
+              fontSize: 16,
+              color: "#4a5468",
+            }}
           >
             صورة الخطاب
           </span>
+
         </div>
+
         <div className="px-6 py-6 flex flex-col gap-5">
+
           {isVerified ? (
-            /* ── Verified: show letter previews + print button ── */
+
             <>
-              <div className="flex flex-col gap-4 bg-[#f7f9fc] p-4 rounded-[12px]">
-                <LetterPaper letter={letter} />
-                <LetterPaper letter={letter} />
-              </div>
+
+              {signedFileUrl ? (
+                <SignedFilePreview
+                  url={signedFileUrl}
+                  fileType={signedFileType}
+                />
+              ) : (
+                <div
+                  className="flex flex-col items-center justify-center py-10"
+                  dir="rtl"
+                >
+                  <FileText
+                    size={45}
+                    style={{
+                      color: "#395945",
+                    }}
+                  />
+
+                  <p
+                    style={{
+                      ...F,
+                      marginTop: 12,
+                      fontSize: 15,
+                      color: "#4a5468",
+                    }}
+                  >
+                    الخطاب موثق ولكن لم يتم العثور على المرفق.
+                  </p>
+                </div>
+              )}
+
               <button
                 type="button"
-                onClick={() => window.print()}
-                className="w-full h-[52px] rounded-[8px] flex items-center justify-center gap-2 transition-opacity hover:opacity-90 active:opacity-80"
+                onClick={() =>
+                  window.print()
+                }
+                className="w-full h-[52px] rounded-[8px] flex items-center justify-center gap-2"
                 style={{
                   background:
                     "linear-gradient(to bottom, #00b867, #00522e)",
                 }}
               >
-                <Printer size={18} style={{ color: "#fff" }} />
+                <Printer
+                  size={18}
+                  style={{
+                    color: "#fff",
+                  }}
+                />
+
                 <span
-                  style={{ ...F, fontSize: 16, color: "#fff" }}
+                  style={{
+                    ...F,
+                    fontSize: 16,
+                    color: "#fff",
+                  }}
                 >
                   طباعة نسخة الخطاب
                 </span>
+
               </button>
+
             </>
-          ) : /* ── Unverified: upload area ── */
-          saved ? (
-            <div className="flex flex-col items-center gap-4 py-8">
-              <div
-                className="w-16 h-16 rounded-full flex items-center justify-center"
-                style={{ background: "#dcfce7" }}
-              >
-                <svg
-                  width="32"
-                  height="32"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                >
-                  <path
-                    d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    stroke="#16a34a"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </div>
-              <p
-                style={{
-                  ...F,
-                  fontSize: 16,
-                  color: "#166534",
-                  fontWeight: 700,
-                }}
-              >
-                تم رفع الملف بنجاح
-              </p>
-              <p
-                style={{ ...F, fontSize: 14, color: "#4a5468" }}
-              >
-                سيتم مراجعة الخطاب واعتماده قريباً
-              </p>
-            </div>
+
           ) : (
-            <UploadArea onSave={() => setSaved(true)} />
+
+            <UploadArea
+              letterId={id ?? ""}
+              onSave={(
+                fileUrl,
+                fileType
+              ) => {
+
+                setSignedFileUrl(
+                  fileUrl
+                );
+
+                setSignedFileType(
+                  fileType
+                );
+
+                setSaved(true);
+
+                setLetter(
+                  (previous) =>
+                    previous
+                      ? {
+                          ...previous,
+                          status: "موثق",
+                        }
+                      : previous
+                );
+              }}
+            />
+
           )}
+
         </div>
       </section>
+
     </div>
   );
 }

@@ -1,19 +1,21 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ArrowDownUp, Plus } from "lucide-react";
 import svgPaths from "../../imports/بيانالوحداتالموقفالعامافرادالوحده/svg-gyw4yomx83";
+import { supabase } from "../../lib/supabase";
 
 // ─── Shared style ─────────────────────────────────────────────────────────────
+
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
 type LocationFilter = "all" | "inside" | "outside";
 type RankFilter = "all" | "soldiers" | "nco";
 
 interface SoldierRow {
-  id: number;
+  id: string;
   milId: string;
   rank: string;
   name: string;
@@ -23,6 +25,7 @@ interface SoldierRow {
 }
 
 interface UnitMeta {
+  id: string;
   name: string;
   total: number;
   soldiers: number;
@@ -32,126 +35,8 @@ interface UnitMeta {
   rows: SoldierRow[];
 }
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
-const UNITS: Record<number, UnitMeta> = {
-  1: {
-    name: "سـ 145 اشارة",
-    total: 120,
-    soldiers: 100,
-    nco: 20,
-    khawarij: 30,
-    remaining: 90,
-    rows: [
-      {
-        id: 1,
-        milId: "2024427700265",
-        rank: "جندي",
-        name: "اسلام مجدى عبدالستار",
-        serviceType: "مجند",
-        status: "داخل الوحده",
-        attachment: "لا يوجد",
-      },
-      {
-        id: 2,
-        milId: "2024159308527",
-        rank: "جندي",
-        name: "احمد عادل عبدالستار",
-        serviceType: "مجند",
-        status: "خارج الوحده",
-        attachment: "فرع العمليات",
-      },
-      {
-        id: 3,
-        milId: "2024964213580",
-        rank: "مساعد أ",
-        name: "محمود اسلام عبدالله",
-        serviceType: "متطوع",
-        status: "داخل الوحده",
-        attachment: "لا يوجد",
-      },
-    ],
-  },
-  2: {
-    name: "كـ 113 صع",
-    total: 120,
-    soldiers: 100,
-    nco: 20,
-    khawarij: 30,
-    remaining: 90,
-    rows: [
-      {
-        id: 1,
-        milId: "2024427700265",
-        rank: "جندي",
-        name: "اسلام مجدى عبدالستار",
-        serviceType: "مجند",
-        status: "داخل الوحده",
-        attachment: "لا يوجد",
-      },
-      {
-        id: 2,
-        milId: "2024159308527",
-        rank: "جندي",
-        name: "احمد عادل عبدالستار",
-        serviceType: "مجند",
-        status: "خارج الوحده",
-        attachment: "فرع العمليات",
-      },
-      {
-        id: 3,
-        milId: "2024964213580",
-        rank: "مساعد أ",
-        name: "محمود اسلام عبدالله",
-        serviceType: "متطوع",
-        status: "داخل الوحده",
-        attachment: "لا يوجد",
-      },
-    ],
-  },
-  3: {
-    name: "قيا مج العمليات الخاصة",
-    total: 120,
-    soldiers: 100,
-    nco: 20,
-    khawarij: 30,
-    remaining: 90,
-    rows: [
-      {
-        id: 1,
-        milId: "2024427700265",
-        rank: "جندي",
-        name: "اسلام مجدى عبدالستار",
-        serviceType: "مجند",
-        status: "داخل الوحده",
-        attachment: "لا يوجد",
-      },
-      {
-        id: 2,
-        milId: "2024159308527",
-        rank: "جندي",
-        name: "احمد عادل عبدالستار",
-        serviceType: "مجند",
-        status: "خارج الوحده",
-        attachment: "فرع العمليات",
-      },
-      {
-        id: 3,
-        milId: "2024964213580",
-        rank: "مساعد أ",
-        name: "محمود اسلام عبدالله",
-        serviceType: "متطوع",
-        status: "داخل الوحده",
-        attachment: "لا يوجد",
-      },
-    ],
-  },
-};
-
-function getUnit(id: number): UnitMeta {
-  return UNITS[id] ?? { ...UNITS[3], name: `وحدة ${id}` };
-}
-
 // ─── Status badge ─────────────────────────────────────────────────────────────
+
 const STATUS_CFG: Record<
   string,
   { bg: string; dot: string; text: string }
@@ -170,6 +55,7 @@ const STATUS_CFG: Record<
 
 function StatusBadge({ status }: { status: string }) {
   const s = STATUS_CFG[status] ?? STATUS_CFG["داخل الوحده"];
+
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-[16px] px-2 py-0.5"
@@ -179,6 +65,7 @@ function StatusBadge({ status }: { status: string }) {
         className="w-2 h-2 rounded-full shrink-0"
         style={{ background: s.dot }}
       />
+
       <span
         style={{
           ...F,
@@ -195,10 +82,10 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 // ─── Action buttons ───────────────────────────────────────────────────────────
+
 function ActionBtns({ onView }: { onView: () => void }) {
   return (
     <div className="flex items-center gap-1.5">
-      {/* Transfer arrow icon */}
       <button
         type="button"
         className="bg-[#DCF4DF] rounded-[4px] p-[3px] hover:opacity-80 transition-opacity"
@@ -213,7 +100,7 @@ function ActionBtns({ onView }: { onView: () => void }) {
           <path d={svgPaths.p11466900} fill="#415844" />
         </svg>
       </button>
-      {/* Eye icon */}
+
       <button
         type="button"
         className="bg-[#f5f5f5] rounded-[4px] p-[3px] hover:opacity-80 transition-opacity"
@@ -234,7 +121,7 @@ function ActionBtns({ onView }: { onView: () => void }) {
           />
         </svg>
       </button>
-      {/* Steps icon */}
+
       <button
         type="button"
         className="bg-[#f5f5f5] rounded-[4px] p-[3px] hover:opacity-80 transition-opacity"
@@ -259,11 +146,13 @@ function ActionBtns({ onView }: { onView: () => void }) {
 }
 
 // ─── Filter button group ──────────────────────────────────────────────────────
+
 interface FilterBtnGroupProps<T extends string> {
   options: { value: T; label: string }[];
   active: T;
   onChange: (v: T) => void;
 }
+
 function FilterBtnGroup<T extends string>({
   options,
   active,
@@ -305,7 +194,10 @@ function FilterBtnGroup<T extends string>({
                     ...F,
                     fontSize: 16,
                   }
-                : { ...F, fontSize: 16 }
+                : {
+                    ...F,
+                    fontSize: 16,
+                  }
             }
           >
             {opt.label}
@@ -317,6 +209,7 @@ function FilterBtnGroup<T extends string>({
 }
 
 // ─── Table columns ────────────────────────────────────────────────────────────
+
 const TABLE_COLS = [
   { key: "milId", label: "رقم عسكري" },
   { key: "rank", label: "درجة" },
@@ -328,38 +221,317 @@ const TABLE_COLS = [
 ];
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
+
 export function UnitSoldiersPage() {
-  const { id } = useParams();
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const unit = getUnit(parseInt(id ?? "3", 10));
+
+  // مهم: id هنا UUID وليس رقم
+  const unitId = id;
+
+  const [unit, setUnit] = useState<UnitMeta | null>(null);
 
   const [locationFilter, setLocationFilter] =
     useState<LocationFilter>("all");
+
   const [rankFilter, setRankFilter] =
     useState<RankFilter>("all");
+
   const [search, setSearch] = useState("");
+
   const [allChecked, setAllChecked] = useState(false);
 
-  // Filter rows
-  const filtered = unit.rows.filter((row) => {
-    const matchLoc =
-      locationFilter === "all"
-        ? true
-        : locationFilter === "inside"
-          ? row.status === "داخل الوحده"
-          : row.status === "خارج الوحده";
-    const matchRank =
-      rankFilter === "all"
-        ? true
-        : rankFilter === "soldiers"
-          ? row.rank === "جندي"
-          : row.rank !== "جندي";
-    const matchSearch =
-      search === "" ||
-      row.milId.includes(search) ||
-      row.name.includes(search);
-    return matchLoc && matchRank && matchSearch;
-  });
+  const [loading, setLoading] = useState(true);
+
+  const [error, setError] = useState("");
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Load unit + personnel from Supabase
+  // ───────────────────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!unitId) {
+      setError("لم يتم تحديد الوحدة");
+      setLoading(false);
+      return;
+    }
+
+    loadUnitData();
+  }, [unitId]);
+
+  async function loadUnitData() {
+    if (!unitId) return;
+
+    try {
+      setLoading(true);
+      setError("");
+
+      // ───────────────────────────────────────────────────────────────────────
+      // 1) Get unit
+      // ───────────────────────────────────────────────────────────────────────
+
+      const { data: unitData, error: unitError } = await supabase
+        .from("units")
+        .select(`
+          id,
+          name
+        `)
+        .eq("id", unitId)
+        .single();
+
+      if (unitError) {
+        throw unitError;
+      }
+
+      // ───────────────────────────────────────────────────────────────────────
+      // 2) Get all personnel belonging to this unit
+      //
+      // primary_unit_id = الوحدة الأساسية
+      // attachment_unit_id = الوحدة الملحق بها
+      // ───────────────────────────────────────────────────────────────────────
+
+      const { data: personnelData, error: personnelError } =
+        await supabase
+          .from("personnel")
+          .select(`
+            id,
+            military_number,
+            full_name,
+            rank_id,
+            personnel_category_id,
+            service_status_id,
+            primary_unit_id,
+            attachment_unit_id,
+            is_active
+          `)
+          .eq("primary_unit_id", unitId)
+          .order("full_name", { ascending: true });
+
+      if (personnelError) {
+        throw personnelError;
+      }
+
+      const personnel = personnelData ?? [];
+
+      // ───────────────────────────────────────────────────────────────────────
+      // 3) Get ranks
+      // ───────────────────────────────────────────────────────────────────────
+
+      const rankIds = [
+        ...new Set(
+          personnel
+            .map((p) => p.rank_id)
+            .filter(Boolean)
+        ),
+      ];
+
+      let ranks: any[] = [];
+
+      if (rankIds.length > 0) {
+        const { data, error } = await supabase
+          .from("ranks")
+          .select("id, name")
+          .in("id", rankIds);
+
+        if (error) {
+          throw error;
+        }
+
+        ranks = data ?? [];
+      }
+
+      // ───────────────────────────────────────────────────────────────────────
+      // 4) Get personnel categories
+      // ───────────────────────────────────────────────────────────────────────
+
+      const categoryIds = [
+        ...new Set(
+          personnel
+            .map((p) => p.personnel_category_id)
+            .filter(Boolean)
+        ),
+      ];
+
+      let categories: any[] = [];
+
+      if (categoryIds.length > 0) {
+        const { data, error } = await supabase
+          .from("personnel_categories")
+          .select("id, name")
+          .in("id", categoryIds);
+
+        if (error) {
+          throw error;
+        }
+
+        categories = data ?? [];
+      }
+
+      // ───────────────────────────────────────────────────────────────────────
+      // 5) Get attachment units
+      // ───────────────────────────────────────────────────────────────────────
+
+      const attachmentUnitIds = [
+        ...new Set(
+          personnel
+            .map((p) => p.attachment_unit_id)
+            .filter(Boolean)
+        ),
+      ];
+
+      let attachmentUnits: any[] = [];
+
+      if (attachmentUnitIds.length > 0) {
+        const { data, error } = await supabase
+          .from("units")
+          .select("id, name")
+          .in("id", attachmentUnitIds);
+
+        if (error) {
+          throw error;
+        }
+
+        attachmentUnits = data ?? [];
+      }
+
+      // ───────────────────────────────────────────────────────────────────────
+      // Maps
+      // ───────────────────────────────────────────────────────────────────────
+
+      const rankMap = new Map(
+        ranks.map((rank) => [rank.id, rank.name])
+      );
+
+      const categoryMap = new Map(
+        categories.map((category) => [category.id, category.name])
+      );
+
+      const attachmentUnitMap = new Map(
+        attachmentUnits.map((u) => [u.id, u.name])
+      );
+
+      // ───────────────────────────────────────────────────────────────────────
+      // 6) Convert Supabase data -> table rows
+      // ───────────────────────────────────────────────────────────────────────
+
+      const rows: SoldierRow[] = personnel.map((person) => {
+        const isInside =
+          !person.attachment_unit_id ||
+          person.attachment_unit_id === unitId;
+
+        const attachment =
+          person.attachment_unit_id &&
+          person.attachment_unit_id !== unitId
+            ? attachmentUnitMap.get(person.attachment_unit_id) ??
+              "غير محدد"
+            : "لا يوجد";
+
+        return {
+          id: person.id,
+
+          milId: person.military_number ?? "",
+
+          rank:
+            rankMap.get(person.rank_id) ??
+            "غير محدد",
+
+          name:
+            person.full_name ??
+            "",
+
+          serviceType:
+            categoryMap.get(person.personnel_category_id) ??
+            "غير محدد",
+
+          status: isInside
+            ? "داخل الوحده"
+            : "خارج الوحده",
+
+          attachment,
+        };
+      });
+
+      // ───────────────────────────────────────────────────────────────────────
+      // 7) Calculate statistics
+      // ───────────────────────────────────────────────────────────────────────
+
+      const soldiers = rows.filter(
+        (row) =>
+          row.rank.includes("جندي") ||
+          row.serviceType.includes("مجند")
+      ).length;
+
+      const khawarij = rows.filter(
+        (row) => row.status === "خارج الوحده"
+      ).length;
+
+      const nco = rows.length - soldiers;
+
+      const remaining = rows.filter(
+        (row) => row.status === "داخل الوحده"
+      ).length;
+
+      setUnit({
+        id: unitData.id,
+        name: unitData.name,
+        total: rows.length,
+        soldiers,
+        nco,
+        khawarij,
+        remaining,
+        rows,
+      });
+    } catch (err: any) {
+      console.error("Error loading unit personnel:", err);
+
+      setError(
+        err?.message ||
+          "حدث خطأ أثناء تحميل بيانات أفراد الوحدة"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Filters
+  // ───────────────────────────────────────────────────────────────────────────
+
+  const filtered = useMemo(() => {
+    if (!unit) return [];
+
+    return unit.rows.filter((row) => {
+      const matchLoc =
+        locationFilter === "all"
+          ? true
+          : locationFilter === "inside"
+            ? row.status === "داخل الوحده"
+            : row.status === "خارج الوحده";
+
+      const matchRank =
+        rankFilter === "all"
+          ? true
+          : rankFilter === "soldiers"
+            ? row.rank.includes("جندي") ||
+              row.serviceType.includes("مجند")
+            : !row.rank.includes("جندي") &&
+              !row.serviceType.includes("مجند");
+
+      const normalizedSearch = search.trim();
+
+      const matchSearch =
+        normalizedSearch === "" ||
+        row.milId.includes(normalizedSearch) ||
+        row.name.includes(normalizedSearch);
+
+      return matchLoc && matchRank && matchSearch;
+    });
+  }, [
+    unit,
+    locationFilter,
+    rankFilter,
+    search,
+  ]);
 
   const locationOptions: {
     value: LocationFilter;
@@ -368,19 +540,87 @@ export function UnitSoldiersPage() {
     { value: "all", label: "الكل" },
     { value: "inside", label: "داخل الوحده" },
     { value: "outside", label: "خارج الوحده" },
-    
   ];
 
-  const rankOptions: { value: RankFilter; label: string }[] = [
+  const rankOptions: {
+    value: RankFilter;
+    label: string;
+  }[] = [
     { value: "all", label: "الكل" },
     { value: "soldiers", label: "جنود" },
     { value: "nco", label: "ضباط صف" },
-    
   ];
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // Loading
+  // ───────────────────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div
+        className="flex items-center justify-center w-full min-h-[400px]"
+        dir="rtl"
+      >
+        <span
+          style={{
+            ...F,
+            fontSize: 18,
+            color: "#4a5468",
+          }}
+        >
+          جاري تحميل بيانات أفراد الوحدة...
+        </span>
+      </div>
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Error
+  // ───────────────────────────────────────────────────────────────────────────
+
+  if (error || !unit) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center w-full min-h-[400px] gap-4"
+        dir="rtl"
+      >
+        <span
+          style={{
+            ...F,
+            fontSize: 18,
+            color: "#e34040",
+          }}
+        >
+          {error || "لم يتم العثور على الوحدة"}
+        </span>
+
+        <button
+          type="button"
+          onClick={loadUnitData}
+          className="bg-[#DCF4DF] rounded-[8px] px-4 py-2"
+          style={{
+            ...F,
+            fontSize: 14,
+            color: "#2d3648",
+          }}
+        >
+          إعادة المحاولة
+        </button>
+      </div>
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // UI
+  // ───────────────────────────────────────────────────────────────────────────
+
   return (
-    <div className="flex flex-col gap-5 w-full" dir="rtl">
-      {/* ── Page title ──────────────────────────── */}
+    <div
+      className="flex flex-col gap-5 w-full"
+      dir="rtl"
+    >
+      {/* Page title */}
+
       <h1
         className="text-center w-full"
         style={{
@@ -394,9 +634,9 @@ export function UnitSoldiersPage() {
         عرض افراد {unit.name}
       </h1>
 
-      {/* ── Unit info card ──────────────────────── */}
-      <div className="bg-white w-full rounded-[12px] border border-[#eff0f6] p-4 ">
-        {/* Unit name */}
+      {/* Unit info card */}
+
+      <div className="bg-white w-full rounded-[12px] border border-[#eff0f6] p-4">
         <span
           style={{
             ...F,
@@ -409,9 +649,7 @@ export function UnitSoldiersPage() {
           {unit.name}
         </span>
 
-        {/* Stats row + print button */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
-          {/* Stats */}
           <div className="flex items-start gap-6 flex-wrap justify-start">
             {[
               {
@@ -430,7 +668,10 @@ export function UnitSoldiersPage() {
                 label: "الجنود:",
                 value: `${unit.soldiers} جندي`,
               },
-              { label: "القوة:", value: `${unit.total} فرد` },
+              {
+                label: "القوة:",
+                value: `${unit.total} فرد`,
+              },
             ].map((s, i, arr) => (
               <div
                 key={s.label}
@@ -446,6 +687,7 @@ export function UnitSoldiersPage() {
                   >
                     {s.label}
                   </span>
+
                   <span
                     style={{
                       ...F,
@@ -457,6 +699,7 @@ export function UnitSoldiersPage() {
                     {s.value}
                   </span>
                 </div>
+
                 {i < arr.length - 1 && (
                   <div className="w-px h-9 bg-[#cbd2e0] shrink-0" />
                 )}
@@ -464,7 +707,6 @@ export function UnitSoldiersPage() {
             ))}
           </div>
 
-          {/* Print button */}
           <button
             type="button"
             className="flex items-center gap-1.5 bg-[#DCF4DF] rounded-[8px] px-3 py-2 hover:opacity-80 transition-opacity shrink-0"
@@ -482,6 +724,7 @@ export function UnitSoldiersPage() {
                 fillRule="evenodd"
               />
             </svg>
+
             <span
               style={{
                 ...F,
@@ -496,11 +739,10 @@ export function UnitSoldiersPage() {
         </div>
       </div>
 
-      {/* ── Soldiers section ────────────────────── */}
+      {/* Soldiers section */}
+
       <div className="bg-white w-full rounded-[12px] border border-[#eff0f6] overflow-hidden">
-        {/* ── Section header ── */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#eff0f6]">
-          {/* Add soldier button */}
           <h2
             style={{
               ...F,
@@ -511,12 +753,14 @@ export function UnitSoldiersPage() {
           >
             افراد الوحده
           </h2>
+
           <button
             type="button"
-            onClick={() => navigate("/dashboard/add-soldier")}
+            onClick={() =>
+              navigate("/dashboard/add-soldier")
+            }
             className="flex items-center gap-1.5 bg-[#DCF4DF] rounded-[8px] px-3 py-2 hover:opacity-80 transition-opacity"
           >
-            
             <svg
               width="10"
               height="10"
@@ -530,17 +774,22 @@ export function UnitSoldiersPage() {
                 fillRule="evenodd"
               />
             </svg>
+
             <span
-              style={{ ...F, fontSize: 14, color: "#2d3648" }}
+              style={{
+                ...F,
+                fontSize: 14,
+                color: "#2d3648",
+              }}
             >
               اضافة فرد
             </span>
           </button>
         </div>
 
-        {/* ── Filters + Search ── */}
+        {/* Filters */}
+
         <div className="flex items-end gap-4 flex-wrap px-5 py-4 border-b border-[#eff0f6]">
-        {/* Search */}
           <div className="flex-1 min-w-[220px]">
             <div className="relative bg-white rounded-[8px] border border-[#e2e7f0] flex items-center gap-3 px-3 py-2.5">
               <svg
@@ -557,37 +806,47 @@ export function UnitSoldiersPage() {
                   fillRule="evenodd"
                 />
               </svg>
+
               <input
                 type="text"
                 dir="rtl"
                 className="w-full bg-transparent outline-none pr-8"
                 placeholder="ابحث برقم عسكري, الاسم"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{ ...F, fontSize: 16, color: "#4a5468" }}
+                onChange={(e) =>
+                  setSearch(e.target.value)
+                }
+                style={{
+                  ...F,
+                  fontSize: 16,
+                  color: "#4a5468",
+                }}
               />
             </div>
           </div>
-          {/* Filter groups */}
+
           <div className="flex items-center gap-4 flex-wrap">
             <FilterBtnGroup
               options={locationOptions}
               active={locationFilter}
               onChange={setLocationFilter}
             />
+
             <FilterBtnGroup
               options={rankOptions}
               active={rankFilter}
               onChange={setRankFilter}
             />
           </div>
-
-          
         </div>
 
-        {/* ── Table ── */}
+        {/* Table */}
+
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px]" dir="rtl">
+          <table
+            className="w-full min-w-[760px]"
+            dir="rtl"
+          >
             <thead>
               <tr className="bg-white border-b border-[#d4d8fa]">
                 <th className="w-10 px-4 py-3 text-center">
@@ -600,6 +859,7 @@ export function UnitSoldiersPage() {
                     }
                   />
                 </th>
+
                 {TABLE_COLS.map((c) => (
                   <th
                     key={c.key}
@@ -616,6 +876,7 @@ export function UnitSoldiersPage() {
                       >
                         {c.label}
                       </span>
+
                       <svg
                         width="16"
                         height="16"
@@ -636,6 +897,7 @@ export function UnitSoldiersPage() {
                 ))}
               </tr>
             </thead>
+
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
@@ -658,7 +920,16 @@ export function UnitSoldiersPage() {
                 filtered.map((row, idx) => (
                   <tr
                     key={row.id}
-                    className={`border-b border-[#eaecf0] ${idx % 2 === 0 ? "bg-white" : "bg-[#fafbff]"} hover:bg-[#f5f6fb] transition-colors`}
+                    className={`
+                      border-b border-[#eaecf0]
+                      ${
+                        idx % 2 === 0
+                          ? "bg-white"
+                          : "bg-[#fafbff]"
+                      }
+                      hover:bg-[#f5f6fb]
+                      transition-colors
+                    `}
                   >
                     <td className="w-10 px-4 py-3 text-center">
                       <input
@@ -668,6 +939,7 @@ export function UnitSoldiersPage() {
                         readOnly
                       />
                     </td>
+
                     <td className="px-4 py-3">
                       <span
                         style={{
@@ -680,6 +952,7 @@ export function UnitSoldiersPage() {
                         {row.milId}
                       </span>
                     </td>
+
                     <td className="px-4 py-3">
                       <span
                         style={{
@@ -691,6 +964,7 @@ export function UnitSoldiersPage() {
                         {row.rank}
                       </span>
                     </td>
+
                     <td className="px-4 py-3">
                       <span
                         style={{
@@ -703,6 +977,7 @@ export function UnitSoldiersPage() {
                         {row.name}
                       </span>
                     </td>
+
                     <td className="px-4 py-3">
                       <span
                         style={{
@@ -714,9 +989,11 @@ export function UnitSoldiersPage() {
                         {row.serviceType}
                       </span>
                     </td>
+
                     <td className="px-4 py-3">
                       <StatusBadge status={row.status} />
                     </td>
+
                     <td className="px-4 py-3">
                       <span
                         style={{
@@ -729,11 +1006,12 @@ export function UnitSoldiersPage() {
                         {row.attachment}
                       </span>
                     </td>
+
                     <td className="px-4 py-3">
                       <ActionBtns
                         onView={() =>
                           navigate(
-                            `/dashboard/individual-query/soldier/${row.id}`,
+                            `/dashboard/individual-query/soldier/${row.id}`
                           )
                         }
                       />
@@ -745,14 +1023,20 @@ export function UnitSoldiersPage() {
           </table>
         </div>
 
-        {/* ── Footer bar ── */}
+        {/* Footer */}
+
         <div className="flex items-center justify-between px-5 py-3 bg-[#fafbff] border-t border-[#eff0f6] flex-wrap gap-2">
           <div className="flex items-center gap-1">
             <span
-              style={{ ...F, fontSize: 14, color: "#a0abc0" }}
+              style={{
+                ...F,
+                fontSize: 14,
+                color: "#a0abc0",
+              }}
             >
               المستخدم الحالي:
             </span>
+
             <span
               style={{
                 ...F,
@@ -764,24 +1048,40 @@ export function UnitSoldiersPage() {
               جندي / اسلام مجدي عبدالستار
             </span>
           </div>
+
           <div>
             <span
-              style={{ ...F, fontSize: 14, color: "#a0abc0" }}
+              style={{
+                ...F,
+                fontSize: 14,
+                color: "#a0abc0",
+              }}
             >
               التاريخ:{" "}
             </span>
+
             <span
-              style={{ ...F, fontSize: 14, color: "#4a5468" }}
+              style={{
+                ...F,
+                fontSize: 14,
+                color: "#4a5468",
+              }}
             >
-              13 فبراير 2026، 9:14 م
+              {new Date().toLocaleString("ar-EG")}
             </span>
           </div>
+
           <div>
             <span
-              style={{ ...F, fontSize: 14, color: "#a0abc0" }}
+              style={{
+                ...F,
+                fontSize: 14,
+                color: "#a0abc0",
+              }}
             >
               عدد النتائج:{" "}
             </span>
+
             <span
               style={{
                 ...F,
