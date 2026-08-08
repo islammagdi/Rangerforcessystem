@@ -16,9 +16,9 @@ import {
   ChevronRight,
   LogOut,
 } from "lucide-react";
+
 import { supabase } from "../../../lib/supabase";
 
-// ─── Logo Icon ────────────────────────────────────────────────────────────────
 function LogoIcon() {
   return (
     <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
@@ -74,7 +74,6 @@ function LogoIcon() {
   );
 }
 
-// ─── Nav Item ────────────────────────────────────────────────────────────────
 interface NavItemProps {
   icon: React.ReactElement;
   label: string;
@@ -99,7 +98,9 @@ function NavItem({
       type="button"
       onClick={onClick}
       className={[
-        "w-full h-[44px] rounded-[99px] flex items-center px-4 gap-3 transition-colors text-right",
+        "w-full h-[44px] rounded-[99px]",
+        "flex items-center px-4 gap-3",
+        "transition-colors text-right",
         active
           ? "bg-[#DCF4DF]"
           : "text-[#717d96] hover:bg-[#f5f6fb] hover:text-[#2d3648]",
@@ -121,12 +122,7 @@ function NavItem({
   );
 }
 
-// ─── Section Header ──────────────────────────────────────────────────────────
-function SectionLabel({
-  label,
-}: {
-  label: string;
-}) {
+function SectionLabel({ label }: { label: string }) {
   return (
     <p
       className="text-right px-4 h-[24px] flex items-center w-full"
@@ -147,22 +143,11 @@ function Divider() {
   );
 }
 
-// ─── Nav Definitions ─────────────────────────────────────────────────────────
 interface NavDef {
   icon: React.ReactNode;
   label: string;
-  path?: string;
 }
 
-const PATH_TO_LABEL: Record<string, string> = {
-  "/dashboard": "الموقف العام",
-  "/dashboard/individual-query": "الاستعلام عن فرد",
-  "/dashboard/add-soldier": "اضافة قوة جديدة",
-  "/dashboard/units-report": "بيان الوحدات",
-  "/dashboard/issue-letter": "إصدار خطاب",
-};
-
-// ─── Sidebar Props ───────────────────────────────────────────────────────────
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
@@ -170,7 +155,6 @@ interface SidebarProps {
   activePath?: string;
 }
 
-// ─── Sidebar ─────────────────────────────────────────────────────────────────
 export function Sidebar({
   collapsed,
   onToggle,
@@ -179,42 +163,66 @@ export function Sidebar({
 }: SidebarProps) {
   const [loggingOut, setLoggingOut] = useState(false);
 
-  // ─── Active Navigation ─────────────────────────────────────────────────────
-  const activeLabel =
-    (activePath &&
-      (PATH_TO_LABEL[activePath] ??
-        (activePath.includes("/individual-query")
-          ? "الاستعلام عن فرد"
-          : undefined) ??
-        (activePath.includes("/units-report")
-          ? "بيان الوحدات"
-          : undefined) ??
-        (activePath.includes("/add-soldier")
-          ? "اضافة قوة جديدة"
-          : undefined) ??
-        (activePath.includes("/issue-letter")
-          ? "إصدار خطاب"
-          : undefined) ??
-        (activePath.includes("/letters-archive")
-          ? "سجل الخطابات"
-          : undefined) ??
-        (activePath.includes("/daily-reports")
-          ? "اليوميات"
-          : undefined) ??
-        (activePath.includes("/reserve-batches")
-          ? "دفعات الرديف"
-          : undefined) ??
-        (activePath.includes("/manage-units")
-          ? "ادارة الوحدات"
-          : undefined))) ??
-    "الموقف العام";
+  function getActiveLabel(pathname?: string): string {
+    if (!pathname) return "الموقف العام";
 
-  // ─── Navigation Click ──────────────────────────────────────────────────────
+    if (pathname === "/dashboard") {
+      return "الموقف العام";
+    }
+
+    if (pathname.includes("/individual-query")) {
+      return "الاستعلام عن فرد";
+    }
+
+    if (pathname.includes("/add-soldier")) {
+      return "اضافة قوة جديدة";
+    }
+
+    if (pathname.includes("/units-report")) {
+      return "بيان الوحدات";
+    }
+
+    if (pathname.includes("/issue-letter")) {
+      return "إصدار خطاب";
+    }
+
+    if (pathname.includes("/letters-archive")) {
+      return "سجل الخطابات";
+    }
+
+    if (pathname.includes("/daily-reports")) {
+      return "اليوميات";
+    }
+
+    if (pathname.includes("/reserve-batches")) {
+      return "دفعات الرديف";
+    }
+
+    if (pathname.includes("/manage-units")) {
+      return "ادارة الوحدات";
+    }
+
+    if (pathname.includes("/manage-users")) {
+      return "ادارة المستخدمين";
+    }
+
+    if (pathname.includes("/backup")) {
+      return "النسخ الاحتياطي للبيانات";
+    }
+
+    if (pathname.includes("/activity-log")) {
+      return "سجل العمليات";
+    }
+
+    return "الموقف العام";
+  }
+
+  const activeLabel = getActiveLabel(activePath);
+
   function handleClick(label: string) {
     onNavSelect?.(label);
   }
 
-  // ─── Secure Logout ─────────────────────────────────────────────────────────
   async function handleLogout() {
     if (loggingOut) return;
 
@@ -231,8 +239,6 @@ export function Sidebar({
         return;
       }
 
-      // تسجيل الخروج تم بنجاح.
-      // "/" هو المسار الخاص بـ LoginPage.tsx
       window.location.replace("/");
     } catch (error) {
       console.error("Unexpected logout error:", error);
@@ -240,22 +246,18 @@ export function Sidebar({
     }
   }
 
-  // ─── All Navigation Items ──────────────────────────────────────────────────
   const allNavItems: NavDef[] = [
     {
       icon: <LayoutDashboard size={18} />,
       label: "الموقف العام",
-      path: "/dashboard",
     },
     {
       icon: <Search size={18} />,
       label: "الاستعلام عن فرد",
-      path: "/dashboard/individual-query",
     },
     {
       icon: <UserPlus size={18} />,
       label: "اضافة قوة جديدة",
-      path: "/dashboard/add-soldier",
     },
     {
       icon: <FolderOpen size={18} />,
@@ -298,18 +300,17 @@ export function Sidebar({
   return (
     <aside
       className={[
-        "bg-white h-screen flex flex-col gap-6 border-l border-[#e2e8f0] sticky top-0 transition-all duration-300 overflow-y-auto overflow-x-hidden shrink-0",
-        collapsed
-          ? "w-[0px] opacity-0 pointer-events-none"
-          : "w-[280px] opacity-100",
-        "md:opacity-100 md:pointer-events-auto",
-        collapsed
-          ? "md:w-[68px]"
-          : "md:w-[280px]",
+        "bg-white h-screen flex flex-col gap-6",
+        "border-l border-[#e2e8f0]",
+        "sticky top-0",
+        "transition-all duration-300",
+        "overflow-y-auto overflow-x-hidden",
+        "shrink-0",
+        collapsed ? "w-[68px]" : "w-[280px]",
       ].join(" ")}
       dir="rtl"
     >
-      {/* ── Global Gradient ─────────────────────────────────────────────── */}
+      {/* Active icon gradient */}
       <svg
         width="0"
         height="0"
@@ -338,12 +339,21 @@ export function Sidebar({
         </defs>
       </svg>
 
-      {/* ── Top: Logo + Toggle ──────────────────────────────────────────── */}
+      {/* Logo + Toggle */}
       <div className="flex items-center gap-3 px-5 pt-6 pb-0 shrink-0 relative z-10">
         <button
           type="button"
           onClick={onToggle}
-          className="bg-white border border-[#e2e8f0] rounded-full p-1 flex items-center justify-center hover:bg-gray-50 transition-colors shrink-0"
+          className={[
+            "bg-white",
+            "border border-[#e2e8f0]",
+            "rounded-full",
+            "p-1",
+            "flex items-center justify-center",
+            "hover:bg-gray-50",
+            "transition-colors",
+            "shrink-0",
+          ].join(" ")}
           aria-label="Toggle sidebar"
         >
           {collapsed ? (
@@ -380,10 +390,10 @@ export function Sidebar({
         {collapsed && <LogoIcon />}
       </div>
 
-      {/* ── Full Navigation ─────────────────────────────────────────────── */}
+      {/* Expanded Sidebar */}
       {!collapsed && (
         <nav className="flex flex-col gap-1 px-6 flex-1 pb-4">
-          {/* الافراد */}
+          {/* الأفراد */}
           <SectionLabel label="الافراد" />
 
           <NavItem
@@ -398,7 +408,9 @@ export function Sidebar({
           <NavItem
             icon={<Search size={18} />}
             label="الاستعلام عن فرد"
-            active={activeLabel === "الاستعلام عن فرد"}
+            active={
+              activeLabel === "الاستعلام عن فرد"
+            }
             onClick={() =>
               handleClick("الاستعلام عن فرد")
             }
@@ -407,7 +419,9 @@ export function Sidebar({
           <NavItem
             icon={<UserPlus size={18} />}
             label="اضافة قوة جديدة"
-            active={activeLabel === "اضافة قوة جديدة"}
+            active={
+              activeLabel === "اضافة قوة جديدة"
+            }
             onClick={() =>
               handleClick("اضافة قوة جديدة")
             }
@@ -416,7 +430,9 @@ export function Sidebar({
           <NavItem
             icon={<FolderOpen size={18} />}
             label="بيان الوحدات"
-            active={activeLabel === "بيان الوحدات"}
+            active={
+              activeLabel === "بيان الوحدات"
+            }
             onClick={() =>
               handleClick("بيان الوحدات")
             }
@@ -439,7 +455,9 @@ export function Sidebar({
           <NavItem
             icon={<BookOpen size={18} />}
             label="سجل الخطابات"
-            active={activeLabel === "سجل الخطابات"}
+            active={
+              activeLabel === "سجل الخطابات"
+            }
             onClick={() =>
               handleClick("سجل الخطابات")
             }
@@ -462,7 +480,9 @@ export function Sidebar({
           <NavItem
             icon={<Users size={18} />}
             label="دفعات الرديف"
-            active={activeLabel === "دفعات الرديف"}
+            active={
+              activeLabel === "دفعات الرديف"
+            }
             onClick={() =>
               handleClick("دفعات الرديف")
             }
@@ -470,13 +490,15 @@ export function Sidebar({
 
           <Divider />
 
-          {/* ادارة المنظومة */}
+          {/* إدارة المنظومة */}
           <SectionLabel label="ادارة المنظومة" />
 
           <NavItem
             icon={<Building2 size={18} />}
             label="ادارة الوحدات"
-            active={activeLabel === "ادارة الوحدات"}
+            active={
+              activeLabel === "ادارة الوحدات"
+            }
             onClick={() =>
               handleClick("ادارة الوحدات")
             }
@@ -485,7 +507,9 @@ export function Sidebar({
           <NavItem
             icon={<UserCog size={18} />}
             label="ادارة المستخدمين"
-            active={activeLabel === "ادارة المستخدمين"}
+            active={
+              activeLabel === "ادارة المستخدمين"
+            }
             onClick={() =>
               handleClick("ادارة المستخدمين")
             }
@@ -508,7 +532,9 @@ export function Sidebar({
           <NavItem
             icon={<Activity size={18} />}
             label="سجل العمليات"
-            active={activeLabel === "سجل العمليات"}
+            active={
+              activeLabel === "سجل العمليات"
+            }
             onClick={() =>
               handleClick("سجل العمليات")
             }
@@ -516,51 +542,69 @@ export function Sidebar({
         </nav>
       )}
 
-      {/* ── Collapsed Navigation ────────────────────────────────────────── */}
+      {/* Collapsed Sidebar */}
       {collapsed && (
         <nav className="flex flex-col items-center gap-2 px-2 flex-1 pb-4">
-          {allNavItems.map(({ icon, label }) => {
-            const isActive = activeLabel === label;
+          {allNavItems.map(
+            ({ icon, label }) => {
+              const isActive =
+                activeLabel === label;
 
-            const styledIcon = isActive
-              ? cloneElement(
-                  icon as React.ReactElement,
-                  {
-                    stroke: "url(#navActiveGrad)",
-                  } as object
-                )
-              : icon;
+              const styledIcon = isActive
+                ? cloneElement(
+                    icon as React.ReactElement,
+                    {
+                      stroke:
+                        "url(#navActiveGrad)",
+                    } as object
+                  )
+                : icon;
 
-            return (
-              <button
-                type="button"
-                key={label}
-                title={label}
-                onClick={() =>
-                  handleClick(label)
-                }
-                className={[
-                  "w-10 h-10 rounded-full flex items-center justify-center transition-colors",
-                  isActive
-                    ? "bg-[#DCF4DF]"
-                    : "text-[#717d96] hover:bg-[#f5f6fb]",
-                ].join(" ")}
-              >
-                {styledIcon}
-              </button>
-            );
-          })}
+              return (
+                <button
+                  type="button"
+                  key={label}
+                  title={label}
+                  onClick={() =>
+                    handleClick(label)
+                  }
+                  className={[
+                    "w-10 h-10",
+                    "rounded-full",
+                    "flex items-center justify-center",
+                    "transition-colors",
+                    isActive
+                      ? "bg-[#DCF4DF]"
+                      : "text-[#717d96] hover:bg-[#f5f6fb]",
+                  ].join(" ")}
+                >
+                  {styledIcon}
+                </button>
+              );
+            }
+          )}
         </nav>
       )}
 
-      {/* ── Bottom: Logout ──────────────────────────────────────────────── */}
+      {/* Logout */}
       <div className="border-t border-[#e2e8f0] px-6 py-4 shrink-0">
         {!collapsed ? (
           <button
             type="button"
             onClick={handleLogout}
             disabled={loggingOut}
-            className="w-full h-[44px] rounded-[99px] flex items-center px-4 gap-3 transition-colors text-right text-[#717d96] hover:bg-[#f5f6fb] hover:text-[#2d3648] disabled:opacity-50 disabled:cursor-not-allowed"
+            className={[
+              "w-full h-[44px]",
+              "rounded-[99px]",
+              "flex items-center px-4 gap-3",
+              "transition-colors",
+              "text-right",
+              "text-[#717d96]",
+              "hover:bg-[#f5f6fb]",
+              "hover:text-[#2d3648]",
+              "disabled:opacity-50",
+              "disabled:cursor-not-allowed",
+            ].join(" ")}
             style={{
               fontFamily: "'Almarai', sans-serif",
               fontSize: "16px",
@@ -594,7 +638,16 @@ export function Sidebar({
                 : "تسجيل الخروج"
             }
             aria-label="تسجيل الخروج"
-            className="w-10 h-10 rounded-full flex items-center justify-center transition-colors text-[#717d96] hover:bg-[#f5f6fb] disabled:opacity-50 disabled:cursor-not-allowed"
+            className={[
+              "w-10 h-10",
+              "rounded-full",
+              "flex items-center justify-center",
+              "transition-colors",
+              "text-[#717d96]",
+              "hover:bg-[#f5f6fb]",
+              "disabled:opacity-50",
+              "disabled:cursor-not-allowed",
+            ].join(" ")}
           >
             <LogOut
               size={18}

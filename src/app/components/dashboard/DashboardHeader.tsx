@@ -25,6 +25,7 @@ function ChangePasswordModal({
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
   function validate() {
@@ -34,25 +35,116 @@ function ChangePasswordModal({
       e.current = "كلمة المرور الحالية مطلوبة";
     }
 
-    if (!form.next || form.next.length < 6) {
+    if (!form.next) {
+      e.next = "كلمة المرور الجديدة مطلوبة";
+    } else if (form.next.length < 6) {
       e.next = "كلمة المرور يجب أن تكون 6 أحرف على الأقل";
     }
 
-    if (form.next !== form.confirm) {
+    if (!form.confirm) {
+      e.confirm = "يرجى تأكيد كلمة المرور";
+    } else if (form.next !== form.confirm) {
       e.confirm = "كلمتا المرور غير متطابقتين";
     }
 
     setErrors(e);
+
     return Object.keys(e).length === 0;
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     if (!validate()) return;
 
-    setSuccess(true);
-    setTimeout(onClose, 1500);
+    try {
+      setLoading(true);
+
+      // التأكد أن هناك مستخدم مسجل الدخول
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        throw userError;
+      }
+
+      if (!user) {
+        throw new Error("لا يوجد مستخدم مسجل الدخول");
+      }
+
+      // =====================================================
+      // التحقق من كلمة المرور الحالية
+      // =====================================================
+
+      const email = user.email;
+
+      if (!email) {
+        throw new Error(
+          "لا يوجد بريد إلكتروني مرتبط بهذا الحساب"
+        );
+      }
+
+      const {
+        error: signInError,
+      } = await supabase.auth.signInWithPassword({
+        email,
+        password: form.current,
+      });
+
+      if (signInError) {
+        setErrors({
+          current: "كلمة المرور الحالية غير صحيحة",
+        });
+        return;
+      }
+
+      // =====================================================
+      // تغيير كلمة المرور في Supabase Auth
+      // =====================================================
+
+      const {
+        error: updateError,
+      } = await supabase.auth.updateUser({
+        password: form.next,
+      });
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      // =====================================================
+      // نجاح
+      // =====================================================
+
+      setErrors({});
+      setSuccess(true);
+
+      setForm({
+        current: "",
+        next: "",
+        confirm: "",
+      });
+
+      setTimeout(() => {
+        onClose();
+      }, 1500);
+
+    } catch (error: any) {
+      console.error(
+        "CHANGE PASSWORD ERROR:",
+        error
+      );
+
+      setErrors({
+        general:
+          error?.message ||
+          "حدث خطأ أثناء تغيير كلمة المرور",
+      });
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -62,15 +154,22 @@ function ChangePasswordModal({
     >
       <div className="bg-white rounded-[20px] p-6 w-[90%] max-w-sm flex flex-col gap-5 shadow-xl">
 
+        {/* Header */}
         <div className="flex items-center justify-between">
+
           <div className="flex items-center gap-2">
+
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center"
-              style={{ background: "#DCF4DF" }}
+              style={{
+                background: "#DCF4DF",
+              }}
             >
               <KeyRound
                 size={16}
-                style={{ color: "#5B795F" }}
+                style={{
+                  color: "#5B795F",
+                }}
               />
             </div>
 
@@ -84,19 +183,25 @@ function ChangePasswordModal({
             >
               تغيير كلمة المرور
             </span>
+
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="text-[#a1aebe] hover:text-[#2d3648]"
+            disabled={loading}
+            className="text-[#a1aebe] hover:text-[#2d3648] disabled:opacity-40"
           >
             <X size={20} />
           </button>
+
         </div>
 
+        {/* Success */}
         {success ? (
-          <p
+
+          <div
+            className="py-5"
             style={{
               ...F,
               fontSize: 15,
@@ -105,89 +210,209 @@ function ChangePasswordModal({
             }}
           >
             تم تغيير كلمة المرور بنجاح ✓
-          </p>
+          </div>
+
         ) : (
+
           <form
             onSubmit={handleSubmit}
             className="flex flex-col gap-4"
           >
-            {(
-              [
-                {
-                  key: "current",
-                  label: "كلمة المرور الحالية",
-                },
-                {
-                  key: "next",
-                  label: "كلمة المرور الجديدة",
-                },
-                {
-                  key: "confirm",
-                  label: "تأكيد كلمة المرور",
-                },
-              ] as const
-            ).map(({ key, label }) => (
-              <div key={key} className="flex flex-col gap-1">
 
-                <label
+            {/* General Error */}
+            {errors.general && (
+              <div
+                className="rounded-[8px] px-3 py-2"
+                style={{
+                  ...F,
+                  fontSize: 13,
+                  color: "#b91c1c",
+                  background: "#fef2f2",
+                  border: "1px solid #fecaca",
+                }}
+              >
+                {errors.general}
+              </div>
+            )}
+
+            {/* Current Password */}
+            <div className="flex flex-col gap-1">
+
+              <label
+                style={{
+                  ...F,
+                  fontSize: 13,
+                  color: "#717d96",
+                }}
+              >
+                كلمة المرور الحالية
+              </label>
+
+              <input
+                type="password"
+                value={form.current}
+                disabled={loading}
+                autoComplete="current-password"
+                onChange={(e) =>
+                  setForm((p) => ({
+                    ...p,
+                    current: e.target.value,
+                  }))
+                }
+                className={`h-[44px] w-full rounded-[8px] border px-3 text-right outline-none ${
+                  errors.current
+                    ? "border-red-500"
+                    : "border-[#e2e7f0]"
+                } disabled:bg-gray-100`}
+                style={{
+                  ...F,
+                  fontSize: 14,
+                  color: "#2d3648",
+                }}
+              />
+
+              {errors.current && (
+                <span
                   style={{
                     ...F,
-                    fontSize: 13,
-                    color: "#717d96",
+                    fontSize: 12,
+                    color: "#e3282c",
                   }}
                 >
-                  {label}
-                </label>
+                  {errors.current}
+                </span>
+              )}
 
-                <input
-                  type="password"
-                  value={form[key]}
-                  onChange={(e) =>
-                    setForm((p) => ({
-                      ...p,
-                      [key]: e.target.value,
-                    }))
-                  }
-                  className={`h-[44px] w-full rounded-[8px] border px-3 text-right outline-none ${
-                    errors[key]
-                      ? "border-red-500"
-                      : "border-[#e2e7f0]"
-                  }`}
+            </div>
+
+            {/* New Password */}
+            <div className="flex flex-col gap-1">
+
+              <label
+                style={{
+                  ...F,
+                  fontSize: 13,
+                  color: "#717d96",
+                }}
+              >
+                كلمة المرور الجديدة
+              </label>
+
+              <input
+                type="password"
+                value={form.next}
+                disabled={loading}
+                autoComplete="new-password"
+                onChange={(e) =>
+                  setForm((p) => ({
+                    ...p,
+                    next: e.target.value,
+                  }))
+                }
+                className={`h-[44px] w-full rounded-[8px] border px-3 text-right outline-none ${
+                  errors.next
+                    ? "border-red-500"
+                    : "border-[#e2e7f0]"
+                } disabled:bg-gray-100`}
+                style={{
+                  ...F,
+                  fontSize: 14,
+                  color: "#2d3648",
+                }}
+              />
+
+              {errors.next && (
+                <span
                   style={{
                     ...F,
-                    fontSize: 14,
-                    color: "#2d3648",
+                    fontSize: 12,
+                    color: "#e3282c",
                   }}
-                />
+                >
+                  {errors.next}
+                </span>
+              )}
 
-                {errors[key] && (
-                  <span
-                    style={{
-                      ...F,
-                      fontSize: 12,
-                      color: "#e3282c",
-                    }}
-                  >
-                    {errors[key]}
-                  </span>
-                )}
-              </div>
-            ))}
+            </div>
 
+            {/* Confirm Password */}
+            <div className="flex flex-col gap-1">
+
+              <label
+                style={{
+                  ...F,
+                  fontSize: 13,
+                  color: "#717d96",
+                }}
+              >
+                تأكيد كلمة المرور
+              </label>
+
+              <input
+                type="password"
+                value={form.confirm}
+                disabled={loading}
+                autoComplete="new-password"
+                onChange={(e) =>
+                  setForm((p) => ({
+                    ...p,
+                    confirm: e.target.value,
+                  }))
+                }
+                className={`h-[44px] w-full rounded-[8px] border px-3 text-right outline-none ${
+                  errors.confirm
+                    ? "border-red-500"
+                    : "border-[#e2e7f0]"
+                } disabled:bg-gray-100`}
+                style={{
+                  ...F,
+                  fontSize: 14,
+                  color: "#2d3648",
+                }}
+              />
+
+              {errors.confirm && (
+                <span
+                  style={{
+                    ...F,
+                    fontSize: 12,
+                    color: "#e3282c",
+                  }}
+                >
+                  {errors.confirm}
+                </span>
+              )}
+
+            </div>
+
+            {/* Submit */}
             <button
               type="submit"
-              className="h-[48px] rounded-[8px] flex items-center justify-center mt-1 hover:opacity-90"
+              disabled={loading}
+              className="h-[48px] rounded-[8px] flex items-center justify-center mt-1 hover:opacity-90 disabled:opacity-50"
               style={{
                 background:
                   "linear-gradient(to bottom, #00b867, #00522e)",
               }}
             >
-              <span style={{ ...F, fontSize: 15, color: "#fff" }}>
-                حفظ كلمة المرور
+
+              <span
+                style={{
+                  ...F,
+                  fontSize: 15,
+                  color: "#fff",
+                }}
+              >
+                {loading
+                  ? "جاري تغيير كلمة المرور..."
+                  : "حفظ كلمة المرور"}
               </span>
+
             </button>
+
           </form>
         )}
+
       </div>
     </div>
   );

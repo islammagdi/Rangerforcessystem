@@ -10,6 +10,11 @@ const F: CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
 
+// خط خاص بمعاينة/طباعة الخطاب فقط (لا يؤثر على باقي صفحات المنظومة)
+const PF: CSSProperties = {
+  fontFamily: "'Times New Roman', Times, serif",
+};
+
 type Soldier = {
   id: string;
   militaryId: string;
@@ -39,6 +44,10 @@ type PageState = {
   soldiers?: Soldier[];
   letterData?: LetterData;
 };
+
+/* =========================================================
+   Loading Modal
+========================================================= */
 
 function LoadingModal() {
   return (
@@ -113,6 +122,10 @@ function LoadingModal() {
     </div>
   );
 }
+
+/* =========================================================
+   Success Modal
+========================================================= */
 
 function SuccessModal({
   letterNumber,
@@ -203,6 +216,10 @@ function SuccessModal({
   );
 }
 
+/* =========================================================
+   Step Bubble
+========================================================= */
+
 function StepBubble({
   number,
   label,
@@ -256,6 +273,10 @@ function StepBubble({
   );
 }
 
+/* =========================================================
+   Stepper
+========================================================= */
+
 function Stepper() {
   const steps = [
     "تحديد نوع الخطاب",
@@ -294,6 +315,10 @@ function Stepper() {
     </div>
   );
 }
+
+/* =========================================================
+   Info Pair
+========================================================= */
 
 function InfoPair({
   label,
@@ -337,6 +362,10 @@ function InfoPair({
   );
 }
 
+/* =========================================================
+   Letter Preview
+========================================================= */
+
 function LetterPreview({
   soldiers,
   destination,
@@ -354,7 +383,7 @@ function LetterPreview({
   branchHeadName: string;
   branchHeadRank: string;
 }) {
-  const today = new Date().toLocaleDateString("en-GB", {
+  const today = new Date().toLocaleDateString("ar-EG", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -366,177 +395,353 @@ function LetterPreview({
       : "إلحاق";
 
   return (
-    <div
-      className="bg-white border border-[#ddd] rounded-[4px] p-8 w-full max-w-[680px] mx-auto shadow-sm"
-      dir="rtl"
-    >
-      <div className="flex items-start justify-between gap-4 pb-4 border-b mb-4">
-        <div className="flex flex-col text-right">
-          <p style={{ ...F, fontSize: 13, fontWeight: 700 }}>
-            قيادة قوات الصاعقة
-          </p>
-
-          <p style={{ ...F, fontSize: 12 }}>
-            فرع التنظيم والإدارة
-          </p>
-
-          <p style={{ ...F, fontSize: 12 }}>
-            التاريخ : {today}
-          </p>
-        </div>
-
-        <div className="w-14 h-14">
-          <img
-            src={imgEagle}
-            alt="شعار الجمهورية"
-            className="w-full h-full object-contain"
-          />
-        </div>
-      </div>
-
-      <p
-        className="text-center"
-        style={{
-          ...F,
-          fontSize: 13,
-          fontWeight: 700,
-          marginBottom: 14,
-        }}
-      >
-        إلى / {destination || "..."}
-      </p>
-
-      <p
-        style={{
-          ...F,
-          fontSize: 12,
-          color: "#333",
-          lineHeight: 1.8,
-          marginBottom: 12,
-        }}
-      >
-        قادم لكم اليوم الأفراد المذكور أسماؤهم وبياناتهم
-        للعمل بإجراء {bodyType} بناءً على{" "}
-        {reason || "أوامر قيادة"} بالأماكن الموضحة قرين كل
-        منهم، وبياناتهم كالتالي:
-      </p>
-
-      <table
-        className="w-full border-collapse mb-4"
-        style={{
-          ...F,
-          fontSize: 11,
-        }}
-      >
-        <thead>
-          <tr style={{ background: "#f5f5f5" }}>
-            {[
-              "م",
-              "الدرجة",
-              "الاسم",
-              "الوحدة",
-              "وحدة الإلحاق",
-            ].map((header) => (
-              <th
-                key={header}
-                style={{
-                  padding: "5px",
-                  border: "1px solid #ddd",
-                  textAlign: "right",
-                }}
-              >
-                {header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-
-        <tbody>
-          {soldiers.map((soldier, index) => (
-            <tr key={soldier.id}>
-              <td
-                style={{
-                  padding: "5px",
-                  border: "1px solid #eee",
-                  textAlign: "center",
-                }}
-              >
-                {index + 1}
-              </td>
-
-              <td
-                style={{
-                  padding: "5px",
-                  border: "1px solid #eee",
-                }}
-              >
-                {soldier.rank}
-              </td>
-
-              <td
-                style={{
-                  padding: "5px",
-                  border: "1px solid #eee",
-                }}
-              >
-                {soldier.name}
-              </td>
-
-              <td
-                style={{
-                  padding: "5px",
-                  border: "1px solid #eee",
-                }}
-              >
-                {soldier.unit}
-              </td>
-
-              <td
-                style={{
-                  padding: "5px",
-                  border: "1px solid #eee",
-                }}
-              >
-                {soldier.attachmentUnit ||
-                  attachmentPlace ||
-                  "-"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <p
-        className="text-center"
-        style={{
-          ...F,
-          fontSize: 12,
-          marginTop: 20,
-        }}
-      >
-        مع وافر التحية ،،،
-      </p>
-
+    <>
       <div
-        className="flex flex-col items-center gap-1 mt-8"
-        style={{
-          ...F,
-          fontSize: 12,
-        }}
+        className="bg-white border border-[#ddd] rounded-[4px] p-8 w-full max-w-[680px] mx-auto shadow-sm letter-preview"
+        dir="rtl"
       >
-        <p style={{ fontWeight: 700 }}>
-          {branchHeadRank || "جاري تحميل الرتبة"}
+        {/* رأس الخطاب: اللوجو أقصى اليسار / الديباجة أقصى اليمين، على خط واحد */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            paddingBottom: 16,
+            marginBottom: 16,
+            borderBottom: "1px solid #ddd",
+            width: "100%",
+          }}
+        >
+          <div
+            style={{
+              ...PF,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              
+            }}
+          >
+            <p
+              style={{
+                ...PF,
+                fontSize: 14,
+                fontWeight: 700,
+                margin: 0,
+                textAlign: "center",
+              }}
+            >
+              قيادة قـــوات الصاعقــة
+            </p>
+
+            <p
+              style={{
+                ...PF,
+                fontSize: 14,
+                margin: "3px 0",
+                textAlign: "center",
+              }}
+            >
+              فــرع التنظيـــم والإدارة
+            </p>
+
+            <p
+              style={{
+                ...PF,
+                fontSize: 14,
+                margin: 0,
+                textAlign: "center",
+              }}
+            >
+              التاريخ : {today}
+            </p>
+          </div>
+
+          {/* اللوجو */}
+          <div className="print-logo" style={{ flexShrink: 0 }}>
+            <img
+              src={imgEagle}
+              alt="شعار الجمهورية"
+              style={{
+                width: "200%",
+                height: "200%",
+                objectFit: "contain",
+              }}
+            />
+          </div>
+        </div>
+
+        {/* الجهة - في المنتصف */}
+        <p
+          style={{
+            ...PF,
+            fontSize: 18,
+            fontWeight: 700,
+            marginBottom: 14,
+            textAlign: "center",
+            width: "100%",
+          }}
+        >
+          إلى / {destination || "..."}
         </p>
 
-        <p style={{ fontWeight: 700 }}>
-          {branchHeadName || "جاري تحميل الاسم"}
+        {/* نص الخطاب */}
+        <p
+          style={{
+            ...PF,
+            fontSize: 14,
+            color: "#333",
+            lineHeight: 1.8,
+            marginBottom: 12,
+            textAlign: "right",
+          }}
+        >
+          {letterType === "end-attachment" ? (
+            <>
+              قادم لكم اليوم الفرد/الأفراد المذكور أسمائهم وذلك بعد انتهاء عملهم
+              (مأمورية تدريبية)  بناءً على{" "}
+              {reason || "أوامر قيادة"}  وبياناتهم
+              كالتالي:
+            </>
+          ) : (
+            <>
+              قادم لكم اليوم الفرد/الأفراد المذكور أسمائهم وذلك للعمل
+              (مأمورية تدريبية) طرفكم بناءً على{" "}
+              {reason || "أوامر قيادة"} بالأماكن الموضحة قرين كلا منهم وبياناتهم
+              كالتالي:
+            </>
+          )}
         </p>
 
-        <p>رئيس فرع التنظيم والإدارة</p>
+        {/* الجدول */}
+        <table
+          className="w-full border-collapse mb-4"
+          style={{
+            ...PF,
+            fontSize: 14,
+          }}
+        >
+          <thead>
+            <tr style={{ background: "#f5f5f5" ,textAlign: "center"}}>
+              {[
+                "م",
+                "الدرجة",
+                "الاسم",
+                "الوحدة",
+                "وحدة الإلحاق",
+              ].map((header) => (
+                <th
+                  key={header}
+                  style={{
+                    padding: "5px",
+                    border: "1px solid #ddd",
+                    textAlign: "center",
+                  }}
+                >
+                  {header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+
+          <tbody>
+            {soldiers.map((soldier, index) => (
+              <tr key={soldier.id}>
+                <td
+                  style={{
+                    padding: "5px",
+                    border: "1px solid #eee",
+                    textAlign: "center",
+                  }}
+                >
+                  {index + 1}
+                </td>
+
+                <td
+                  style={{
+                    padding: "5px",
+                    border: "1px solid #eee",
+                    textAlign: "center",
+                  }}
+                >
+                  {soldier.rank}
+                </td>
+
+                <td
+                  style={{
+                    padding: "5px",
+                    textAlign: "center",
+                    border: "1px solid #eee",
+                  }}
+                >
+                  {soldier.name}
+                </td>
+
+                <td
+                  style={{
+                    padding: "5px",
+                    border: "1px solid #eee",
+                    textAlign: "center",
+                  }}
+                >
+                  {soldier.unit}
+                </td>
+
+                <td
+                  style={{
+                    padding: "5px",
+                    textAlign: "center",
+                    border: "1px solid #eee",
+                  }}
+                >
+                  {soldier.attachmentUnit ||
+                    attachmentPlace ||
+                    "-"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* التحية - في المنتصف */}
+        <p
+          style={{
+            ...PF,
+            fontSize: 14,
+            marginTop: 20,
+            textAlign: "center",
+            width: "100%",
+          }}
+        >
+          مع وافر التحية ،،،
+        </p>
+
+        {/* =================================================
+            التوقيع - أقصى اليسار، بمحاذاة واحدة لكل الأسطر
+            (عرض الصندوق = أعرض سطر بداخله تلقائيًا، فتبقى
+            كل الأسطر على نفس المحاذاة دائمًا مهما كان طول
+            الاسم أو الرتبة)
+        ================================================= */}
+        <div
+          className="signature-block"
+          style={{
+            ...PF,
+            fontSize: 14,
+            marginTop: 28,
+            width: "fit-content",
+            maxWidth: "100%",
+            marginLeft: 0,
+            marginRight: "auto",
+            direction: "rtl",
+            textAlign: "justify",
+textAlignLast: "right",
+          }}
+        >
+          <p
+            style={{
+              margin: 0,
+              fontWeight: 700,
+              whiteSpace: "pre",
+            }}
+          >
+            {"التوقيع (                                        )"}
+          </p>
+
+          <p
+            style={{
+              margin: "6px 0 0",
+              fontWeight: 700,
+            }}
+          >
+            {branchHeadRank || "جاري تحميل الرتبة"} /{" "}
+            {branchHeadName || "جاري تحميل الاسم"}
+          </p>
+
+          <p
+            style={{
+              margin: "4px 0 0",
+              fontWeight: 700,
+            }}
+          >
+            رئيس فرع التنظيــــم والاداره
+          </p>
+        </div>
       </div>
-    </div>
+
+      {/* =================================================
+          CSS الخاص بالخطاب
+      ================================================= */}
+      <style>
+        {`
+          .print-logo {
+            width: 80px;
+            height: 80px;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            flex-shrink: 0;
+          }
+
+          .print-logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+          }
+
+          @media print {
+            .print-logo {
+              width: 32px !important;
+              height: 32px !important;
+
+              display: flex !important;
+              align-items: center !important;
+              justify-content: center !important;
+            }
+
+            .print-logo img {
+              width: 32px !important;
+              height: 32px !important;
+
+              max-width: 32px !important;
+              max-height: 32px !important;
+
+              object-fit: contain !important;
+            }
+
+            .letter-preview {
+              box-shadow: none !important;
+              border: 1.5px solid #000 !important;
+              margin: 0 !important;
+              max-width: none !important;
+              padding: 16px !important;
+            }
+
+            body {
+              background: #fff !important;
+            }
+
+            * {
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+          }
+
+          @page {
+            size: A4;
+            margin: 12mm;
+          }
+        `}
+      </style>
+    </>
   );
 }
+
+/* =========================================================
+   Main Page
+========================================================= */
 
 export function LetterReviewPage() {
   const navigate = useNavigate();
@@ -577,6 +782,10 @@ export function LetterReviewPage() {
 
   const [error, setError] = useState("");
 
+  /* =======================================================
+     Check Session
+  ======================================================= */
+
   useEffect(() => {
     const checkSession = async () => {
       const {
@@ -590,6 +799,7 @@ export function LetterReviewPage() {
         setError(
           "حدث خطأ أثناء التحقق من جلسة الدخول."
         );
+
         return;
       }
 
@@ -602,6 +812,10 @@ export function LetterReviewPage() {
 
     void checkSession();
   }, []);
+
+  /* =======================================================
+     Load Branch Head
+  ======================================================= */
 
   useEffect(() => {
     const loadBranchHead = async () => {
@@ -629,7 +843,10 @@ export function LetterReviewPage() {
         .maybeSingle();
 
       if (error) {
-        console.error("Branch head error:", error);
+        console.error(
+          "Branch head error:",
+          error
+        );
         return;
       }
 
@@ -639,12 +856,21 @@ export function LetterReviewPage() {
         ? data.rank[0]
         : data.rank;
 
-      setBranchHeadName(data.full_name ?? "");
-      setBranchHeadRank(rank?.name ?? "");
+      setBranchHeadName(
+        data.full_name ?? ""
+      );
+
+      setBranchHeadRank(
+        rank?.name ?? ""
+      );
     };
 
     void loadBranchHead();
   }, []);
+
+  /* =======================================================
+     Save Letter
+  ======================================================= */
 
   const saveLetter = useCallback(async () => {
     if (saving) return;
@@ -785,22 +1011,32 @@ export function LetterReviewPage() {
 
       const letterInsert = {
         letter_type_id: letterTypeRow.id,
+
         letter_date: new Date()
           .toISOString()
           .split("T")[0],
+
         issuing_unit_id: issuingUnitId,
+
         attachment_unit_id:
           finalAttachmentUnitId,
+
         reason:
           letterData.reason ||
           "أوامر قيادة",
+
         personnel_count: soldiers.length,
+
         branch_head_id: branchHead.id,
+
         branch_head_name:
           branchHead.full_name,
+
         branch_head_rank:
           branchRank?.name ?? "",
+
         status: "UNDOCUMENTED",
+
         created_by: userId,
       };
 
@@ -857,8 +1093,10 @@ export function LetterReviewPage() {
         .update({
           service_status_id:
             newServiceStatusId,
+
           attachment_unit_id:
             finalAttachmentUnitId,
+
           updated_at:
             new Date().toISOString(),
         })
@@ -971,6 +1209,10 @@ export function LetterReviewPage() {
     letterData,
   ]);
 
+  /* =======================================================
+     Redirect After Success
+  ======================================================= */
+
   useEffect(() => {
     if (!success) return;
 
@@ -983,16 +1225,236 @@ export function LetterReviewPage() {
     };
   }, [success, navigate]);
 
+  /* =======================================================
+     Page Title
+  ======================================================= */
+
   const pageTitle =
     letterType === "end-attachment"
       ? "اصدار خطاب إنهاء إلحاق"
       : "اصدار خطاب إلحاق";
+
+  /* =======================================================
+     PRINT ONLY LETTER (مكرر مرتين في نفس الصفحة)
+  ======================================================= */
+
+  const handlePrintLetter = () => {
+    const letterElement =
+      document.querySelector(
+        ".letter-preview"
+      ) as HTMLElement | null;
+
+    if (!letterElement) {
+      alert("تعذر العثور على الخطاب.");
+      return;
+    }
+
+    const printWindow = window.open(
+      "",
+      "_blank",
+      "width=900,height=1200"
+    );
+
+    if (!printWindow) {
+      alert(
+        "يرجى السماح بالنوافذ المنبثقة للمتصفح حتى تتم المعاينة."
+      );
+      return;
+    }
+
+    // نفس الخطاب مكرر مرتين فوق بعض في نفس الصفحة
+    const letterHtml = letterElement.outerHTML;
+
+    printWindow.document.open();
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html lang="ar" dir="rtl">
+        <head>
+          <meta charset="UTF-8" />
+
+          <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0"
+          />
+
+          <title>معاينة الخطاب</title>
+
+          <style>
+
+            @page {
+              size: A4;
+              margin: 10mm;
+            }
+
+            * {
+              box-sizing: border-box;
+
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+
+            html,
+            body {
+              margin: 0;
+              padding: 0;
+
+              width: 100%;
+              min-height: 100%;
+
+              background: #fff;
+            }
+
+            body {
+              direction: rtl;
+
+              font-family:
+                'Times New Roman',
+                Times,
+                serif;
+            }
+
+            /* الحاوية التي تجمع النسختين في نفس الصفحة */
+            .print-page {
+              display: flex;
+              flex-direction: column;
+              justify-content: flex-start;
+              gap: 6mm;
+
+              width: 100%;
+              height: 277mm; /* ارتفاع A4 تقريباً بعد خصم الهوامش */
+            }
+
+            /* كل نسخة من الخطاب تأخذ نصف الصفحة تقريباً */
+            .print-copy {
+              flex: 1 1 50%;
+              overflow: hidden;
+
+              transform: scale(0.94);
+              transform-origin: top center;
+
+              page-break-inside: avoid;
+            }
+
+            .letter-preview {
+              display: block !important;
+
+              width: 100% !important;
+              max-width: none !important;
+
+              margin: 0 !important;
+
+              padding: 10px !important;
+
+              border: 1.5px solid #000 !important;
+              border-radius: 0 !important;
+
+              box-shadow: none !important;
+
+              background: #fff !important;
+            }
+
+            .print-logo {
+              width: 32px !important;
+              height: 32px !important;
+
+              display: flex !important;
+
+              align-items: center !important;
+              justify-content: center !important;
+
+              flex-shrink: 0 !important;
+            }
+
+            .print-logo img {
+              width: 32px !important;
+              height: 32px !important;
+
+              max-width: 32px !important;
+              max-height: 32px !important;
+
+              object-fit: contain !important;
+            }
+
+            table {
+              width: 100% !important;
+
+              border-collapse: collapse !important;
+            }
+
+            th,
+            td {
+              border: 1px solid #ddd;
+            }
+
+            img {
+              display: block;
+            }
+
+            @media print {
+
+              html,
+              body {
+                width: 100%;
+                min-height: 100%;
+
+                overflow: visible !important;
+              }
+
+              .print-page {
+                page-break-inside: avoid;
+              }
+            }
+
+          </style>
+        </head>
+
+        <body>
+
+          <div class="print-page">
+            <div class="print-copy">${letterHtml}</div>
+            <div class="print-copy">${letterHtml}</div>
+          </div>
+
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+
+    const doPrint = () => {
+      setTimeout(() => {
+        printWindow.focus();
+
+        printWindow.print();
+
+        setTimeout(() => {
+          printWindow.close();
+        }, 500);
+      }, 500);
+    };
+
+    if (
+      printWindow.document.readyState ===
+      "complete"
+    ) {
+      doPrint();
+    } else {
+      printWindow.onload = doPrint;
+    }
+  };
+
+  /* =======================================================
+     Render
+  ======================================================= */
 
   return (
     <div
       className="flex flex-col gap-6 w-full pb-10"
       dir="rtl"
     >
+
+      {/* عنوان الصفحة */}
       <h1
         className="text-center"
         style={{
@@ -1005,10 +1467,12 @@ export function LetterReviewPage() {
         {pageTitle}
       </h1>
 
+      {/* Stepper */}
       <div className="flex justify-center">
         <Stepper />
       </div>
 
+      {/* Error */}
       {error && (
         <div
           className="w-full rounded-[10px] px-5 py-4"
@@ -1024,7 +1488,12 @@ export function LetterReviewPage() {
         </div>
       )}
 
+      {/* =================================================
+          Letter Information
+      ================================================= */}
+
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
+
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
           <span
             style={{
@@ -1038,6 +1507,7 @@ export function LetterReviewPage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 px-6 py-5">
+
           <InfoPair
             label="نوع الخطاب"
             value={
@@ -1097,11 +1567,18 @@ export function LetterReviewPage() {
               "جاري التحميل"
             }
           />
+
         </div>
       </section>
 
+      {/* =================================================
+          Personnel
+      ================================================= */}
+
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
+
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
+
           <span
             style={{
               ...F,
@@ -1111,22 +1588,28 @@ export function LetterReviewPage() {
           >
             بيانات الأفراد
           </span>
+
         </div>
 
         <div className="overflow-x-auto">
+
           <table className="w-full min-w-[600px] border-collapse">
+
             <thead>
               <tr className="bg-[#f7f9fc]">
+
                 {[
                   "درجة",
                   "اسم",
                   "الوحدة",
                   "وحدة الإلحاق",
                 ].map((header) => (
+
                   <th
                     key={header}
                     className="px-4 py-3 text-right border-b"
                   >
+
                     <span
                       style={{
                         ...F,
@@ -1136,14 +1619,20 @@ export function LetterReviewPage() {
                     >
                       {header}
                     </span>
+
                   </th>
+
                 ))}
+
               </tr>
             </thead>
 
             <tbody>
+
               {soldiers.map((soldier) => (
+
                 <tr key={soldier.id}>
+
                   <td className="px-4 py-3 border-b">
                     {soldier.rank}
                   </td>
@@ -1157,22 +1646,36 @@ export function LetterReviewPage() {
                   </td>
 
                   <td className="px-4 py-3 border-b">
+
                     {letterType ===
                     "end-attachment"
                       ? "لا يوجد"
                       : soldier.attachmentUnit ||
                         letterData.attachmentPlace ||
                         "لا يوجد"}
+
                   </td>
+
                 </tr>
+
               ))}
+
             </tbody>
+
           </table>
+
         </div>
+
       </section>
 
+      {/* =================================================
+          Letter Preview
+      ================================================= */}
+
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
+
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
+
           <span
             style={{
               ...F,
@@ -1182,9 +1685,11 @@ export function LetterReviewPage() {
           >
             معاينة الخطاب
           </span>
+
         </div>
 
         <div className="p-6 bg-[#f7f9fc]">
+
           <LetterPreview
             soldiers={soldiers}
             destination={
@@ -1202,23 +1707,40 @@ export function LetterReviewPage() {
               branchHeadRank
             }
           />
+
         </div>
+
       </section>
 
+      {/* =================================================
+          Buttons
+      ================================================= */}
+
       <div className="flex flex-wrap items-center gap-4">
+
+        {/* حفظ الخطاب */}
+
         <button
           type="button"
           disabled={saving || success}
-          onClick={() => void saveLetter()}
+          onClick={() =>
+            void saveLetter()
+          }
           className="flex items-center gap-2 min-h-[48px] px-6 rounded-[8px]"
           style={{
             background:
               "linear-gradient(to bottom,#00b867,#00522e)",
             opacity:
-              saving || success ? 0.6 : 1,
+              saving || success
+                ? 0.6
+                : 1,
           }}
         >
-          <Printer size={16} color="#fff" />
+
+          <Printer
+            size={16}
+            color="#fff"
+          />
 
           <span
             style={{
@@ -1231,13 +1753,19 @@ export function LetterReviewPage() {
               ? "جاري الحفظ..."
               : "تأكيد وحفظ الخطاب"}
           </span>
+
         </button>
+
+        {/* =================================================
+            طباعة / معاينة الخطاب فقط
+        ================================================= */}
 
         <button
           type="button"
-          onClick={() => window.print()}
+          onClick={handlePrintLetter}
           className="flex items-center gap-2 min-h-[48px] px-6 rounded-[8px] border border-[#2d3648] bg-white"
         >
+
           <Download
             size={16}
             color="#2d3648"
@@ -1252,7 +1780,10 @@ export function LetterReviewPage() {
           >
             طباعة / تحميل المعاينة
           </span>
+
         </button>
+
+        {/* إلغاء */}
 
         <button
           type="button"
@@ -1262,6 +1793,7 @@ export function LetterReviewPage() {
           }
           className="min-h-[48px] px-4"
         >
+
           <span
             style={{
               ...F,
@@ -1272,8 +1804,14 @@ export function LetterReviewPage() {
           >
             إلغاء
           </span>
+
         </button>
+
       </div>
+
+      {/* =================================================
+          Modals
+      ================================================= */}
 
       {saving && <LoadingModal />}
 
@@ -1282,6 +1820,7 @@ export function LetterReviewPage() {
           letterNumber={letterNumber}
         />
       )}
+
     </div>
   );
 }

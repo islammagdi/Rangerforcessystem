@@ -69,8 +69,7 @@ interface PersonnelRow {
 const QUERY_BASIS_OPTIONS = [
   "رقم عسكري",
   "الاسم",
-  "الرقم القومي",
-  "رقم الوحدة",
+  
 ];
 
 const CATEGORIES = [

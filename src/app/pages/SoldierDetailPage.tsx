@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router";
 import {
   Trash2,
@@ -16,6 +16,19 @@ const FONT = {
   fontFamily: "'Almarai', sans-serif",
 };
 
+/* =========================================================
+   Types
+========================================================= */
+
+type Letter = {
+  id: string;
+  letterNumber: string;
+  letterDate: string;
+  letterType: string;
+  destination: string;
+  reason: string;
+};
+
 type Soldier = {
   id: string;
   militaryId: string;
@@ -29,18 +42,9 @@ type Soldier = {
   letters: Letter[];
 };
 
-type Letter = {
-  id: string;
-  letterNumber: string;
-  letterDate: string;
-  letterType: string;
-  destination: string;
-  reason: string;
-};
-
-/* ───────────────────────────────────────────────────────────── */
-/* Helpers */
-/* ───────────────────────────────────────────────────────────── */
+/* =========================================================
+   Helpers
+========================================================= */
 
 function formatDate(date: string | null | undefined) {
   if (!date) return "-";
@@ -67,9 +71,9 @@ function formatDateTime(date: Date) {
   });
 }
 
-/* ───────────────────────────────────────────────────────────── */
-/* Info Row */
-/* ───────────────────────────────────────────────────────────── */
+/* =========================================================
+   Info Row
+========================================================= */
 
 function InfoRow({
   label,
@@ -115,9 +119,9 @@ function InfoRow({
   );
 }
 
-/* ───────────────────────────────────────────────────────────── */
-/* Section Title */
-/* ───────────────────────────────────────────────────────────── */
+/* =========================================================
+   Section Title
+========================================================= */
 
 function SectionTitle({
   children,
@@ -137,9 +141,9 @@ function SectionTitle({
   );
 }
 
-/* ───────────────────────────────────────────────────────────── */
-/* Letters Table */
-/* ───────────────────────────────────────────────────────────── */
+/* =========================================================
+   Letters Table
+========================================================= */
 
 function LettersTable({
   soldier,
@@ -155,7 +159,7 @@ function LettersTable({
   return (
     <div className="w-full overflow-x-auto">
       <table
-        className="w-full min-w-[600px]"
+        className="w-full min-w-[800px]"
         dir="rtl"
       >
         <thead>
@@ -166,7 +170,7 @@ function LettersTable({
               "نوع الخطاب",
               "الجهة الصادر إليها",
               "السبب",
-              "الاجراء",
+              "الإجراء",
             ].map((h) => (
               <th
                 key={h}
@@ -183,7 +187,7 @@ function LettersTable({
                     {h}
                   </span>
 
-                  {h !== "الاجراء" && (
+                  {h !== "الإجراء" && (
                     <ArrowDownUp
                       size={13}
                       className="text-[#a0abc0]"
@@ -200,7 +204,7 @@ function LettersTable({
             <tr>
               <td
                 colSpan={6}
-                className={`${tdClass} text-center`}
+                className={`${tdClass} text-center py-8`}
               >
                 <span
                   style={{
@@ -209,7 +213,7 @@ function LettersTable({
                     color: "#717d96",
                   }}
                 >
-                  لا توجد خطابات
+                  لا توجد خطابات مسجلة لهذا الفرد
                 </span>
               </td>
             </tr>
@@ -286,6 +290,12 @@ function LettersTable({
                     style={{
                       backgroundColor: "#ebedfd",
                     }}
+                    onClick={() => {
+                      console.log(
+                        "تحميل الخطاب:",
+                        letter.id,
+                      );
+                    }}
                   >
                     <span
                       style={{
@@ -312,16 +322,15 @@ function LettersTable({
   );
 }
 
-/* ───────────────────────────────────────────────────────────── */
-/* Print */
-/* ───────────────────────────────────────────────────────────── */
+/* =========================================================
+   Print
+========================================================= */
 
 function printSoldier(
   soldier: Soldier,
   printerName: string,
 ) {
   const now = new Date();
-
   const printDate = formatDateTime(now);
 
   const printWindow = window.open(
@@ -444,7 +453,6 @@ function printSoldier(
       </head>
 
       <body>
-
         <div class="page">
 
           <div class="header">
@@ -542,7 +550,6 @@ function printSoldier(
           </table>
 
           <div class="footer-info">
-
             <div>
               القائم بالطباعة:
               <strong>${printerName || "-"}</strong>
@@ -552,7 +559,6 @@ function printSoldier(
               تاريخ ووقت الطباعة:
               <strong>${printDate}</strong>
             </div>
-
           </div>
 
           <div class="signature">
@@ -579,9 +585,9 @@ function printSoldier(
   printWindow.document.close();
 }
 
-/* ───────────────────────────────────────────────────────────── */
-/* Page */
-/* ───────────────────────────────────────────────────────────── */
+/* =========================================================
+   Page
+========================================================= */
 
 export function SoldierDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -591,17 +597,11 @@ export function SoldierDetailPage() {
   const [loading, setLoading] = useState(true);
   const [soldier, setSoldier] = useState<Soldier | null>(null);
 
-  /*
-   * اسم القائم بالطباعة.
-   *
-   * مؤقتًا يمكن تغييره للاسم الحقيقي للمستخدم
-   * عندما نربطه بنظام تسجيل الدخول.
-   */
   const printerName = "مستخدم النظام";
 
-  /* ───────────────────────────────────────────── */
-  /* Load Soldier */
-  /* ───────────────────────────────────────────── */
+  /* =======================================================
+     Load Soldier + Letters
+  ======================================================= */
 
   async function loadSoldier() {
     if (!id) {
@@ -612,7 +612,14 @@ export function SoldierDetailPage() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase
+      /* ---------------------------------------------------
+         1. تحميل بيانات الفرد
+      --------------------------------------------------- */
+
+      const {
+        data: personnelData,
+        error: personnelError,
+      } = await supabase
         .from("personnel")
         .select(`
           id,
@@ -623,6 +630,7 @@ export function SoldierDetailPage() {
           attachment_unit_id,
           service_status_id,
           rank_id,
+          discharge_date,
 
           personnel_categories (
             id,
@@ -654,18 +662,116 @@ export function SoldierDetailPage() {
         .eq("id", id)
         .maybeSingle();
 
-      if (error) {
-        console.error("Error loading soldier:", error);
+      if (personnelError) {
+        console.error(
+          "Error loading personnel:",
+          personnelError,
+        );
+
         setSoldier(null);
         return;
       }
 
-      if (!data) {
+      if (!personnelData) {
         setSoldier(null);
         return;
       }
 
-      const raw = data as any;
+      const raw = personnelData as any;
+
+      /* ---------------------------------------------------
+         2. تحميل خطابات الفرد من جدول الربط
+         
+         letter_personnel
+         ├── personnel_id
+         └── letter_id
+      --------------------------------------------------- */
+
+      const {
+        data: lettersData,
+        error: lettersError,
+      } = await supabase
+        .from("letter_personnel")
+        .select(`
+          personnel_id,
+
+          letters (
+            id,
+            letter_number,
+            letter_date,
+            reason,
+            letter_type_id,
+            issuing_unit_id,
+            attachment_unit_id,
+
+            letter_types (
+              id,
+              name
+            ),
+
+            issuing_unit:units!issuing_unit_id (
+              id,
+              name,
+              code
+            ),
+
+            attachment_unit:units!attachment_unit_id (
+              id,
+              name,
+              code
+            )
+          )
+        `)
+        .eq("personnel_id", id);
+
+      if (lettersError) {
+        console.error(
+          "Error loading personnel letters:",
+          lettersError,
+        );
+      }
+
+      /* ---------------------------------------------------
+         3. تحويل الخطابات للشكل المطلوب للواجهة
+      --------------------------------------------------- */
+
+      const mappedLetters: Letter[] = (lettersData ?? [])
+        .map((row: any) => row.letters)
+        .filter(Boolean)
+        .map((letter: any) => {
+          const destination =
+            letter.attachment_unit?.name ??
+            letter.issuing_unit?.name ??
+            "-";
+
+          return {
+            id: letter.id,
+
+            letterNumber:
+              letter.letter_number != null
+                ? String(letter.letter_number)
+                : "-",
+
+            letterDate:
+              letter.letter_date
+                ? formatDate(letter.letter_date)
+                : "-",
+
+            letterType:
+              letter.letter_types?.name ??
+              "-",
+
+            destination,
+
+            reason:
+              letter.reason ??
+              "-",
+          };
+        });
+
+      /* ---------------------------------------------------
+         4. إنشاء بيانات الفرد النهائية
+      --------------------------------------------------- */
 
       const mappedSoldier: Soldier = {
         id: raw.id,
@@ -683,12 +789,10 @@ export function SoldierDetailPage() {
           raw.personnel_categories?.name ?? "-",
 
         unit:
-          raw.primary_unit?.name ??
-          "-",
+          raw.primary_unit?.name ?? "-",
 
         serviceStatus:
-          raw.service_statuses?.name ??
-          "-",
+          raw.service_statuses?.name ?? "-",
 
         dischargeDate:
           raw.discharge_date
@@ -696,30 +800,47 @@ export function SoldierDetailPage() {
             : "-",
 
         attachmentPlace:
-          raw.attachment_unit?.name ??
-          "-",
+          raw.attachment_unit?.name ?? "-",
 
-        letters: [],
+        letters: mappedLetters,
       };
 
+      console.log(
+        "بيانات الفرد:",
+        mappedSoldier,
+      );
+
+      console.log(
+        "خطابات الفرد:",
+        mappedLetters,
+      );
+
       setSoldier(mappedSoldier);
+
     } catch (error) {
-      console.error(error);
+      console.error(
+        "Unexpected error:",
+        error,
+      );
+
       setSoldier(null);
+
     } finally {
       setLoading(false);
     }
   }
 
-  /* Load on page mount */
+  /* =======================================================
+     Load on page mount / id change
+  ======================================================= */
 
-  useState(() => {
+  useEffect(() => {
     loadSoldier();
-  });
+  }, [id]);
 
-  /* ───────────────────────────────────────────── */
-  /* Loading */
-  /* ───────────────────────────────────────────── */
+  /* =======================================================
+     Loading
+  ======================================================= */
 
   if (loading) {
     return (
@@ -740,14 +861,14 @@ export function SoldierDetailPage() {
     );
   }
 
-  /* ───────────────────────────────────────────── */
-  /* Not Found */
-  /* ───────────────────────────────────────────── */
+  /* =======================================================
+     Not Found
+  ======================================================= */
 
   if (!soldier) {
     return (
       <div
-        className="flex items-center justify-center h-64"
+        className="flex flex-col items-center justify-center h-64 gap-4"
         dir="rtl"
       >
         <p
@@ -759,13 +880,27 @@ export function SoldierDetailPage() {
         >
           لم يتم العثور على الفرد
         </p>
+
+        <button
+          type="button"
+          onClick={() =>
+            navigate("/dashboard/individual-query")
+          }
+          className="px-4 py-2 rounded-lg text-white"
+          style={{
+            ...FONT,
+            backgroundColor: "#2d3648",
+          }}
+        >
+          العودة للبحث
+        </button>
       </div>
     );
   }
 
-  /* ───────────────────────────────────────────── */
-  /* Delete */
-  /* ───────────────────────────────────────────── */
+  /* =======================================================
+     Delete
+  ======================================================= */
 
   async function handleConfirmDelete() {
     if (!soldier) return;
@@ -776,37 +911,50 @@ export function SoldierDetailPage() {
       .eq("id", soldier.id);
 
     if (error) {
-      console.error(error);
-      alert("حدث خطأ أثناء حذف الفرد");
+      console.error(
+        "Delete personnel error:",
+        error,
+      );
+
+      alert(
+        "حدث خطأ أثناء حذف الفرد: " +
+          error.message,
+      );
+
       return;
     }
 
     setShowDelete(false);
 
-    navigate("/dashboard/individual-query");
+    navigate(
+      "/dashboard/individual-query",
+    );
   }
 
-  /* ───────────────────────────────────────────── */
-  /* Render */
-  /* ───────────────────────────────────────────── */
+  /* =======================================================
+     Render
+  ======================================================= */
 
   return (
     <div
       className="flex flex-col gap-5 w-full"
       dir="rtl"
     >
-
       {/* Delete Dialog */}
 
       <DeleteConfirmDialog
         open={showDelete}
-        onCancel={() => setShowDelete(false)}
-        onConfirm={handleConfirmDelete}
+        onCancel={() =>
+          setShowDelete(false)
+        }
+        onConfirm={
+          handleConfirmDelete
+        }
       />
 
-      {/* ───────────────────────────────────────── */}
-      {/* Page Title */}
-      {/* ───────────────────────────────────────── */}
+      {/* ===================================================
+          Page Title
+      =================================================== */}
 
       <h1
         className="text-center w-full"
@@ -821,19 +969,15 @@ export function SoldierDetailPage() {
         بيانات الفرد
       </h1>
 
-      {/* ───────────────────────────────────────── */}
-      {/* Identification Card */}
-      {/* ───────────────────────────────────────── */}
+      {/* ===================================================
+          Identification Card
+      =================================================== */}
 
-      <div
-        className="bg-white rounded-[20px] border border-[#eff0f6] w-full overflow-hidden"
-      >
+      <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full overflow-hidden">
 
         {/* Card Header */}
 
-        <div
-          className="flex items-center justify-end gap-3 px-6 py-4 border-b border-[#cbd2e0]"
-        >
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-b border-[#cbd2e0]">
 
           <SectionTitle>
             البيانات التعريفية
@@ -847,11 +991,14 @@ export function SoldierDetailPage() {
 
             <button
               type="button"
-              onClick={() => setShowDelete(true)}
+              onClick={() =>
+                setShowDelete(true)
+              }
               title="حذف"
               className="w-9 h-9 rounded-[8px] flex items-center justify-center hover:opacity-80 transition-opacity"
               style={{
-                backgroundColor: "#fce8f1",
+                backgroundColor:
+                  "#fce8f1",
               }}
             >
               <Trash2
@@ -875,7 +1022,8 @@ export function SoldierDetailPage() {
               title="طباعة بيانات الفرد"
               className="w-9 h-9 rounded-[8px] flex items-center justify-center hover:opacity-80 transition-opacity"
               style={{
-                backgroundColor: "#ebedfd",
+                backgroundColor:
+                  "#ebedfd",
               }}
             >
               <Printer
@@ -898,7 +1046,8 @@ export function SoldierDetailPage() {
               title="تعديل"
               className="w-9 h-9 rounded-[8px] flex items-center justify-center hover:opacity-80 transition-opacity"
               style={{
-                backgroundColor: "#ebedfd",
+                backgroundColor:
+                  "#ebedfd",
               }}
             >
               <Pencil
@@ -922,12 +1071,16 @@ export function SoldierDetailPage() {
 
             <InfoRow
               label="الرقم العسكري"
-              value={soldier.militaryId}
+              value={
+                soldier.militaryId
+              }
             />
 
             <InfoRow
               label="الدرجة"
-              value={soldier.rank}
+              value={
+                soldier.rank
+              }
             />
 
           </div>
@@ -938,12 +1091,16 @@ export function SoldierDetailPage() {
 
             <InfoRow
               label="الاسم"
-              value={soldier.name}
+              value={
+                soldier.name
+              }
             />
 
             <InfoRow
               label="فئة الفرد"
-              value={soldier.category}
+              value={
+                soldier.category
+              }
             />
 
           </div>
@@ -954,12 +1111,16 @@ export function SoldierDetailPage() {
 
             <InfoRow
               label="الوحدة الأساسية"
-              value={soldier.unit}
+              value={
+                soldier.unit
+              }
             />
 
             <InfoRow
               label="الموقف الخدمي"
-              value={soldier.serviceStatus}
+              value={
+                soldier.serviceStatus
+              }
             />
 
           </div>
@@ -970,31 +1131,32 @@ export function SoldierDetailPage() {
 
             <InfoRow
               label="تاريخ التسريح"
-              value={soldier.dischargeDate}
+              value={
+                soldier.dischargeDate
+              }
             />
 
             <InfoRow
               label="جهة الإلحاق"
-              value={soldier.attachmentPlace}
+              value={
+                soldier.attachmentPlace
+              }
             />
 
           </div>
 
         </div>
-
       </div>
 
-      {/* ───────────────────────────────────────── */}
-      {/* Letters */}
-      {/* ───────────────────────────────────────── */}
+      {/* ===================================================
+          Letters
+      =================================================== */}
 
-      <div
-        className="bg-white rounded-[20px] border border-[#eff0f6] w-full overflow-hidden"
-      >
+      <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full overflow-hidden">
 
-        <div
-          className="flex items-center justify-end gap-3 px-6 py-4 border-b border-[#cbd2e0]"
-        >
+        {/* Letters Header */}
+
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-b border-[#cbd2e0]">
 
           <SectionTitle>
             سجل الخطابات
@@ -1004,13 +1166,17 @@ export function SoldierDetailPage() {
 
           <button
             type="button"
+            onClick={() => {
+              navigate(
+                `/dashboard/issue-letter?personnel_id=${soldier.id}`,
+              );
+            }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-[8px] transition-opacity hover:opacity-90"
             style={{
               background:
                 "linear-gradient(to bottom, #00b867, #00522e)",
             }}
           >
-
             <span
               style={{
                 ...FONT,
@@ -1025,17 +1191,17 @@ export function SoldierDetailPage() {
               size={14}
               className="text-white"
             />
-
           </button>
 
         </div>
+
+        {/* Letters Table */}
 
         <LettersTable
           soldier={soldier}
         />
 
       </div>
-
     </div>
   );
 }

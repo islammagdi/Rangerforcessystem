@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter } from "react-router-dom";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardLayout } from "./pages/DashboardLayout";
 import { DashboardHome } from "./pages/DashboardHome";
@@ -23,7 +23,7 @@ import { DailyReportsPage } from "./pages/DailyReportsPage";
 import { ReserveBatchesPage } from "./pages/ReserveBatchesPage";
 import { ManageUnitsPage } from "./pages/ManageUnitsPage";
 import { UnitTreePage } from "./pages/UnitTreePage";
-
+import { ManageUsersPage } from "./pages/ManageUsersPage";
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -54,6 +54,10 @@ export const router = createBrowserRouter([
       { path: "daily-reports",                          Component: DailyReportsPage },
       { path: "reserve-batches",                        Component: ReserveBatchesPage },
       { path: "manage-units",                           Component: ManageUnitsPage },
+      {
+  path: "manage-users",
+  Component: ManageUsersPage,
+},
       { path: "manage-units/:id/tree",                  Component: UnitTreePage },
     ],
   },

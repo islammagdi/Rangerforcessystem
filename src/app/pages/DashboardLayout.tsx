@@ -20,6 +20,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/daily-reports":             "اليوميات",
   "/dashboard/reserve-batches":           "دفعات الرديف",
   "/dashboard/manage-units":              "ادارة الوحدات",
+  "/dashboard/manage-users":              "ادارة المستخدمين",
 };
 
 function resolvePageTitle(pathname: string): string {
@@ -62,7 +63,11 @@ export function DashboardLayout() {
       navigate("/dashboard/reserve-batches");
     } else if (label === "ادارة الوحدات") {
       navigate("/dashboard/manage-units");
+      
+    } else if (label === "ادارة المستخدمين") {
+      navigate("/dashboard/manage-users");
     }
+    
     // other items can be wired up later
   }
 
