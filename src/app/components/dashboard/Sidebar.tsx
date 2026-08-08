@@ -1,4 +1,5 @@
-import { cloneElement, useState } from "react";
+import { cloneElement, useEffect, useMemo, useState } from "react";
+
 import {
   LayoutDashboard,
   Search,
@@ -19,9 +20,45 @@ import {
 
 import { supabase } from "../../../lib/supabase";
 
+
+// =====================================================
+// Types
+// =====================================================
+
+type RoleCode =
+  | "ADMIN"
+  | "PERSONNEL_OFFICER"
+  | "ARCHIVE_OFFICER"
+  | "USER"
+  | null;
+
+interface NavItemProps {
+  icon: React.ReactElement;
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+}
+
+interface NavDef {
+  icon: React.ReactNode;
+  label: string;
+  section: string;
+  roles: RoleCode[];
+}
+
+
+// =====================================================
+// Logo
+// =====================================================
+
 function LogoIcon() {
   return (
-    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+    <svg
+      width="32"
+      height="32"
+      viewBox="0 0 32 32"
+      fill="none"
+    >
       <defs>
         <linearGradient
           id="sidebarLogoGrad1"
@@ -74,12 +111,10 @@ function LogoIcon() {
   );
 }
 
-interface NavItemProps {
-  icon: React.ReactElement;
-  label: string;
-  active?: boolean;
-  onClick?: () => void;
-}
+
+// =====================================================
+// Nav Item
+// =====================================================
 
 function NavItem({
   icon,
@@ -122,7 +157,16 @@ function NavItem({
   );
 }
 
-function SectionLabel({ label }: { label: string }) {
+
+// =====================================================
+// Section Label
+// =====================================================
+
+function SectionLabel({
+  label,
+}: {
+  label: string;
+}) {
   return (
     <p
       className="text-right px-4 h-[24px] flex items-center w-full"
@@ -137,16 +181,21 @@ function SectionLabel({ label }: { label: string }) {
   );
 }
 
+
+// =====================================================
+// Divider
+// =====================================================
+
 function Divider() {
   return (
     <div className="w-full h-px bg-[#e2e8f0] my-1" />
   );
 }
 
-interface NavDef {
-  icon: React.ReactNode;
-  label: string;
-}
+
+// =====================================================
+// Props
+// =====================================================
 
 interface SidebarProps {
   collapsed: boolean;
@@ -155,73 +204,238 @@ interface SidebarProps {
   activePath?: string;
 }
 
+
+// =====================================================
+// Sidebar
+// =====================================================
+
 export function Sidebar({
   collapsed,
   onToggle,
   onNavSelect,
   activePath,
 }: SidebarProps) {
-  const [loggingOut, setLoggingOut] = useState(false);
+  const [loggingOut, setLoggingOut] =
+    useState(false);
 
-  function getActiveLabel(pathname?: string): string {
-    if (!pathname) return "الموقف العام";
+  const [roleCode, setRoleCode] =
+    useState<RoleCode>(null);
+
+  const [roleLoading, setRoleLoading] =
+    useState(true);
+
+
+  // ===================================================
+  // Get Current User Role
+  // ===================================================
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadUserRole() {
+      try {
+        setRoleLoading(true);
+
+        // 1. Get logged-in user
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+
+        if (userError) {
+          console.error(
+            "GET USER ERROR:",
+            userError
+          );
+
+          return;
+        }
+
+        if (!user) {
+          console.log("No logged-in user");
+          return;
+        }
+
+        console.log(
+          "CURRENT USER ID:",
+          user.id
+        );
+
+
+        // 2. Get role
+        const { data, error } =
+          await supabase
+            .from("user_roles")
+            .select(`
+              role_id,
+              roles (
+                id,
+                name,
+                code
+              )
+            `)
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+
+        if (error) {
+          console.error(
+            "GET USER ROLE ERROR:",
+            error
+          );
+
+          return;
+        }
+
+
+        console.log(
+          "SIDEBAR USER ROLE:",
+          data
+        );
+
+
+        // 3. Extract role code
+        const role = Array.isArray(data?.roles)
+          ? data?.roles[0]
+          : data?.roles;
+
+
+        const code =
+          role?.code as RoleCode;
+
+
+        console.log(
+          "SIDEBAR ROLE CODE:",
+          code
+        );
+
+
+        if (mounted) {
+          setRoleCode(code ?? null);
+        }
+      } catch (error) {
+        console.error(
+          "LOAD ROLE EXCEPTION:",
+          error
+        );
+      } finally {
+        if (mounted) {
+          setRoleLoading(false);
+        }
+      }
+    }
+
+    loadUserRole();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+
+  // ===================================================
+  // Active Label
+  // ===================================================
+
+  function getActiveLabel(
+    pathname?: string
+  ): string {
+    if (!pathname) {
+      return "الموقف العام";
+    }
 
     if (pathname === "/dashboard") {
       return "الموقف العام";
     }
 
-    if (pathname.includes("/individual-query")) {
+    if (
+      pathname.includes(
+        "/individual-query"
+      )
+    ) {
       return "الاستعلام عن فرد";
     }
 
-    if (pathname.includes("/add-soldier")) {
+    if (
+      pathname.includes("/add-soldier")
+    ) {
       return "اضافة قوة جديدة";
     }
 
-    if (pathname.includes("/units-report")) {
+    if (
+      pathname.includes("/units-report")
+    ) {
       return "بيان الوحدات";
     }
 
-    if (pathname.includes("/issue-letter")) {
+    if (
+      pathname.includes("/issue-letter")
+    ) {
       return "إصدار خطاب";
     }
 
-    if (pathname.includes("/letters-archive")) {
+    if (
+      pathname.includes(
+        "/letters-archive"
+      )
+    ) {
       return "سجل الخطابات";
     }
 
-    if (pathname.includes("/daily-reports")) {
+    if (
+      pathname.includes("/daily-reports")
+    ) {
       return "اليوميات";
     }
 
-    if (pathname.includes("/reserve-batches")) {
+    if (
+      pathname.includes("/reserve-batches")
+    ) {
       return "دفعات الرديف";
     }
 
-    if (pathname.includes("/manage-units")) {
+    if (
+      pathname.includes("/manage-units")
+    ) {
       return "ادارة الوحدات";
     }
 
-    if (pathname.includes("/manage-users")) {
+    if (
+      pathname.includes("/manage-users")
+    ) {
       return "ادارة المستخدمين";
     }
 
-    if (pathname.includes("/backup")) {
+    if (
+      pathname.includes("/backup")
+    ) {
       return "النسخ الاحتياطي للبيانات";
     }
 
-    if (pathname.includes("/activity-log")) {
+    if (
+      pathname.includes("/activity-log")
+    ) {
       return "سجل العمليات";
     }
 
     return "الموقف العام";
   }
 
-  const activeLabel = getActiveLabel(activePath);
 
-  function handleClick(label: string) {
+  const activeLabel =
+    getActiveLabel(activePath);
+
+
+  function handleClick(
+    label: string
+  ) {
     onNavSelect?.(label);
   }
+
+
+  // ===================================================
+  // Logout
+  // ===================================================
 
   async function handleLogout() {
     if (loggingOut) return;
@@ -229,73 +443,275 @@ export function Sidebar({
     setLoggingOut(true);
 
     try {
-      const { error } = await supabase.auth.signOut({
-        scope: "local",
-      });
+      const { error } =
+        await supabase.auth.signOut({
+          scope: "local",
+        });
 
       if (error) {
-        console.error("Logout error:", error);
+        console.error(
+          "Logout error:",
+          error
+        );
+
         setLoggingOut(false);
         return;
       }
 
       window.location.replace("/");
     } catch (error) {
-      console.error("Unexpected logout error:", error);
+      console.error(
+        "Unexpected logout error:",
+        error
+      );
+
       setLoggingOut(false);
     }
   }
 
-  const allNavItems: NavDef[] = [
-    {
-      icon: <LayoutDashboard size={18} />,
-      label: "الموقف العام",
-    },
-    {
-      icon: <Search size={18} />,
-      label: "الاستعلام عن فرد",
-    },
-    {
-      icon: <UserPlus size={18} />,
-      label: "اضافة قوة جديدة",
-    },
-    {
-      icon: <FolderOpen size={18} />,
-      label: "بيان الوحدات",
-    },
-    {
-      icon: <Mail size={18} />,
-      label: "إصدار خطاب",
-    },
-    {
-      icon: <BookOpen size={18} />,
-      label: "سجل الخطابات",
-    },
-    {
-      icon: <CalendarDays size={18} />,
-      label: "اليوميات",
-    },
-    {
-      icon: <Users size={18} />,
-      label: "دفعات الرديف",
-    },
-    {
-      icon: <Building2 size={18} />,
-      label: "ادارة الوحدات",
-    },
-    {
-      icon: <UserCog size={18} />,
-      label: "ادارة المستخدمين",
-    },
-    {
-      icon: <DatabaseBackup size={18} />,
-      label: "النسخ الاحتياطي للبيانات",
-    },
-    {
-      icon: <Activity size={18} />,
-      label: "سجل العمليات",
-    },
+
+  // ===================================================
+  // All Navigation Items + Roles
+  // ===================================================
+
+  const allNavItems: NavDef[] =
+    useMemo(
+      () => [
+        // -------------------------------
+        // الأفراد
+        // -------------------------------
+
+        {
+          icon: (
+            <LayoutDashboard
+              size={18}
+            />
+          ),
+          label: "الموقف العام",
+          section: "الافراد",
+          roles: [
+            "ADMIN",
+            "PERSONNEL_OFFICER",
+            "ARCHIVE_OFFICER",
+            "USER",
+          ],
+        },
+
+        {
+          icon: (
+            <Search size={18} />
+          ),
+          label: "الاستعلام عن فرد",
+          section: "الافراد",
+          roles: [
+            "ADMIN",
+            "PERSONNEL_OFFICER",
+            "ARCHIVE_OFFICER",
+            "USER",
+          ],
+        },
+
+        {
+          icon: (
+            <UserPlus size={18} />
+          ),
+          label: "اضافة قوة جديدة",
+          section: "الافراد",
+          roles: [
+            "ADMIN",
+            "PERSONNEL_OFFICER",
+          ],
+        },
+
+        {
+          icon: (
+            <FolderOpen
+              size={18}
+            />
+          ),
+          label: "بيان الوحدات",
+          section: "الافراد",
+          roles: [
+            "ADMIN",
+            "PERSONNEL_OFFICER",
+            "ARCHIVE_OFFICER",
+            "USER",
+          ],
+        },
+
+
+        // -------------------------------
+        // الخطابات
+        // -------------------------------
+
+        {
+          icon: (
+            <Mail size={18} />
+          ),
+          label: "إصدار خطاب",
+          section: "الخطابات",
+          roles: [
+            "ADMIN",
+            "PERSONNEL_OFFICER",
+          ],
+        },
+
+        {
+          icon: (
+            <BookOpen
+              size={18}
+            />
+          ),
+          label: "سجل الخطابات",
+          section: "الخطابات",
+          roles: [
+            "ADMIN",
+            "ARCHIVE_OFFICER",
+          ],
+        },
+
+
+        // -------------------------------
+        // اليوميات
+        // -------------------------------
+
+        {
+          icon: (
+            <CalendarDays
+              size={18}
+            />
+          ),
+          label: "اليوميات",
+          section: "اليوميات",
+          roles: [
+            "ADMIN",
+            "PERSONNEL_OFFICER",
+            "ARCHIVE_OFFICER",
+            "USER",
+          ],
+        },
+
+        {
+          icon: (
+            <Users size={18} />
+          ),
+          label: "دفعات الرديف",
+          section: "اليوميات",
+          roles: [
+            "ADMIN",
+            "ARCHIVE_OFFICER",
+          ],
+        },
+
+
+        // -------------------------------
+        // إدارة المنظومة
+        // -------------------------------
+
+        {
+          icon: (
+            <Building2
+              size={18}
+            />
+          ),
+          label: "ادارة الوحدات",
+          section: "ادارة المنظومة",
+          roles: [
+            "ADMIN",
+          ],
+        },
+
+        {
+          icon: (
+            <UserCog
+              size={18}
+            />
+          ),
+          label: "ادارة المستخدمين",
+          section: "ادارة المنظومة",
+          roles: [
+            "ADMIN",
+          ],
+        },
+
+        {
+          icon: (
+            <DatabaseBackup
+              size={18}
+            />
+          ),
+          label:
+            "النسخ الاحتياطي للبيانات",
+          section: "ادارة المنظومة",
+          roles: [
+            "ADMIN",
+          ],
+        },
+
+        {
+          icon: (
+            <Activity
+              size={18}
+            />
+          ),
+          label: "سجل العمليات",
+          section: "ادارة المنظومة",
+          roles: [
+            "ADMIN",
+          ],
+        },
+      ],
+      []
+    );
+
+
+  // ===================================================
+  // Filter Items According To Role
+  // ===================================================
+
+  const visibleNavItems =
+    useMemo(() => {
+      if (!roleCode) {
+        return [];
+      }
+
+      return allNavItems.filter(
+        (item) =>
+          item.roles.includes(
+            roleCode
+          )
+      );
+    }, [
+      allNavItems,
+      roleCode,
+    ]);
+
+
+  // ===================================================
+  // Group By Section
+  // ===================================================
+
+  const sections = [
+    "الافراد",
+    "الخطابات",
+    "اليوميات",
+    "ادارة المنظومة",
   ];
+
+
+  function getSectionItems(
+    section: string
+  ) {
+    return visibleNavItems.filter(
+      (item) =>
+        item.section === section
+    );
+  }
+
+
+  // ===================================================
+  // Render
+  // ===================================================
 
   return (
     <aside
@@ -306,11 +722,17 @@ export function Sidebar({
         "transition-all duration-300",
         "overflow-y-auto overflow-x-hidden",
         "shrink-0",
-        collapsed ? "w-[68px]" : "w-[280px]",
+        collapsed
+          ? "w-[68px]"
+          : "w-[280px]",
       ].join(" ")}
       dir="rtl"
     >
-      {/* Active icon gradient */}
+
+      {/* ==============================================
+          Active Icon Gradient
+      =============================================== */}
+
       <svg
         width="0"
         height="0"
@@ -331,6 +753,7 @@ export function Sidebar({
               offset="0%"
               stopColor="#00B867"
             />
+
             <stop
               offset="100%"
               stopColor="#00522E"
@@ -339,8 +762,13 @@ export function Sidebar({
         </defs>
       </svg>
 
-      {/* Logo + Toggle */}
+
+      {/* ==============================================
+          Logo + Toggle
+      =============================================== */}
+
       <div className="flex items-center gap-3 px-5 pt-6 pb-0 shrink-0 relative z-10">
+
         <button
           type="button"
           onClick={onToggle}
@@ -369,13 +797,16 @@ export function Sidebar({
           )}
         </button>
 
+
         {!collapsed && (
           <div className="flex items-center gap-2 overflow-hidden flex-1">
+
             <span
               className="whitespace-nowrap"
               style={{
                 color: "#081021",
-                fontFamily: "'Almarai', sans-serif",
+                fontFamily:
+                  "'Almarai', sans-serif",
                 fontWeight: 700,
                 fontSize: "22px",
               }}
@@ -384,210 +815,164 @@ export function Sidebar({
             </span>
 
             <LogoIcon />
+
           </div>
         )}
 
-        {collapsed && <LogoIcon />}
+
+        {collapsed && (
+          <LogoIcon />
+        )}
+
       </div>
 
-      {/* Expanded Sidebar */}
+
+      {/* ==============================================
+          Expanded Sidebar
+      =============================================== */}
+
       {!collapsed && (
         <nav className="flex flex-col gap-1 px-6 flex-1 pb-4">
-          {/* الأفراد */}
-          <SectionLabel label="الافراد" />
 
-          <NavItem
-            icon={<LayoutDashboard size={18} />}
-            label="الموقف العام"
-            active={activeLabel === "الموقف العام"}
-            onClick={() =>
-              handleClick("الموقف العام")
-            }
-          />
+          {roleLoading ? (
+            <div
+              className="text-center text-[#64748b] py-4"
+              style={{
+                fontFamily:
+                  "'Almarai', sans-serif",
+                fontSize: "14px",
+              }}
+            >
+              جاري تحميل الصلاحيات...
+            </div>
+          ) : (
+            sections.map(
+              (section, sectionIndex) => {
 
-          <NavItem
-            icon={<Search size={18} />}
-            label="الاستعلام عن فرد"
-            active={
-              activeLabel === "الاستعلام عن فرد"
-            }
-            onClick={() =>
-              handleClick("الاستعلام عن فرد")
-            }
-          />
+                const items =
+                  getSectionItems(
+                    section
+                  );
 
-          <NavItem
-            icon={<UserPlus size={18} />}
-            label="اضافة قوة جديدة"
-            active={
-              activeLabel === "اضافة قوة جديدة"
-            }
-            onClick={() =>
-              handleClick("اضافة قوة جديدة")
-            }
-          />
+                // Don't show empty section
+                if (items.length === 0) {
+                  return null;
+                }
 
-          <NavItem
-            icon={<FolderOpen size={18} />}
-            label="بيان الوحدات"
-            active={
-              activeLabel === "بيان الوحدات"
-            }
-            onClick={() =>
-              handleClick("بيان الوحدات")
-            }
-          />
+                return (
+                  <div
+                    key={section}
+                    className="contents"
+                  >
 
-          <Divider />
+                    {sectionIndex > 0 && (
+                      <Divider />
+                    )}
 
-          {/* الخطابات */}
-          <SectionLabel label="الخطابات" />
+                    <SectionLabel
+                      label={section}
+                    />
 
-          <NavItem
-            icon={<Mail size={18} />}
-            label="إصدار خطاب"
-            active={activeLabel === "إصدار خطاب"}
-            onClick={() =>
-              handleClick("إصدار خطاب")
-            }
-          />
 
-          <NavItem
-            icon={<BookOpen size={18} />}
-            label="سجل الخطابات"
-            active={
-              activeLabel === "سجل الخطابات"
-            }
-            onClick={() =>
-              handleClick("سجل الخطابات")
-            }
-          />
+                    {items.map(
+                      ({
+                        icon,
+                        label,
+                      }) => (
+                        <NavItem
+                          key={label}
+                          icon={
+                            icon as React.ReactElement
+                          }
+                          label={label}
+                          active={
+                            activeLabel ===
+                            label
+                          }
+                          onClick={() =>
+                            handleClick(
+                              label
+                            )
+                          }
+                        />
+                      )
+                    )}
 
-          <Divider />
+                  </div>
+                );
+              }
+            )
+          )}
 
-          {/* اليوميات */}
-          <SectionLabel label="اليوميات" />
-
-          <NavItem
-            icon={<CalendarDays size={18} />}
-            label="اليوميات"
-            active={activeLabel === "اليوميات"}
-            onClick={() =>
-              handleClick("اليوميات")
-            }
-          />
-
-          <NavItem
-            icon={<Users size={18} />}
-            label="دفعات الرديف"
-            active={
-              activeLabel === "دفعات الرديف"
-            }
-            onClick={() =>
-              handleClick("دفعات الرديف")
-            }
-          />
-
-          <Divider />
-
-          {/* إدارة المنظومة */}
-          <SectionLabel label="ادارة المنظومة" />
-
-          <NavItem
-            icon={<Building2 size={18} />}
-            label="ادارة الوحدات"
-            active={
-              activeLabel === "ادارة الوحدات"
-            }
-            onClick={() =>
-              handleClick("ادارة الوحدات")
-            }
-          />
-
-          <NavItem
-            icon={<UserCog size={18} />}
-            label="ادارة المستخدمين"
-            active={
-              activeLabel === "ادارة المستخدمين"
-            }
-            onClick={() =>
-              handleClick("ادارة المستخدمين")
-            }
-          />
-
-          <NavItem
-            icon={<DatabaseBackup size={18} />}
-            label="النسخ الاحتياطي للبيانات"
-            active={
-              activeLabel ===
-              "النسخ الاحتياطي للبيانات"
-            }
-            onClick={() =>
-              handleClick(
-                "النسخ الاحتياطي للبيانات"
-              )
-            }
-          />
-
-          <NavItem
-            icon={<Activity size={18} />}
-            label="سجل العمليات"
-            active={
-              activeLabel === "سجل العمليات"
-            }
-            onClick={() =>
-              handleClick("سجل العمليات")
-            }
-          />
         </nav>
       )}
 
-      {/* Collapsed Sidebar */}
+
+      {/* ==============================================
+          Collapsed Sidebar
+      =============================================== */}
+
       {collapsed && (
         <nav className="flex flex-col items-center gap-2 px-2 flex-1 pb-4">
-          {allNavItems.map(
-            ({ icon, label }) => {
-              const isActive =
-                activeLabel === label;
 
-              const styledIcon = isActive
-                ? cloneElement(
-                    icon as React.ReactElement,
-                    {
-                      stroke:
-                        "url(#navActiveGrad)",
-                    } as object
-                  )
-                : icon;
+          {!roleLoading &&
+            visibleNavItems.map(
+              ({
+                icon,
+                label,
+              }) => {
 
-              return (
-                <button
-                  type="button"
-                  key={label}
-                  title={label}
-                  onClick={() =>
-                    handleClick(label)
-                  }
-                  className={[
-                    "w-10 h-10",
-                    "rounded-full",
-                    "flex items-center justify-center",
-                    "transition-colors",
-                    isActive
-                      ? "bg-[#DCF4DF]"
-                      : "text-[#717d96] hover:bg-[#f5f6fb]",
-                  ].join(" ")}
-                >
-                  {styledIcon}
-                </button>
-              );
-            }
-          )}
+                const isActive =
+                  activeLabel ===
+                  label;
+
+                const styledIcon =
+                  isActive
+                    ? cloneElement(
+                        icon as React.ReactElement,
+                        {
+                          stroke:
+                            "url(#navActiveGrad)",
+                        } as object
+                      )
+                    : icon;
+
+                return (
+                  <button
+                    type="button"
+                    key={label}
+                    title={label}
+                    onClick={() =>
+                      handleClick(
+                        label
+                      )
+                    }
+                    className={[
+                      "w-10 h-10",
+                      "rounded-full",
+                      "flex items-center justify-center",
+                      "transition-colors",
+                      isActive
+                        ? "bg-[#DCF4DF]"
+                        : "text-[#717d96] hover:bg-[#f5f6fb]",
+                    ].join(" ")}
+                  >
+                    {styledIcon}
+                  </button>
+                );
+              }
+            )}
+
         </nav>
       )}
 
-      {/* Logout */}
+
+      {/* ==============================================
+          Logout
+      =============================================== */}
+
       <div className="border-t border-[#e2e8f0] px-6 py-4 shrink-0">
+
         {!collapsed ? (
           <button
             type="button"
@@ -606,10 +991,12 @@ export function Sidebar({
               "disabled:cursor-not-allowed",
             ].join(" ")}
             style={{
-              fontFamily: "'Almarai', sans-serif",
+              fontFamily:
+                "'Almarai', sans-serif",
               fontSize: "16px",
             }}
           >
+
             <span className="flex-1 text-right">
               {loggingOut
                 ? "جاري تسجيل الخروج..."
@@ -626,6 +1013,7 @@ export function Sidebar({
                 }
               />
             </span>
+
           </button>
         ) : (
           <button
@@ -659,7 +1047,9 @@ export function Sidebar({
             />
           </button>
         )}
+
       </div>
+
     </aside>
   );
 }

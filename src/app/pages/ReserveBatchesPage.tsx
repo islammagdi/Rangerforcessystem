@@ -44,6 +44,18 @@ type Soldier = {
 const DISCHARGED_STATUS_ID =
   "ac8ddfa3-1578-455b-9b6a-b056260fcb1f";
 
+/* =========================================================
+   التحقق من الرقمين السابع والثامن
+   ========================================================= */
+
+function hasLicenseEligibility(militaryId: string) {
+  const value = String(militaryId ?? "").trim();
+
+  // الرقم السابع والثامن من اليسار
+  return value.length >= 8 &&
+    value.substring(6, 8) === "66";
+}
+
 function formatBatchDate(date: string) {
   const [year, month, day] = date.split("-");
   return `${day}/${month}/${year}`;
@@ -74,6 +86,10 @@ function dbStateToDocumentState(
 
   return "لم يتم الاستلام";
 }
+
+/* =========================================================
+   BATCH DROPDOWN
+   ========================================================= */
 
 function BatchDropdown({
   value,
@@ -169,15 +185,17 @@ function BatchDropdown({
 
 /* =========================================================
    DOCUMENT DROPDOWN
-   Portal + Fixed
+   أضفنا disabled للرخصة
    ========================================================= */
 
 function DocumentDropdown({
   value,
   onChange,
+  disabled = false,
 }: {
   value: DocumentState;
   onChange: (value: DocumentState) => void;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -224,10 +242,7 @@ function DocumentDropdown({
       buttonRef.current.getBoundingClientRect();
 
     const menuWidth = 150;
-
-    // ارتفاع تقريبي للقائمة
     const menuHeight = 108;
-
     const gap = 4;
 
     const spaceAbove = rect.top;
@@ -235,7 +250,6 @@ function DocumentDropdown({
     const spaceBelow =
       window.innerHeight - rect.bottom;
 
-    // نفضل الفتح لأعلى
     const openUp =
       spaceAbove >= menuHeight + gap ||
       spaceAbove > spaceBelow;
@@ -253,7 +267,6 @@ function DocumentDropdown({
         gap;
     }
 
-    // منع خروج القائمة من الشاشة عموديًا
     top = Math.max(
       4,
       Math.min(
@@ -264,12 +277,10 @@ function DocumentDropdown({
       )
     );
 
-    // محاذاة يمين القائمة مع يمين الزر
     let left =
       rect.right -
       menuWidth;
 
-    // منع خروج القائمة من الشاشة أفقيًا
     left = Math.max(
       4,
       Math.min(
@@ -288,6 +299,10 @@ function DocumentDropdown({
   }
 
   function handleToggle() {
+    if (disabled) {
+      return;
+    }
+
     if (!open) {
       updateMenuPosition();
     }
@@ -296,7 +311,7 @@ function DocumentDropdown({
   }
 
   useEffect(() => {
-    if (!open) {
+    if (!open || disabled) {
       return;
     }
 
@@ -310,10 +325,6 @@ function DocumentDropdown({
       updateMenuPosition();
     };
 
-    /*
-      true مهمة جدًا هنا لأنها تلتقط Scroll
-      الخاص بالـ div الذي يحتوي على الجدول أيضًا.
-    */
     window.addEventListener(
       "scroll",
       handleScroll,
@@ -337,51 +348,52 @@ function DocumentDropdown({
         handleResize
       );
     };
-  }, [open]);
+  }, [open, disabled]);
 
-  const dropdownMenu = open
-    ? createPortal(
-        <div
-          dir="rtl"
-          style={{
-            position: "fixed",
-            top: menuPosition.top,
-            left: menuPosition.left,
-            width: 150,
-            zIndex: 999999,
-            background: "#ffffff",
-            border:
-              "1px solid #e2e7f0",
-            borderRadius: 7,
-            boxShadow:
-              "0 10px 30px rgba(0, 0, 0, 0.16)",
-            overflow: "hidden",
-          }}
-        >
-          {options.map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => {
-                onChange(option);
-                setOpen(false);
-              }}
-              className="w-full px-3 py-2.5 text-right hover:bg-[#f5f7fa] transition-colors"
-              style={{
-                ...F,
-                fontSize: 11,
-                color: colors[option],
-                background:
-                  "#ffffff",
-              }}
-            >
-              {option}
-            </button>
-          ))}
-        </div>,
-        document.body
-      )
-    : null;
+  const dropdownMenu =
+    open && !disabled
+      ? createPortal(
+          <div
+            dir="rtl"
+            style={{
+              position: "fixed",
+              top: menuPosition.top,
+              left: menuPosition.left,
+              width: 150,
+              zIndex: 999999,
+              background: "#ffffff",
+              border:
+                "1px solid #e2e7f0",
+              borderRadius: 7,
+              boxShadow:
+                "0 10px 30px rgba(0, 0, 0, 0.16)",
+              overflow: "hidden",
+            }}
+          >
+            {options.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => {
+                  onChange(option);
+                  setOpen(false);
+                }}
+                className="w-full px-3 py-2.5 text-right hover:bg-[#f5f7fa] transition-colors"
+                style={{
+                  ...F,
+                  fontSize: 11,
+                  color: colors[option],
+                  background:
+                    "#ffffff",
+                }}
+              >
+                {option}
+              </button>
+            ))}
+          </div>,
+          document.body
+        )
+      : null;
 
   return (
     <>
@@ -393,14 +405,29 @@ function DocumentDropdown({
           ref={buttonRef}
           type="button"
           onClick={handleToggle}
-          className="w-full h-[34px] px-2 rounded-[6px] flex items-center justify-between gap-2 border"
+          disabled={disabled}
+          className="w-full h-[34px] px-2 rounded-[6px] flex items-center justify-between gap-2 border transition-colors"
           style={{
-            background:
-              backgrounds[value],
-            borderColor:
-              "#e2e7f0",
-            color:
-              colors[value],
+            background: disabled
+              ? "#f1f3f6"
+              : backgrounds[value],
+
+            borderColor: disabled
+              ? "#d7dce5"
+              : "#e2e7f0",
+
+            color: disabled
+              ? "#a1aebe"
+              : colors[value],
+
+            cursor: disabled
+              ? "not-allowed"
+              : "pointer",
+
+            opacity: disabled
+              ? 0.65
+              : 1,
+
             ...F,
             fontSize: 11,
           }}
@@ -415,7 +442,9 @@ function DocumentDropdown({
           />
 
           <span>
-            {value}
+            {disabled
+              ? "غير متاح"
+              : value}
           </span>
         </button>
       </div>
@@ -425,7 +454,9 @@ function DocumentDropdown({
   );
 }
 
-/* ========================================================= */
+/* =========================================================
+   STAT CARD
+   ========================================================= */
 
 function StatCard({
   icon,
@@ -475,6 +506,10 @@ function StatCard({
     </div>
   );
 }
+
+/* =========================================================
+   PROGRESS CARD
+   ========================================================= */
 
 function ProgressCard({
   icon,
@@ -571,6 +606,10 @@ function ProgressCard({
   );
 }
 
+/* =========================================================
+   END SERVICE DIALOG
+   ========================================================= */
+
 function EndServiceDialog({
   onCancel,
   onConfirm,
@@ -663,6 +702,10 @@ function EndServiceDialog({
     </div>
   );
 }
+
+/* =========================================================
+   TRANSFER DIALOG
+   ========================================================= */
 
 function TransferDialog({
   batches,
@@ -785,6 +828,10 @@ function TransferDialog({
   );
 }
 
+/* =========================================================
+   SORT ICON
+   ========================================================= */
+
 function SortIcon() {
   return (
     <svg
@@ -803,6 +850,10 @@ function SortIcon() {
     </svg>
   );
 }
+
+/* =========================================================
+   MAIN PAGE
+   ========================================================= */
 
 export function ReserveBatchesPage() {
   const [batches, setBatches] =
@@ -842,6 +893,10 @@ export function ReserveBatchesPage() {
 
   const [saving, setSaving] =
     useState(false);
+
+  /* =========================================================
+     تحميل دفعات الرديف
+     ========================================================= */
 
   useEffect(() => {
     async function loadBatches() {
@@ -917,6 +972,10 @@ export function ReserveBatchesPage() {
           selectedBatchObject.batch_date
         )}`
       : "";
+
+  /* =========================================================
+     تحميل أفراد الدفعة
+     ========================================================= */
 
   async function loadSoldiers() {
     if (!selectedBatchObject) {
@@ -1113,6 +1172,10 @@ export function ReserveBatchesPage() {
     setAllChecked(false);
   }
 
+  /* =========================================================
+     اختيار الصف
+     ========================================================= */
+
   function toggleRow(id: string) {
     setCheckedRows((prev) => {
       const next = new Set(prev);
@@ -1150,6 +1213,10 @@ export function ReserveBatchesPage() {
     }
   }
 
+  /* =========================================================
+     تعديل حالة المستند
+     ========================================================= */
+
   function toggleSoldierField(
     id: string,
     field:
@@ -1168,6 +1235,10 @@ export function ReserveBatchesPage() {
       )
     );
   }
+
+  /* =========================================================
+     حفظ التعديلات
+     ========================================================= */
 
   async function handleSaveChanges() {
     if (!selectedBatchObject) {
@@ -1218,24 +1289,34 @@ export function ReserveBatchesPage() {
               new Date().toISOString(),
           });
 
-          documentsToSave.push({
-            personnel_id:
-              soldier.id,
+          /*
+           * حفظ الرخصة فقط لو الفرد
+           * مسموح له بالرخصة
+           */
+          if (
+            hasLicenseEligibility(
+              soldier.militaryId
+            )
+          ) {
+            documentsToSave.push({
+              personnel_id:
+                soldier.id,
 
-            reserve_batch_id:
-              selectedBatchObject.id,
+              reserve_batch_id:
+                selectedBatchObject.id,
 
-            document_type:
-              "LICENSE",
+              document_type:
+                "LICENSE",
 
-            status:
-              documentStateToDb(
-                soldier.receivedLicense
-              ),
+              status:
+                documentStateToDb(
+                  soldier.receivedLicense
+                ),
 
-            updated_at:
-              new Date().toISOString(),
-          });
+              updated_at:
+                new Date().toISOString(),
+            });
+          }
         }
       );
 
@@ -1280,6 +1361,10 @@ export function ReserveBatchesPage() {
       setSaving(false);
     }
   }
+
+  /* =========================================================
+     إنهاء الخدمة
+     ========================================================= */
 
   function handleEndService() {
     if (checkedRows.size === 0) {
@@ -1425,9 +1510,40 @@ export function ReserveBatchesPage() {
               new Date().toISOString(),
           });
 
+          /*
+           * الرخصة يتم التعامل معها
+           * لاحقًا حسب أهلية الفرد.
+           */
+        }
+      );
+
+      /*
+       * نحتاج معرفة الأفراد المحددين
+       * لمعرفة من منهم رقماه 7 و8 = 66
+       */
+      const selectedPersonnel =
+        soldierData.filter((soldier) =>
+          ids.includes(soldier.id)
+        );
+
+      selectedPersonnel.forEach(
+        (soldier) => {
+          if (
+            !hasLicenseEligibility(
+              soldier.militaryId
+            )
+          ) {
+            return;
+          }
+
+          const existing =
+            existingMap.get(
+              soldier.id
+            );
+
           documentsToUpsert.push({
             personnel_id:
-              personnelId,
+              soldier.id,
 
             reserve_batch_id:
               selectedBatchObject.id,
@@ -1511,6 +1627,10 @@ export function ReserveBatchesPage() {
       setSaving(false);
     }
   }
+
+  /* =========================================================
+     ترحيل الدفعة
+     ========================================================= */
 
   function handleTransfer() {
     if (checkedRows.size === 0) {
@@ -1657,6 +1777,8 @@ export function ReserveBatchesPage() {
         دفعات الرديف
       </h1>
 
+      {/* اختيار الدفعة */}
+
       <div className="flex flex-wrap items-end gap-3 justify-start no-print">
         <div className="flex flex-col gap-1.5 flex-1 min-w-[200px] max-w-xs">
           <label
@@ -1721,6 +1843,8 @@ export function ReserveBatchesPage() {
         </button>
       </div>
 
+      {/* Error */}
+
       {batchError && (
         <div
           className="w-full rounded-[10px] px-4 py-3"
@@ -1734,6 +1858,8 @@ export function ReserveBatchesPage() {
           {batchError}
         </div>
       )}
+
+      {/* Success */}
 
       {successMsg && (
         <div
@@ -1758,6 +1884,9 @@ export function ReserveBatchesPage() {
       {showResults &&
         selectedBatchObject && (
           <div className="reserve-print-area">
+
+            {/* Print Header */}
+
             <div className="hidden print:block text-center mb-5">
               <h2
                 style={{
@@ -1782,7 +1911,10 @@ export function ReserveBatchesPage() {
               </p>
             </div>
 
+            {/* Stats */}
+
             <div className="flex flex-wrap gap-4 w-full no-print">
+
               <StatCard
                 icon={
                   <svg
@@ -1848,7 +1980,10 @@ export function ReserveBatchesPage() {
               />
             </div>
 
+            {/* Progress */}
+
             <div className="flex flex-wrap gap-4 w-full mt-4 no-print">
+
               <ProgressCard
                 icon={
                   <CheckSquare
@@ -1880,17 +2015,28 @@ export function ReserveBatchesPage() {
                 current={
                   soldierData.filter(
                     (s) =>
+                      hasLicenseEligibility(
+                        s.militaryId
+                      ) &&
                       s.receivedLicense ===
-                      "تم الاستلام"
+                        "تم الاستلام"
                   ).length
                 }
                 total={
-                  soldierData.length
+                  soldierData.filter(
+                    (s) =>
+                      hasLicenseEligibility(
+                        s.militaryId
+                      )
+                  ).length
                 }
               />
             </div>
 
+            {/* Buttons */}
+
             <div className="flex flex-wrap items-end gap-3 mt-4 no-print">
+
               <button
                 type="button"
                 onClick={
@@ -1949,13 +2095,18 @@ export function ReserveBatchesPage() {
               </button>
             </div>
 
+            {/* TABLE */}
+
             <div className="bg-white rounded-[12px] border border-[#e2e7f0] w-full overflow-x-auto mt-4">
+
               <table
                 className="w-full min-w-[1100px] border-collapse"
                 dir="rtl"
               >
+
                 <thead>
                   <tr>
+
                     <th
                       className={`${thClass} no-print`}
                       style={{
@@ -1999,6 +2150,7 @@ export function ReserveBatchesPage() {
                         }
                       >
                         <div className="flex items-center gap-1">
+
                           <span
                             style={{
                               ...F,
@@ -2018,6 +2170,7 @@ export function ReserveBatchesPage() {
                 </thead>
 
                 <tbody>
+
                   {soldierData.length ===
                   0 ? (
                     <tr>
@@ -2040,206 +2193,248 @@ export function ReserveBatchesPage() {
                       (
                         soldier,
                         idx
-                      ) => (
-                        <tr
-                          key={
-                            soldier.id
-                          }
-                          className="hover:bg-[#fafbff]"
-                        >
-                          <td
-                            className={`${tdClass} no-print`}
+                      ) => {
+
+                        /*
+                         * هنا يتم فحص كل فرد
+                         * بشكل مستقل
+                         */
+                        const licenseEnabled =
+                          hasLicenseEligibility(
+                            soldier.militaryId
+                          );
+
+                        return (
+                          <tr
+                            key={
+                              soldier.id
+                            }
+                            className="hover:bg-[#fafbff]"
                           >
-                            <button
-                              type="button"
-                              onClick={() =>
-                                toggleRow(
+
+                            {/* Checkbox */}
+
+                            <td
+                              className={`${tdClass} no-print`}
+                            >
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  toggleRow(
+                                    soldier.id
+                                  )
+                                }
+                              >
+                                {checkedRows.has(
                                   soldier.id
-                                )
+                                ) ? (
+                                  <CheckSquare
+                                    size={
+                                      16
+                                    }
+                                    color="#1f3d97"
+                                  />
+                                ) : (
+                                  <Square
+                                    size={
+                                      16
+                                    }
+                                    color="#a1aebe"
+                                  />
+                                )}
+                              </button>
+                            </td>
+
+                            {/* رقم */}
+
+                            <td
+                              className={
+                                tdClass
                               }
                             >
-                              {checkedRows.has(
-                                soldier.id
-                              ) ? (
-                                <CheckSquare
-                                  size={
-                                    16
-                                  }
-                                  color="#1f3d97"
-                                />
-                              ) : (
-                                <Square
-                                  size={
-                                    16
-                                  }
-                                  color="#a1aebe"
-                                />
-                              )}
-                            </button>
-                          </td>
+                              <span
+                                style={{
+                                  ...F,
+                                  fontSize: 13,
+                                }}
+                              >
+                                {idx + 1}
+                              </span>
+                            </td>
 
-                          <td
-                            className={
-                              tdClass
-                            }
-                          >
-                            <span
-                              style={{
-                                ...F,
-                                fontSize: 13,
-                              }}
-                            >
-                              {idx + 1}
-                            </span>
-                          </td>
+                            {/* الرقم العسكري */}
 
-                          <td
-                            className={
-                              tdClass
-                            }
-                          >
-                            <span
-                              style={{
-                                ...F,
-                                fontSize: 13,
-                              }}
-                            >
-                              {
-                                soldier.militaryId
+                            <td
+                              className={
+                                tdClass
                               }
-                            </span>
-                          </td>
-
-                          <td
-                            className={
-                              tdClass
-                            }
-                          >
-                            <span
-                              style={{
-                                ...F,
-                                fontSize: 13,
-                              }}
                             >
-                              {
-                                soldier.rank
-                              }
-                            </span>
-                          </td>
+                              <span
+                                style={{
+                                  ...F,
+                                  fontSize: 13,
+                                }}
+                              >
+                                {
+                                  soldier.militaryId
+                                }
+                              </span>
+                            </td>
 
-                          <td
-                            className={
-                              tdClass
-                            }
-                          >
-                            <span
-                              style={{
-                                ...F,
-                                fontSize: 13,
-                              }}
+                            {/* الدرجة */}
+
+                            <td
+                              className={
+                                tdClass
+                              }
                             >
-                              {
-                                soldier.name
-                              }
-                            </span>
-                          </td>
+                              <span
+                                style={{
+                                  ...F,
+                                  fontSize: 13,
+                                }}
+                              >
+                                {
+                                  soldier.rank
+                                }
+                              </span>
+                            </td>
 
-                          <td
-                            className={
-                              tdClass
-                            }
-                          >
-                            <span
-                              style={{
-                                ...F,
-                                fontSize: 13,
-                              }}
+                            {/* الاسم */}
+
+                            <td
+                              className={
+                                tdClass
+                              }
                             >
-                              {
-                                soldier.unit
-                              }
-                            </span>
-                          </td>
+                              <span
+                                style={{
+                                  ...F,
+                                  fontSize: 13,
+                                }}
+                              >
+                                {
+                                  soldier.name
+                                }
+                              </span>
+                            </td>
 
-                          <td
-                            className={`${tdClass} text-center`}
-                          >
-                            <DocumentDropdown
-                              value={
-                                soldier.receivedKariza
+                            {/* الوحدة */}
+
+                            <td
+                              className={
+                                tdClass
                               }
-                              onChange={(
-                                value
-                              ) =>
-                                toggleSoldierField(
-                                  soldier.id,
-                                  "receivedKariza",
+                            >
+                              <span
+                                style={{
+                                  ...F,
+                                  fontSize: 13,
+                                }}
+                              >
+                                {
+                                  soldier.unit
+                                }
+                              </span>
+                            </td>
+
+                            {/* الكارنيه */}
+
+                            <td
+                              className={`${tdClass} text-center`}
+                            >
+                              <DocumentDropdown
+                                value={
+                                  soldier.receivedKariza
+                                }
+                                onChange={(
                                   value
-                                )
-                              }
-                            />
-                          </td>
+                                ) =>
+                                  toggleSoldierField(
+                                    soldier.id,
+                                    "receivedKariza",
+                                    value
+                                  )
+                                }
+                              />
+                            </td>
 
-                          <td
-                            className={`${tdClass} text-center`}
-                          >
-                            <DocumentDropdown
-                              value={
-                                soldier.receivedLicense
-                              }
-                              onChange={(
-                                value
-                              ) =>
-                                toggleSoldierField(
-                                  soldier.id,
-                                  "receivedLicense",
-                                  value
-                                )
-                              }
-                            />
-                          </td>
+                            {/* =================================================
+                               الرخصة
+                               لكل فرد بشكل مستقل
+                               ================================================= */}
 
-                          <td
-                            className={
-                              tdClass
-                            }
-                          >
-                            <span
-                              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full"
-                              style={{
-                                background:
-                                  soldier.status ===
-                                  "بالخدمة"
-                                    ? "#dcfce7"
-                                    : "#fce9ea",
-
-                                ...F,
-
-                                fontSize: 11,
-
-                                fontWeight: 700,
-
-                                color:
-                                  soldier.status ===
-                                  "بالخدمة"
-                                    ? "#166534"
-                                    : "#9d2e15",
-                              }}
+                            <td
+                              className={`${tdClass} text-center`}
                             >
-                              {
-                                soldier.status
+                              <DocumentDropdown
+                                value={
+                                  soldier.receivedLicense
+                                }
+                                disabled={
+                                  !licenseEnabled
+                                }
+                                onChange={(
+                                  value
+                                ) =>
+                                  toggleSoldierField(
+                                    soldier.id,
+                                    "receivedLicense",
+                                    value
+                                  )
+                                }
+                              />
+                            </td>
+
+                            {/* حالة الفرد */}
+
+                            <td
+                              className={
+                                tdClass
                               }
-                            </span>
-                          </td>
-                        </tr>
-                      )
+                            >
+                              <span
+                                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full"
+                                style={{
+                                  background:
+                                    soldier.status ===
+                                    "بالخدمة"
+                                      ? "#dcfce7"
+                                      : "#fce9ea",
+
+                                  ...F,
+
+                                  fontSize: 11,
+
+                                  fontWeight: 700,
+
+                                  color:
+                                    soldier.status ===
+                                    "بالخدمة"
+                                      ? "#166534"
+                                      : "#9d2e15",
+                                }}
+                              >
+                                {
+                                  soldier.status
+                                }
+                              </span>
+                            </td>
+
+                          </tr>
+                        );
+                      }
                     )
                   )}
+
                 </tbody>
               </table>
             </div>
 
+            {/* Save */}
+
             <div className="flex justify-end mt-4 no-print">
+
               <button
                 type="button"
                 onClick={
@@ -2257,9 +2452,13 @@ export function ReserveBatchesPage() {
                   ? "جاري الحفظ..."
                   : "حفظ التعديلات"}
               </button>
+
             </div>
+
           </div>
         )}
+
+      {/* End Service */}
 
       {showEndDialog && (
         <EndServiceDialog
@@ -2276,6 +2475,8 @@ export function ReserveBatchesPage() {
         />
       )}
 
+      {/* Transfer */}
+
       {showTransferDialog && (
         <TransferDialog
           batches={batches}
@@ -2290,6 +2491,7 @@ export function ReserveBatchesPage() {
           }
         />
       )}
+
     </div>
   );
 }

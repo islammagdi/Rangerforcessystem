@@ -17,11 +17,15 @@ const PAD_R = 16;
 const CHART_W = SVG_W - PAD_L - PAD_R;
 const CHART_H = SVG_H - PAD_TOP - PAD_BOT;
 
-const Y_TICKS = [0, 200, 400, 800];
+// ── محور Y ─────────────────────────────────────────────────────────────────
+// الحد الأقصى = 500
+// التدريج = 0 / 100 / 200 / 300 / 400 / 500
+const Y_TICKS = [0, 100, 200, 300, 400, 500];
+const MAX_VALUE = 500;
 
 const BAR_GAP_RATIO = 0.35;
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function roundedTopPath(
   x: number,
@@ -50,7 +54,7 @@ function truncate(text: string, max = 9) {
   return text.length > max ? text.slice(0, max) + "…" : text;
 }
 
-// ── Tooltip ───────────────────────────────────────────────────────────────
+// ── Tooltip ────────────────────────────────────────────────────────────────
 
 function TooltipBubble({
   cx,
@@ -251,25 +255,29 @@ export function UnitBarChart() {
   const BAR_W =
     SLOT_W * (1 - BAR_GAP_RATIO);
 
-  // أعلى قيمة موجودة
-  const highestValue =
-    chartData.length > 0
-      ? Math.max(
-          ...chartData.map((item) => item.value)
-        )
-      : 0;
-
-  // تحديد أعلى محور بشكل ديناميكي
-  const maxValue =
-    highestValue > 800
-      ? Math.ceil(highestValue / 200) * 200
-      : 800;
+  // ============================================================
+  // تحويل القيمة إلى مكان على محور Y
+  //
+  // 0   = أسفل الرسم
+  // 100 = فوقه بمقدار 20%
+  // 200 = فوقه بمقدار 40%
+  // 300 = فوقه بمقدار 60%
+  // 400 = فوقه بمقدار 80%
+  // 500 = أعلى الرسم
+  // ============================================================
 
   function dynamicValueToY(v: number) {
+    // نحصر القيمة عند 500 حتى لا يخرج العمود
+    // خارج مساحة الرسم إذا كانت القيمة أكبر من 500
+    const safeValue = Math.min(
+      Math.max(v, 0),
+      MAX_VALUE
+    );
+
     return (
       PAD_TOP +
       CHART_H -
-      (v / maxValue) * CHART_H
+      (safeValue / MAX_VALUE) * CHART_H
     );
   }
 
@@ -355,17 +363,18 @@ export function UnitBarChart() {
           >
 
             {/* ==================================================
-                Grid
+                Grid + Y Axis
             ================================================== */}
 
             {Y_TICKS.map((tick) => {
-              if (tick > maxValue) return null;
-
               const ty =
                 dynamicValueToY(tick);
 
               return (
                 <g key={`ytick-${tick}`}>
+
+                  {/* خط الشبكة */}
+
                   <line
                     x1={PAD_L}
                     y1={ty}
@@ -375,6 +384,8 @@ export function UnitBarChart() {
                     strokeDasharray="4 7"
                     strokeWidth={1}
                   />
+
+                  {/* الرقم على اليسار */}
 
                   <text
                     x={PAD_L - 6}
@@ -386,6 +397,7 @@ export function UnitBarChart() {
                   >
                     {tick}
                   </text>
+
                 </g>
               );
             })}
@@ -497,6 +509,7 @@ export function UnitBarChart() {
                 </g>
               );
             })}
+
           </svg>
         </div>
       )}

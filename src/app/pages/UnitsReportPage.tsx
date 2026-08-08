@@ -459,9 +459,13 @@ export function UnitsReportPage() {
 
         // الخوارج مفهوم خاص بالوحدة الأساسية فقط: فرد له مكان إلحاق رغم
         // إن وحدته الأساسية هي دي. الوحدة الإدارية ليس لها خوارج.
-        const khawarijCount = isMain
-          ? unitPersonnel.filter((p) => !!p.attachment_unit_id).length
-          : 0;
+       const khawarijCount = isMain
+  ? unitPersonnel.filter(
+      (p) =>
+        isAttachedStatusId(p.service_status_id, attachedStatusIds) &&
+        !!p.attachment_unit_id
+    ).length
+  : 0;
 
         const khawarijPct =
           isMain && strengthCount > 0

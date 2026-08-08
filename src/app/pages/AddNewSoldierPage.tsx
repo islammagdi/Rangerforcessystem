@@ -120,13 +120,43 @@ function normalizeExcelHeader(value: unknown): string {
     .replace(/آ/g, "ا");
 }
 
+// -----------------------------------------------------------
+// FIX (نهائي): بنتجنب التعامل مع JS `Date` objects خالص لتواريخ
+// الإكسيل. أي تحويل عبر Date (سواء toISOString أو حتى القراءة
+// المحلية بـ getFullYear/getDate) بيفضل عرضة لفرق يوم لأن طريقة
+// بناء الـ Date object جوه مكتبة XLSX نفسها (لما بنمرر cellDates:
+// true) مش موحّدة، وبتختلف حسب نسخة المكتبة والتوقيت.
+//
+// عشان كده شِلنا cellDates: true تمامًا من XLSX.read (شوف
+// handleGroupSubmit تحت)، فالتاريخ بييجي من الإكسيل كـ **رقم
+// تسلسلي خام (serial number)** زي 46266 مثلاً، وبنحوّله بـ
+// XLSX.SSF.parse_date_code() اللي هي دالة حسابية تقويمية بحتة
+// (سنة/شهر/يوم) من غير أي Date object ومن غير أي تعامل مع
+// التوقيت المحلي أو UTC خالص. النتيجة: التاريخ اللي بيتقرأ هو
+// بالظبط نفس التاريخ المكتوب في خلية الإكسيل، مهما كان توقيت
+// المتصفح.
+//
+// لو القيمة لسبب ما لسه راجعة كـ Date object (حالة نادرة، مثلاً
+// لو خلية فيها صيغة تاريخ خاصة عرّفتها XLSX كـ Date تلقائيًا رغم
+// إزالة cellDates)، بنقرأ أجزاءها بـ UTC (get*UTC*) مش المحلية،
+// لأن أي Date object جاي من رقم تسلسلي بيتفسّر داخليًا كفرق أيام
+// عن 1899-12-30 بتوقيت UTC.
+// -----------------------------------------------------------
 function normalizeExcelValue(value: unknown): string {
   if (value === null || value === undefined) {
     return "";
   }
 
   if (value instanceof Date) {
-    return value.toISOString().slice(0, 10);
+    if (Number.isNaN(value.getTime())) {
+      return "";
+    }
+
+    const year = value.getUTCFullYear();
+    const month = String(value.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(value.getUTCDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
   }
 
   if (typeof value === "number") {
@@ -136,7 +166,7 @@ function normalizeExcelValue(value: unknown): string {
   return String(value).trim();
 }
 
-function excelDateToISO(value: unknown): string | null {
+function excelDateToISO(value: unknown, date1904 = false): string | null {
   if (value === null || value === undefined || value === "") {
     return null;
   }
@@ -146,11 +176,17 @@ function excelDateToISO(value: unknown): string | null {
       return null;
     }
 
-    return value.toISOString().slice(0, 10);
+    const year = value.getUTCFullYear();
+    const month = String(value.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(value.getUTCDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
   }
 
+  // الحالة الأساسية والمتوقعة: رقم تسلسلي خام من الإكسيل.
+  // تحويل حسابي تقويمي بحت، بدون Date object وبدون توقيت خالص.
   if (typeof value === "number") {
-    const date = XLSX.SSF.parse_date_code(value);
+    const date = XLSX.SSF.parse_date_code(value, { date1904 });
 
     if (!date) {
       return null;
@@ -1404,14 +1440,25 @@ export function AddNewSoldierPage() {
 
       const arrayBuffer = await uploadedGroupFile.raw.arrayBuffer();
 
+      // ⚠️ عمدًا من غير cellDates: true — التواريخ بترجع كأرقام
+      // تسلسلية خام، وبنحوّلها يدويًا بـ XLSX.SSF.parse_date_code()
+      // (حساب تقويمي بحت، بدون Date object وبدون أي علاقة بالتوقيت)
+      // عشان نضمن إن التاريخ المقروء مطابق تمامًا للمكتوب في الخلية.
       const workbook = XLSX.read(arrayBuffer, {
         type: "array",
-        cellDates: true,
       });
 
       if (!workbook.SheetNames.length) {
         throw new Error("ملف Excel لا يحتوي على أي ورقة");
       }
+
+      // بعض ملفات الإكسيل (خصوصًا القديمة من Mac) بتستخدم نظام
+      // تاريخ 1904 بدل 1900. بنكتشفه من خصائص الملف عشان نحسب
+      // التاريخ الصحيح.
+      const isDate1904 = Boolean(
+        (workbook.Workbook as { WBProps?: { date1904?: boolean } })
+          ?.WBProps?.date1904
+      );
 
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
 
@@ -1501,7 +1548,8 @@ export function AddNewSoldierPage() {
         );
 
         const dischargeDate = excelDateToISO(
-          getValue(row, "تاريخ التسريح")
+          getValue(row, "تاريخ التسريح"),
+          isDate1904
         );
 
         const attachmentUnitName = normalizeExcelValue(

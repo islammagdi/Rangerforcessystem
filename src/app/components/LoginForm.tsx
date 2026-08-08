@@ -49,9 +49,9 @@ export function LoginForm() {
     setLoading(true);
 
     try {
-      /*
-       * تسجيل الدخول
-       */
+      // ============================================
+      // 1. تسجيل الدخول
+      // ============================================
       const { data, error } =
         await supabase.auth.signInWithPassword({
           email: username.trim(),
@@ -76,9 +76,9 @@ export function LoginForm() {
         return;
       }
 
-      /*
-       * التأكد أن Session تم حفظها فعلاً
-       */
+      // ============================================
+      // 2. التأكد من وجود Session
+      // ============================================
       const {
         data: sessionData,
         error: sessionError,
@@ -100,16 +100,17 @@ export function LoginForm() {
           sessionError
         );
       }
-      const {
-  data: { session },
-} = await supabase.auth.getSession();
 
-console.log("SESSION:", session);
-console.log("USER ID:", session?.user?.id);
+      console.log(
+        "SESSION:",
+        sessionData.session
+      );
 
-      /*
-       * التأكد أن المستخدم عنده Session
-       */
+      console.log(
+        "USER ID:",
+        sessionData.session?.user?.id
+      );
+
       if (!sessionData.session) {
         setErrors({
           username:
@@ -119,9 +120,9 @@ console.log("USER ID:", session?.user?.id);
         return;
       }
 
-      /*
-       * التأكد من وجود Profile
-       */
+      // ============================================
+      // 3. التأكد من وجود Profile
+      // ============================================
       const {
         data: profile,
         error: profileError,
@@ -158,14 +159,113 @@ console.log("USER ID:", session?.user?.id);
         return;
       }
 
-      /*
-       * تسجيل الدخول نجح
-       */
+      console.log(
+        "PROFILE:",
+        profile
+      );
+
+      // ============================================
+      // 4. جلب Role المستخدم
+      // ============================================
+      const {
+        data: userRole,
+        error: roleError,
+      } = await supabase
+        .from("user_roles")
+        .select(`
+          role_id,
+          roles (
+            id,
+            name,
+            code
+          )
+        `)
+        .eq("user_id", data.user.id)
+        .maybeSingle();
+
+      if (roleError) {
+        console.error(
+          "ROLE ERROR:",
+          roleError
+        );
+
+        await supabase.auth.signOut();
+
+        setErrors({
+          username:
+            "حدث خطأ أثناء تحميل صلاحيات المستخدم",
+        });
+
+        return;
+      }
+
+      if (!userRole) {
+        await supabase.auth.signOut();
+
+        setErrors({
+          username:
+            "المستخدم غير مرتبط بدور في النظام",
+        });
+
+        return;
+      }
+
+      // ============================================
+      // 5. طباعة الـ Role في Console
+      // ============================================
+      console.log(
+        "USER ROLE FULL:",
+        JSON.stringify(userRole, null, 2)
+      );
+
+      const roleCode =
+        (userRole as any)?.roles?.code;
+
+      const roleName =
+        (userRole as any)?.roles?.name;
+
+      console.log(
+        "ROLE CODE:",
+        roleCode
+      );
+
+      console.log(
+        "ROLE NAME:",
+        roleName
+      );
+
+      // ============================================
+      // 6. تخزين بيانات المستخدم مؤقتاً
+      // ============================================
+      sessionStorage.setItem(
+        "user_role",
+        roleCode ?? ""
+      );
+
+      sessionStorage.setItem(
+        "user_role_name",
+        roleName ?? ""
+      );
+
+      sessionStorage.setItem(
+        "user_id",
+        data.user.id
+      );
+
+      sessionStorage.setItem(
+        "username",
+        profile.username
+      );
+
+      // ============================================
+      // 7. تسجيل الدخول نجح
+      // ============================================
       setSubmitted(true);
 
       setTimeout(() => {
         navigate("/dashboard");
       }, 600);
+
     } catch (error) {
       console.error(
         "LOGIN EXCEPTION:",
