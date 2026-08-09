@@ -2115,6 +2115,60 @@ export function ReserveBatchesPage() {
                   ).length
                 }
               />
+
+              {/* ✅ جديد: عدد الأفراد اللي حالة الكارنيه بتاعتهم "تالف" */}
+
+              <ProgressCard
+                icon={
+                  <AlertTriangle
+                    size={20}
+                    color="#e3282c"
+                  />
+                }
+                label="كارنيه تالف"
+                current={
+                  soldierData.filter(
+                    (s) =>
+                      s.receivedKariza ===
+                      "تالف"
+                  ).length
+                }
+                total={
+                  soldierData.length
+                }
+              />
+
+              {/* ✅ جديد: عدد الأفراد اللي حالة الرخصة بتاعتهم "تالف" */}
+              {/* بنفس منطق كارت "تم تسليم الرخصة": الإجمالي بس الأفراد
+                  اللي عندهم أهلية رخصة (الرقم 7-8 = 66) */}
+
+              <ProgressCard
+                icon={
+                  <AlertTriangle
+                    size={20}
+                    color="#e3282c"
+                  />
+                }
+                label="رخصة تالفة"
+                current={
+                  soldierData.filter(
+                    (s) =>
+                      hasLicenseEligibility(
+                        s.militaryId
+                      ) &&
+                      s.receivedLicense ===
+                        "تالف"
+                  ).length
+                }
+                total={
+                  soldierData.filter(
+                    (s) =>
+                      hasLicenseEligibility(
+                        s.militaryId
+                      )
+                  ).length
+                }
+              />
             </div>
 
             {/* =================================================
