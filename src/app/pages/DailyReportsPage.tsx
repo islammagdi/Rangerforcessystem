@@ -118,29 +118,29 @@ const REPORT_TYPES: ReportCard[] = [
   },
 ];
 
-const CATEGORY_RANKS = {
-  soldiers: ["SOLDIER"],
-  nco: [
-    "CORPORAL",
-    "SERGANT",
-    "STAFF_SERGANT",
-    "ASSISTANT",
-    "FIRST_ASSISTANT",
-  ],
-};
-
 // ============================================================
 // Helpers
+//
+// ✅ مصدر الحقيقة الموحّد (نفس المطبّق بالظبط في الداشبورد وتقرير
+// الوحدات):
+//
+//   "جنود"     = فئة الفرد "مجند"  (CONSCRIPT)
+//   "ضباط صف"  = فئة الفرد "متطوع" (VOLUNTEER)
+//
+//   خارج = وحدة أساسية موجودة + service_status = ATTACHED (ملحق)
+//          + is_active = true (مفلتر بالفعل من الاستعلام)
+//
+// ملحوظة: التصنيف بقى بفئة الفرد مش بالرتبة، لأن "قوة" الوحدة نفسها
+// بقت بتُحسب بغض النظر عن حالة الخدمة (قوة الوحدة/ملحق) — الملحق برضه
+// جزء من قوة وحدته الأصلية.
 // ============================================================
 
 function isSoldier(person: Personnel) {
-  return person.rank?.code === "SOLDIER";
+  return person.category?.code === "CONSCRIPT";
 }
 
 function isNco(person: Personnel) {
-  return CATEGORY_RANKS.nco.includes(
-    person.rank?.code ?? ""
-  );
+  return person.category?.code === "VOLUNTEER";
 }
 
 function matchesCategory(
@@ -154,6 +154,13 @@ function matchesCategory(
   }
 
   return isNco(person);
+}
+
+function isOutsider(person: Personnel) {
+  return (
+    !!person.primary_unit?.id &&
+    person.service_status?.code === "ATTACHED"
+  );
 }
 
 function formatDate(date: string | null) {
@@ -894,9 +901,11 @@ function UnitForceReport({
   people: Personnel[];
   config: ReportConfig;
 }) {
+  // ✅ قوة الوحدة = كل الأفراد اللي وحدتهم الأساسية هي الوحدة المحددة،
+  // بغض النظر عن حالتهم (قوة الوحدة أو ملحق) — الملحق برضه جزء من قوة
+  // وحدته الأصلية.
   const unitPeople = people.filter(
-    (p) =>
-      p.primary_unit?.id === config.unitId
+    (p) => p.primary_unit?.id === config.unitId
   );
 
   const filtered = unitPeople.filter((p) =>
@@ -907,12 +916,7 @@ function UnitForceReport({
 
   const nco = filtered.filter(isNco);
 
-  const outsiders = filtered.filter(
-    (p) =>
-      p.primary_unit?.id === config.unitId &&
-      p.service_status?.code === "ATTACHED" &&
-      !!p.attachment_unit?.id
-  );
+  const outsiders = filtered.filter(isOutsider);
 
   const soldierOutsiders =
     outsiders.filter(isSoldier);
@@ -1062,9 +1066,10 @@ function AllUnitsOutsidersReport({
       (unit) => unit.unit_type === "MAIN"
     )
     .map((unit) => {
+      // ✅ قوة كل وحدة = نفس مبدأ UnitForceReport بالظبط (كل الأفراد
+      // اللي وحدتهم الأساسية هي دي، بغض النظر عن حالتهم)
       const unitPeople = people.filter(
-        (person) =>
-          person.primary_unit?.id === unit.id
+        (person) => person.primary_unit?.id === unit.id
       );
 
       const soldierForce =
@@ -1073,12 +1078,7 @@ function AllUnitsOutsidersReport({
       const ncoForce =
         unitPeople.filter(isNco);
 
-      const outsiders = unitPeople.filter(
-        (person) =>
-          person.service_status?.code ===
-            "ATTACHED" &&
-          !!person.attachment_unit?.id
-      );
+      const outsiders = unitPeople.filter(isOutsider);
 
       const soldierOutsiders =
         outsiders.filter(isSoldier);
@@ -1370,9 +1370,7 @@ function AttachedOutsideUnitReport({
     (person) =>
       person.primary_unit?.id ===
         config.unitId &&
-      person.service_status?.code ===
-        "ATTACHED" &&
-      !!person.attachment_unit?.id &&
+      isOutsider(person) &&
       matchesCategory(
         person,
         config.category
@@ -1487,9 +1485,7 @@ function UnitOutsidersReport({
     (person) =>
       person.primary_unit?.id ===
         config.unitId &&
-      person.service_status?.code ===
-        "ATTACHED" &&
-      !!person.attachment_unit?.id &&
+      isOutsider(person) &&
       matchesCategory(
         person,
         config.category
@@ -1702,8 +1698,7 @@ function AttachedToUnitReport({
         config.unitId &&
       person.primary_unit?.id !==
         config.unitId &&
-      person.service_status?.code ===
-        "ATTACHED" &&
+      isOutsider(person) &&
       matchesCategory(
         person,
         config.category
@@ -2326,4 +2321,4 @@ export function DailyReportsPage() {
         )}
     </div>
   );
-} 
+}

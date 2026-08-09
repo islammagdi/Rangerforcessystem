@@ -25,12 +25,12 @@ interface DbPersonnelRow {
   id: string;
   primary_unit_id: string | null;
   attachment_unit_id: string | null;
-  rank_id: string | null;
+  personnel_category_id: string | null;
   service_status_id: string | null;
   is_active: boolean;
 }
 
-interface DbRank {
+interface DbPersonnelCategory {
   id: string;
   name: string;
   code: string | null;
@@ -104,11 +104,11 @@ function isManageUnitType(unitType: string | null): boolean {
   return unitType?.trim().toUpperCase() === "MANAGE";
 }
 
-function isSoldierRankId(
-  rankId: string | null,
-  soldierRankIds: Set<string>
+function isInCategory(
+  categoryId: string | null,
+  categoryIds: Set<string>
 ): boolean {
-  return !!rankId && soldierRankIds.has(rankId);
+  return !!categoryId && categoryIds.has(categoryId);
 }
 
 function isAttachedStatusId(
@@ -322,7 +322,7 @@ export function UnitsReportPage() {
 
   const [units, setUnits] = useState<DbUnit[]>([]);
   const [personnel, setPersonnel] = useState<DbPersonnelRow[]>([]);
-  const [ranks, setRanks] = useState<DbRank[]>([]);
+  const [categories, setCategories] = useState<DbPersonnelCategory[]>([]);
   const [serviceStatuses, setServiceStatuses] = useState<DbServiceStatus[]>(
     []
   );
@@ -337,7 +337,7 @@ export function UnitsReportPage() {
     try {
       setLoading(true);
 
-      const [unitsResult, personnelResult, ranksResult, statusesResult] =
+      const [unitsResult, personnelResult, categoriesResult, statusesResult] =
         await Promise.all([
           supabase
             .from("units")
@@ -345,28 +345,30 @@ export function UnitsReportPage() {
             .eq("is_active", true)
             .order("name", { ascending: true }),
 
-          // ⚠️ نعتبر "القوة" هي الأفراد النشطين فقط (is_active = true)
-          // لو المطلوب حساب كل الأفراد بدون استثناء، امسح شرط .eq("is_active", true) هنا
+          // ✅ مصدر الحقيقة الوحيد لحالة الفرد: is_active يستبعد المسرَّحين
+          // والمنقولين خارج السلاح فعليًا. فرد "قوة الوحدة" أو "ملحق" يُحسب
+          // كلاهما ضمن قوة وحدته الأصلية — نفس المبدأ المطبّق في الداشبورد
+          // وصفحة اليوميات.
           supabase
             .from("personnel")
             .select(
-              "id,primary_unit_id,attachment_unit_id,rank_id,service_status_id,is_active"
+              "id,primary_unit_id,attachment_unit_id,personnel_category_id,service_status_id,is_active"
             )
             .eq("is_active", true),
 
-          supabase.from("ranks").select("id,name,code"),
+          supabase.from("personnel_categories").select("id,name,code"),
 
           supabase.from("service_statuses").select("id,name,code"),
         ]);
 
       if (unitsResult.error) throw unitsResult.error;
       if (personnelResult.error) throw personnelResult.error;
-      if (ranksResult.error) throw ranksResult.error;
+      if (categoriesResult.error) throw categoriesResult.error;
       if (statusesResult.error) throw statusesResult.error;
 
       setUnits(unitsResult.data ?? []);
       setPersonnel(personnelResult.data ?? []);
-      setRanks(ranksResult.data ?? []);
+      setCategories(categoriesResult.data ?? []);
       setServiceStatuses(statusesResult.data ?? []);
     } catch (error: any) {
       console.error("Error loading units report data:", error);
@@ -381,22 +383,39 @@ export function UnitsReportPage() {
     }
   }
 
-  // ---- مجموعات مساعدة للمطابقة (رتبة "جندي" / موقف "ملحق علي القوة") ----
+  // ---- مجموعات مساعدة للمطابقة (فئة الفرد / حالة الخدمة) ----
 
-  const soldierRankIds = useMemo(() => {
+  // ✅ "جنود" = فئة الفرد "مجند"، "ضباط صف" = فئة الفرد "متطوع"
+  // (نفس تعريف الداشبورد بالظبط — مش حسب الرتبة)
+  const conscriptCategoryIds = useMemo(() => {
     const set = new Set<string>();
 
-    ranks.forEach((r) => {
-      const name = r.name?.trim();
-      const code = r.code?.trim().toUpperCase();
+    categories.forEach((c) => {
+      const name = c.name?.trim();
+      const code = c.code?.trim().toUpperCase();
 
-      if (name === "جندي" || code === "SOLDIER") {
-        set.add(r.id);
+      if (code === "CONSCRIPT" || name === "مجند") {
+        set.add(c.id);
       }
     });
 
     return set;
-  }, [ranks]);
+  }, [categories]);
+
+  const volunteerCategoryIds = useMemo(() => {
+    const set = new Set<string>();
+
+    categories.forEach((c) => {
+      const name = c.name?.trim();
+      const code = c.code?.trim().toUpperCase();
+
+      if (code === "VOLUNTEER" || name === "متطوع") {
+        set.add(c.id);
+      }
+    });
+
+    return set;
+  }, [categories]);
 
   const attachedStatusIds = useMemo(() => {
     const set = new Set<string>();
@@ -405,13 +424,26 @@ export function UnitsReportPage() {
       const name = s.name?.trim();
       const code = s.code?.trim().toUpperCase();
 
-      if (code === "ATTACHED" || name === "ملحق علي القوة") {
+      if (code === "ATTACHED" || name === "ملحق علي القوة" || name === "ملحق") {
         set.add(s.id);
       }
     });
 
     return set;
   }, [serviceStatuses]);
+
+  // ✅ الوحدات الأساسية (MAIN) فقط — القوة العامة بتتحسب من دول بس
+  const mainUnitIds = useMemo(() => {
+    const set = new Set<string>();
+
+    units.forEach((u) => {
+      if (isMainUnitType(u.unit_type)) {
+        set.add(u.id);
+      }
+    });
+
+    return set;
+  }, [units]);
 
   // ---- إحصائيات الوحدات الرئيسية (أعلى الصفحة) ----
 
@@ -425,14 +457,27 @@ export function UnitsReportPage() {
     [units]
   );
 
-  const totalStrength = personnel.length;
+  // ✅ إجمالي القوة = كل فرد وحدته الأساسية من نوع MAIN (بغض النظر عن
+  // كونه قوة الوحدة أو ملحق) — نفس تجميع الداشبورد ويومية "بخوارج
+  // الوحدات" بالظبط
+  const totalStrength = useMemo(
+    () =>
+      personnel.filter(
+        (p) => !!p.primary_unit_id && mainUnitIds.has(p.primary_unit_id)
+      ).length,
+    [personnel, mainUnitIds]
+  );
 
+  // ✅ إجمالي الخوارج = من ضمن نفس تجمّع القوة (MAIN) + حالته ملحق
   const totalKhawarij = useMemo(
     () =>
-      personnel.filter((p) =>
-        isAttachedStatusId(p.service_status_id, attachedStatusIds)
+      personnel.filter(
+        (p) =>
+          !!p.primary_unit_id &&
+          mainUnitIds.has(p.primary_unit_id) &&
+          isAttachedStatusId(p.service_status_id, attachedStatusIds)
       ).length,
-    [personnel, attachedStatusIds]
+    [personnel, mainUnitIds, attachedStatusIds]
   );
 
   // ---- بناء كارت كل وحدة ----
@@ -443,29 +488,36 @@ export function UnitsReportPage() {
       .map((u) => {
         const isMain = isMainUnitType(u.unit_type);
 
-        // قوة الوحدة الأساسية = الأفراد اللي وحدتهم الأساسية هي دي
-        // قوة الوحدة الإدارية = الأفراد اللي مكان إلحاقهم هو دي
+        // قوة الوحدة الأساسية = كل الأفراد اللي وحدتهم الأساسية هي دي،
+        // بغض النظر عن حالتهم (قوة الوحدة أو ملحق) — الملحق برضه جزء من
+        // قوة وحدته الأصلية.
+        // قوة الوحدة الإدارية = الأفراد اللي مكان إلحاقهم هو دي وحالتهم "ملحق".
         const unitPersonnel = isMain
           ? personnel.filter((p) => p.primary_unit_id === u.id)
-          : personnel.filter((p) => p.attachment_unit_id === u.id);
+          : personnel.filter(
+              (p) =>
+                p.attachment_unit_id === u.id &&
+                isAttachedStatusId(p.service_status_id, attachedStatusIds)
+            );
 
         const strengthCount = unitPersonnel.length;
 
         const soldiers = unitPersonnel.filter((p) =>
-          isSoldierRankId(p.rank_id, soldierRankIds)
+          isInCategory(p.personnel_category_id, conscriptCategoryIds)
         ).length;
 
-        const ncos = strengthCount - soldiers;
+        const ncos = unitPersonnel.filter((p) =>
+          isInCategory(p.personnel_category_id, volunteerCategoryIds)
+        ).length;
 
-        // الخوارج مفهوم خاص بالوحدة الأساسية فقط: فرد له مكان إلحاق رغم
-        // إن وحدته الأساسية هي دي. الوحدة الإدارية ليس لها خوارج.
-       const khawarijCount = isMain
-  ? unitPersonnel.filter(
-      (p) =>
-        isAttachedStatusId(p.service_status_id, attachedStatusIds) &&
-        !!p.attachment_unit_id
-    ).length
-  : 0;
+        // الخوارج مفهوم خاص بالوحدة الأساسية فقط: فرد وحدته الأساسية هي
+        // دي وحالته "ملحق" (بغض النظر عن جهة الإلحاق). الوحدة الإدارية
+        // ليس لها خوارج.
+        const khawarijCount = isMain
+          ? unitPersonnel.filter((p) =>
+              isAttachedStatusId(p.service_status_id, attachedStatusIds)
+            ).length
+          : 0;
 
         const khawarijPct =
           isMain && strengthCount > 0
@@ -484,7 +536,13 @@ export function UnitsReportPage() {
           khawarijCount,
         };
       });
-  }, [units, personnel, soldierRankIds]);
+  }, [
+    units,
+    personnel,
+    conscriptCategoryIds,
+    volunteerCategoryIds,
+    attachedStatusIds,
+  ]);
 
   const visible = useMemo(() => {
     let list = unitViews;

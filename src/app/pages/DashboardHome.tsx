@@ -161,11 +161,23 @@ export function DashboardHome() {
   // ============================================================
   // إحصائيات القوة والخوارج
   //
-  // ✅ FIX: مصدر الحقيقة الوحيد لحالة الفرد (بالخدمة / منتهي خدمته) هو
-  // service_status_id فقط. تم حذف شرط is_active = true من كل الاستعلامات
-  // هنا لأنه كان بيسبب عدم توافق مع باقي الصفحات (تفاصيل الفرد / دفعات
-  // الرديف) في حالة عدم تزامن is_active مع service_status_id بعد أي
-  // تعديل يدوي من صفحة تعديل بيانات الفرد.
+  // ✅ مصدر الحقيقة الموحّد (نفس المطبّق بالظبط في تقرير الوحدات وصفحة
+  // اليوميات):
+  //
+  //   القوة العامة (جنود/ضباط صف) — فرد يُحسب ضمنها بغض النظر عن كونه
+  //   "قوة الوحدة" أو "ملحق" (الملحق برضه جزء من قوة وحدته الأصلية):
+  //     - primary_unit.unit_type = MAIN فقط (مش MANAGE)
+  //     - is_active = true
+  //     - "جنود" = فئة الفرد "مجند"، "ضباط صف" = فئة الفرد "متطوع"
+  //
+  //   خارج (من نفس تجمّع القوة أعلاه):
+  //     - primary_unit_id موجود
+  //     - service_status_id = ATTACHED (ملحق)
+  //     - is_active = true
+  //
+  // القيود بالـ !inner join على primary_unit.unit_type بتضمن إن نفس
+  // التجميع (MAIN فقط) بيتطبق هنا زي ما بيتطبق في تقرير الوحدات
+  // ويومية "بخوارج الوحدات" بالظبط، فالأرقام تتطابق دايمًا.
   // ============================================================
 
   const loadPersonnelStats = async () => {
@@ -220,7 +232,7 @@ export function DashboardHome() {
 
 
       // --------------------------------------------------------
-      // 2. حالات الخدمة
+      // 2. حالة "ملحق"
       // --------------------------------------------------------
 
       const {
@@ -229,10 +241,7 @@ export function DashboardHome() {
       } = await supabase
         .from("service_statuses")
         .select("id, code")
-        .in("code", [
-          "UNIT_FORCE",
-          "ATTACHED",
-        ]);
+        .eq("code", "ATTACHED");
 
       if (statusesError) {
         console.error(
@@ -242,35 +251,25 @@ export function DashboardHome() {
         return;
       }
 
-      const unitForceStatus =
-        statuses?.find(
-          (item) =>
-            item.code === "UNIT_FORCE"
-        );
-
       const attachedStatus =
         statuses?.find(
           (item) =>
             item.code === "ATTACHED"
         );
 
-      if (
-        !unitForceStatus ||
-        !attachedStatus
-      ) {
+      if (!attachedStatus) {
         console.error(
-          "لم يتم العثور على UNIT_FORCE أو ATTACHED"
+          "لم يتم العثور على ATTACHED"
         );
         return;
       }
 
 
       // --------------------------------------------------------
-      // 3. إجمالي المتطوعين
+      // 3. عدد المتطوعين (= "ضباط صف" ضمن القوة العامة)
       //
-      // UNIT_FORCE + ATTACHED
-      // ✅ FIX: تم حذف .eq("is_active", true) — الفلترة بقت معتمدة
-      // فقط على service_status_id (مصدر الحقيقة الوحيد)
+      // وحدة أساسية نوعها MAIN فقط + is_active = true
+      // (بغض النظر عن كونه قوة الوحدة أو ملحق)
       // --------------------------------------------------------
 
       const {
@@ -278,18 +277,16 @@ export function DashboardHome() {
         error: volunteersError,
       } = await supabase
         .from("personnel")
-        .select("id", {
-          count: "exact",
-          head: true,
-        })
+        .select(
+          "id, primary_unit:units!personnel_primary_unit_id_fkey!inner(unit_type)",
+          { count: "exact", head: true }
+        )
         .eq(
           "personnel_category_id",
           volunteerCategory.id
         )
-        .in("service_status_id", [
-          unitForceStatus.id,
-          attachedStatus.id,
-        ]);
+        .eq("is_active", true)
+        .ilike("primary_unit.unit_type", "MAIN");
 
       if (volunteersError) {
         console.error(
@@ -300,10 +297,9 @@ export function DashboardHome() {
 
 
       // --------------------------------------------------------
-      // 4. إجمالي المجندين
+      // 4. عدد المجندين (= "جنود" ضمن القوة العامة)
       //
-      // UNIT_FORCE + ATTACHED
-      // ✅ FIX: تم حذف .eq("is_active", true)
+      // نفس شرط القوة أعلاه
       // --------------------------------------------------------
 
       const {
@@ -311,18 +307,16 @@ export function DashboardHome() {
         error: conscriptsError,
       } = await supabase
         .from("personnel")
-        .select("id", {
-          count: "exact",
-          head: true,
-        })
+        .select(
+          "id, primary_unit:units!personnel_primary_unit_id_fkey!inner(unit_type)",
+          { count: "exact", head: true }
+        )
         .eq(
           "personnel_category_id",
           conscriptCategory.id
         )
-        .in("service_status_id", [
-          unitForceStatus.id,
-          attachedStatus.id,
-        ]);
+        .eq("is_active", true)
+        .ilike("primary_unit.unit_type", "MAIN");
 
       if (conscriptsError) {
         console.error(
@@ -335,8 +329,7 @@ export function DashboardHome() {
       // --------------------------------------------------------
       // 5. خوارج المتطوعين
       //
-      // ATTACHED فقط
-      // ✅ FIX: تم حذف .eq("is_active", true)
+      // من ضمن نفس تجمّع القوة (MAIN) + حالته ملحق + is_active = true
       // --------------------------------------------------------
 
       const {
@@ -344,18 +337,20 @@ export function DashboardHome() {
         error: outsideVolunteersError,
       } = await supabase
         .from("personnel")
-        .select("id", {
-          count: "exact",
-          head: true,
-        })
+        .select(
+          "id, primary_unit:units!personnel_primary_unit_id_fkey!inner(unit_type)",
+          { count: "exact", head: true }
+        )
         .eq(
           "personnel_category_id",
           volunteerCategory.id
         )
+        .eq("is_active", true)
         .eq(
           "service_status_id",
           attachedStatus.id
-        );
+        )
+        .ilike("primary_unit.unit_type", "MAIN");
 
       if (outsideVolunteersError) {
         console.error(
@@ -368,8 +363,7 @@ export function DashboardHome() {
       // --------------------------------------------------------
       // 6. خوارج المجندين
       //
-      // ATTACHED فقط
-      // ✅ FIX: تم حذف .eq("is_active", true)
+      // نفس شرط الخارج أعلاه
       // --------------------------------------------------------
 
       const {
@@ -377,18 +371,20 @@ export function DashboardHome() {
         error: outsideConscriptsError,
       } = await supabase
         .from("personnel")
-        .select("id", {
-          count: "exact",
-          head: true,
-        })
+        .select(
+          "id, primary_unit:units!personnel_primary_unit_id_fkey!inner(unit_type)",
+          { count: "exact", head: true }
+        )
         .eq(
           "personnel_category_id",
           conscriptCategory.id
         )
+        .eq("is_active", true)
         .eq(
           "service_status_id",
           attachedStatus.id
-        );
+        )
+        .ilike("primary_unit.unit_type", "MAIN");
 
       if (outsideConscriptsError) {
         console.error(
@@ -414,6 +410,8 @@ export function DashboardHome() {
       const outsideConscripts =
         outsideConscriptsCount ?? 0;
 
+      // ✅ عدد المتطوعين + عدد المجندين = إجمالي القوة دايمًا (نفس تجمّع
+      // البيانات بالظبط، مفيش أي استعلام منفصل لـ"إجمالي القوة")
       const totalForce =
         volunteers + conscripts;
 
@@ -600,12 +598,7 @@ export function DashboardHome() {
       // --------------------------------------------------------
       // حساب مستحقي التسريح
       //
-      // مجند فقط
-      // تاريخ التسريح = تاريخ الدفعة القادمة
-      // ✅ FIX: تم حذف .eq("is_active", true) — لو كان الفرد اتحدد له
-      // discharge_date يبقى ده كافي؛ الفلترة على is_active منفصل كانت
-      // ممكن تستبعد أفراد اتحدث service_status_id بتاعهم من صفحة
-      // التعديل من غير ما يتزامن is_active معاه.
+      // مجند فقط + تاريخ التسريح = تاريخ الدفعة القادمة + is_active=true
       // --------------------------------------------------------
 
       const {
@@ -621,6 +614,7 @@ export function DashboardHome() {
           "personnel_category_id",
           conscriptCategory.id
         )
+        .eq("is_active", true)
         .eq(
           "discharge_date",
           formattedBatchDate
