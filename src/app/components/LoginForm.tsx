@@ -1,4 +1,8 @@
-import { useState, FormEvent } from "react";
+import {
+  useState,
+  useEffect,
+  FormEvent,
+} from "react";
 import { useNavigate } from "react-router";
 import { EgyptEmblem } from "./EgyptEmblem";
 import { LoginInput } from "./LoginInput";
@@ -10,7 +14,10 @@ interface FormErrors {
   password?: string;
 }
 
-function validate(username: string, password: string): FormErrors {
+function validate(
+  username: string,
+  password: string
+): FormErrors {
   const errors: FormErrors = {};
 
   if (!username.trim()) {
@@ -29,16 +36,108 @@ function validate(username: string, password: string): FormErrors {
 export function LoginForm() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [loading, setLoading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+
+  const [errors, setErrors] =
+    useState<FormErrors>({});
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [submitted, setSubmitted] =
+    useState(false);
+
+  // مهم: نمنع ظهور LoginForm لحظياً
+  // أثناء فحص الـ Session
+  const [checkingSession, setCheckingSession] =
+    useState(true);
 
   const navigate = useNavigate();
 
-  const handleSubmit = async (e: FormEvent) => {
+  // =====================================================
+  // Check Existing Session
+  // =====================================================
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function checkExistingSession() {
+      try {
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error(
+            "CHECK SESSION ERROR:",
+            error
+          );
+
+          return;
+        }
+
+        // ===============================================
+        // يوجد Session بالفعل
+        // ===============================================
+
+        if (session) {
+          console.log(
+            "Existing session found:",
+            session.user.id
+          );
+
+          // تأكد أن بيانات الـ role القديمة
+          // لا تسبب مشكلة
+          // لأن LoginForm سبق وخزنها في sessionStorage
+
+          if (mounted) {
+            navigate("/dashboard", {
+              replace: true,
+            });
+          }
+
+          return;
+        }
+
+        // ===============================================
+        // لا توجد Session
+        // ===============================================
+
+        console.log(
+          "No existing session"
+        );
+      } catch (error) {
+        console.error(
+          "SESSION CHECK EXCEPTION:",
+          error
+        );
+      } finally {
+        if (mounted) {
+          setCheckingSession(false);
+        }
+      }
+    }
+
+    checkExistingSession();
+
+    return () => {
+      mounted = false;
+    };
+  }, [navigate]);
+
+  // =====================================================
+  // Login
+  // =====================================================
+
+  const handleSubmit = async (
+    e: FormEvent
+  ) => {
     e.preventDefault();
 
-    const errs = validate(username, password);
+    const errs = validate(
+      username,
+      password
+    );
 
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
@@ -50,8 +149,9 @@ export function LoginForm() {
 
     try {
       // ============================================
-      // 1. تسجيل الدخول
+      // 1. Login Supabase Auth
       // ============================================
+
       const { data, error } =
         await supabase.auth.signInWithPassword({
           email: username.trim(),
@@ -59,10 +159,14 @@ export function LoginForm() {
         });
 
       if (error) {
-        console.error("LOGIN ERROR:", error);
+        console.error(
+          "LOGIN ERROR:",
+          error
+        );
 
         setErrors({
-          username: "بيانات تسجيل الدخول غير صحيحة",
+          username:
+            "بيانات تسجيل الدخول غير صحيحة",
         });
 
         return;
@@ -70,29 +174,22 @@ export function LoginForm() {
 
       if (!data.user) {
         setErrors({
-          username: "تعذر تسجيل الدخول",
+          username:
+            "تعذر تسجيل الدخول",
         });
 
         return;
       }
 
       // ============================================
-      // 2. التأكد من وجود Session
+      // 2. Check Session
       // ============================================
+
       const {
         data: sessionData,
         error: sessionError,
-      } = await supabase.auth.getSession();
-
-      console.log(
-        "SUPABASE SESSION:",
-        sessionData.session
-      );
-
-      console.log(
-        "SUPABASE USER:",
-        sessionData.session?.user
-      );
+      } =
+        await supabase.auth.getSession();
 
       if (sessionError) {
         console.error(
@@ -100,16 +197,6 @@ export function LoginForm() {
           sessionError
         );
       }
-
-      console.log(
-        "SESSION:",
-        sessionData.session
-      );
-
-      console.log(
-        "USER ID:",
-        sessionData.session?.user?.id
-      );
 
       if (!sessionData.session) {
         setErrors({
@@ -121,15 +208,23 @@ export function LoginForm() {
       }
 
       // ============================================
-      // 3. التأكد من وجود Profile
+      // 3. Get Profile
       // ============================================
+
       const {
         data: profile,
         error: profileError,
       } = await supabase
         .from("profiles")
-        .select("id, username")
-        .eq("id", data.user.id)
+        .select(`
+          id,
+          username,
+          is_active
+        `)
+        .eq(
+          "id",
+          data.user.id
+        )
         .maybeSingle();
 
       if (profileError) {
@@ -159,14 +254,25 @@ export function LoginForm() {
         return;
       }
 
-      console.log(
-        "PROFILE:",
-        profile
-      );
+      // ============================================
+      // 4. Check Active
+      // ============================================
+
+      if (profile.is_active !== true) {
+        await supabase.auth.signOut();
+
+        setErrors({
+          username:
+            "تم ايقاف حسابك, الرجاء الرجوع لمدير النظام",
+        });
+
+        return;
+      }
 
       // ============================================
-      // 4. جلب Role المستخدم
+      // 5. Get Role
       // ============================================
+
       const {
         data: userRole,
         error: roleError,
@@ -180,7 +286,10 @@ export function LoginForm() {
             code
           )
         `)
-        .eq("user_id", data.user.id)
+        .eq(
+          "user_id",
+          data.user.id
+        )
         .maybeSingle();
 
       if (roleError) {
@@ -211,32 +320,24 @@ export function LoginForm() {
       }
 
       // ============================================
-      // 5. طباعة الـ Role في Console
+      // 6. Extract Role
       // ============================================
-      console.log(
-        "USER ROLE FULL:",
-        JSON.stringify(userRole, null, 2)
-      );
+
+      const role =
+        Array.isArray(userRole.roles)
+          ? userRole.roles[0]
+          : userRole.roles;
 
       const roleCode =
-        (userRole as any)?.roles?.code;
+        (role as any)?.code;
 
       const roleName =
-        (userRole as any)?.roles?.name;
-
-      console.log(
-        "ROLE CODE:",
-        roleCode
-      );
-
-      console.log(
-        "ROLE NAME:",
-        roleName
-      );
+        (role as any)?.name;
 
       // ============================================
-      // 6. تخزين بيانات المستخدم مؤقتاً
+      // 7. Save User Data
       // ============================================
+
       sessionStorage.setItem(
         "user_role",
         roleCode ?? ""
@@ -258,12 +359,15 @@ export function LoginForm() {
       );
 
       // ============================================
-      // 7. تسجيل الدخول نجح
+      // 8. Login Success
       // ============================================
+
       setSubmitted(true);
 
       setTimeout(() => {
-        navigate("/dashboard");
+        navigate("/dashboard", {
+          replace: true,
+        });
       }, 600);
 
     } catch (error) {
@@ -281,21 +385,45 @@ export function LoginForm() {
     }
   };
 
+  // =====================================================
+  // أثناء فحص Session
+  // =====================================================
+
+  if (checkingSession) {
+    return (
+      <div
+        dir="rtl"
+        className="w-full flex items-center justify-center py-20"
+        style={{
+          fontFamily:
+            "'Almarai', sans-serif",
+        }}
+      >
+        جاري التحقق من الجلسة...
+      </div>
+    );
+  }
+
+  // =====================================================
+  // UI
+  // =====================================================
+
   return (
     <div
       dir="rtl"
       className="w-full flex flex-col items-center gap-8"
     >
-      {/* Header */}
       <div className="flex flex-col items-center gap-5 w-full">
         <EgyptEmblem />
 
         <h1
           className="text-center text-[#344736]"
           style={{
-            fontFamily: "'Almarai', sans-serif",
+            fontFamily:
+              "'Almarai', sans-serif",
             fontWeight: 800,
-            fontSize: "clamp(28px, 4vw, 44px)",
+            fontSize:
+              "clamp(28px, 4vw, 44px)",
             lineHeight: 1.2,
           }}
         >
@@ -305,9 +433,11 @@ export function LoginForm() {
         <p
           className="text-center text-[#344736]"
           style={{
-            fontFamily: "'Almarai', sans-serif",
+            fontFamily:
+              "'Almarai', sans-serif",
             fontWeight: 700,
-            fontSize: "clamp(18px, 2.5vw, 28px)",
+            fontSize:
+              "clamp(18px, 2.5vw, 28px)",
             lineHeight: 1.2,
           }}
         >
@@ -315,7 +445,6 @@ export function LoginForm() {
         </p>
       </div>
 
-      {/* Form */}
       {submitted ? (
         <SuccessMessage />
       ) : (
@@ -325,6 +454,7 @@ export function LoginForm() {
           className="w-full max-w-[400px] flex flex-col gap-6"
         >
           <div className="flex flex-col gap-4">
+
             <LoginInput
               id="username"
               label="اسم المستخدم"
@@ -366,6 +496,7 @@ export function LoginForm() {
               error={errors.password}
               disabled={loading}
             />
+
           </div>
 
           <LoginButton
@@ -380,6 +511,10 @@ export function LoginForm() {
     </div>
   );
 }
+
+// =====================================================
+// Success Message
+// =====================================================
 
 function SuccessMessage() {
   return (
@@ -407,7 +542,8 @@ function SuccessMessage() {
       <p
         className="text-green-800"
         style={{
-          fontFamily: "'Almarai', sans-serif",
+          fontFamily:
+            "'Almarai', sans-serif",
           fontWeight: 700,
           fontSize: "16px",
         }}
@@ -418,7 +554,8 @@ function SuccessMessage() {
       <p
         className="text-green-600"
         style={{
-          fontFamily: "'Almarai', sans-serif",
+          fontFamily:
+            "'Almarai', sans-serif",
           fontSize: "14px",
         }}
       >

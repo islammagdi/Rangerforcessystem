@@ -6,7 +6,7 @@ import {
   X,
 } from "lucide-react";
 import { supabase } from "../../../lib/supabase";
-import imgAvatar from "../../../assets/imagdi.jpg";
+import imgAvatar from "../../../assets/avatar.png";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",

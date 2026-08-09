@@ -11,26 +11,14 @@ const FONT: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
 
-const RANK_OPTIONS = [
-  "جندي",
-  "عريف",
-  "وكيل رقيب",
-  "رقيب",
-  "رقيب أول",
-];
-
-const CATEGORY_OPTIONS = ["مجند", "متطوع"];
-
-const UNIT_OPTIONS = [
-  "مج العمليات الخاصة",
-  "ك ١١٣ صع",
-  "س ١٤٥ اشارة",
-  "فرع العمليات",
-];
-
 // ─────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────
+
+type Option = {
+  id: string;
+  name: string;
+};
 
 type Soldier = {
   id: string;
@@ -57,13 +45,17 @@ function EditDropdown({
   value,
   onChange,
   disabled = false,
+  placeholder = "اختر...",
 }: {
-  options: string[];
-  value: string;
-  onChange: (v: string) => void;
+  options: Option[];
+  value: string | null;
+  onChange: (option: Option) => void;
   disabled?: boolean;
+  placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
+
+  const selectedOption = options.find((option) => option.id === value);
 
   return (
     <div className="relative w-full">
@@ -94,39 +86,58 @@ function EditDropdown({
           style={{
             ...FONT,
             fontSize: 14,
-            color: disabled ? "#cbd2e0" : "#2d3648",
+            color: disabled
+              ? "#cbd2e0"
+              : selectedOption
+              ? "#2d3648"
+              : "#a0abc0",
           }}
         >
-          {value || "-"}
+          {selectedOption?.name || placeholder}
         </span>
       </button>
 
       {open && !disabled && (
-        <ul className="absolute z-50 top-full mt-1 w-full bg-white border border-[#e2e7f0] rounded-[6px] shadow-lg overflow-hidden">
-          {options.map((opt) => (
-            <li key={opt}>
-              <button
-                type="button"
-                onClick={() => {
-                  onChange(opt);
-                  setOpen(false);
-                }}
-                className={[
-                  "w-full text-right px-4 py-2.5",
-                  "hover:bg-[#f5f6fb] transition-colors",
-                  opt === value
-                    ? "bg-[#f0f2fd] text-[#1f3d97]"
-                    : "text-[#2d3648]",
-                ].join(" ")}
+        <ul className="absolute z-50 top-full mt-1 w-full bg-white border border-[#e2e7f0] rounded-[6px] shadow-lg overflow-hidden max-h-60 overflow-y-auto">
+          {options.length === 0 ? (
+            <li>
+              <div
+                className="w-full text-right px-4 py-3"
                 style={{
                   ...FONT,
                   fontSize: 14,
+                  color: "#717d96",
                 }}
               >
-                {opt}
-              </button>
+                لا توجد بيانات
+              </div>
             </li>
-          ))}
+          ) : (
+            options.map((option) => (
+              <li key={option.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(option);
+                    setOpen(false);
+                  }}
+                  className={[
+                    "w-full text-right px-4 py-2.5",
+                    "hover:bg-[#f5f6fb] transition-colors",
+                    option.id === value
+                      ? "bg-[#f0f2fd] text-[#1f3d97]"
+                      : "text-[#2d3648]",
+                  ].join(" ")}
+                  style={{
+                    ...FONT,
+                    fontSize: 14,
+                  }}
+                >
+                  {option.name}
+                </button>
+              </li>
+            ))
+          )}
         </ul>
       )}
     </div>
@@ -214,13 +225,9 @@ function FieldPair({
 }) {
   return (
     <div className="flex flex-col sm:flex-row gap-3 w-full">
-      <div className="flex-1 min-w-0">
-        {left}
-      </div>
+      <div className="flex-1 min-w-0">{left}</div>
 
-      <div className="flex-1 min-w-0">
-        {right}
-      </div>
+      <div className="flex-1 min-w-0">{right}</div>
     </div>
   );
 }
@@ -254,20 +261,110 @@ export function SoldierEditPage() {
   const navigate = useNavigate();
 
   // ───────────────────────────────────────────────────────────
-  // State
+  // Soldier
   // ───────────────────────────────────────────────────────────
 
   const [soldier, setSoldier] = useState<Soldier | null>(null);
 
-  const [rank, setRank] = useState("");
-  const [category, setCategory] = useState("");
-  const [unit, setUnit] = useState("");
+  // ───────────────────────────────────────────────────────────
+  // Dropdown data
+  // ───────────────────────────────────────────────────────────
+
+  const [rankOptions, setRankOptions] = useState<Option[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<Option[]>([]);
+  const [unitOptions, setUnitOptions] = useState<Option[]>([]);
+
+  // ───────────────────────────────────────────────────────────
+  // Selected values
+  // ───────────────────────────────────────────────────────────
+
+  const [rankId, setRankId] = useState<string | null>(null);
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [unitId, setUnitId] = useState<string | null>(null);
+
+  // ───────────────────────────────────────────────────────────
+  // States
+  // ───────────────────────────────────────────────────────────
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const [unitError, setUnitError] = useState("");
   const [error, setError] = useState("");
+
+  // ───────────────────────────────────────────────────────────
+  // Load Dropdown Data
+  // ───────────────────────────────────────────────────────────
+
+  async function loadDropdownData() {
+    try {
+      const [ranksResult, categoriesResult, unitsResult] =
+        await Promise.all([
+          supabase
+            .from("ranks")
+            .select("id,name")
+            .order("name", { ascending: true }),
+
+          supabase
+            .from("personnel_categories")
+            .select("id,name")
+            .order("name", { ascending: true }),
+
+          supabase
+            .from("units")
+            .select("id,name,code,unit_type,is_active")
+            .eq("is_active", true)
+            .order("name", { ascending: true }),
+        ]);
+
+      if (ranksResult.error) {
+        throw ranksResult.error;
+      }
+
+      if (categoriesResult.error) {
+        throw categoriesResult.error;
+      }
+
+      if (unitsResult.error) {
+        throw unitsResult.error;
+      }
+
+      setRankOptions(
+        (ranksResult.data ?? []).map((row) => ({
+          id: row.id,
+          name: row.name,
+        }))
+      );
+
+      setCategoryOptions(
+        (categoriesResult.data ?? []).map((row) => ({
+          id: row.id,
+          name: row.name,
+        }))
+      );
+
+      // الوحدات الأساسية فقط
+      setUnitOptions(
+        (unitsResult.data ?? [])
+          .filter(
+            (unit) =>
+              unit.unit_type?.trim().toUpperCase() === "MAIN"
+          )
+          .map((unit) => ({
+            id: unit.id,
+            name: unit.name,
+          }))
+      );
+    } catch (err: any) {
+      console.error("Error loading dropdown data:", err);
+
+      setError(
+        `حدث خطأ أثناء تحميل بيانات القوائم${
+          err?.message ? `\n${err.message}` : ""
+        }`
+      );
+    }
+  }
 
   // ───────────────────────────────────────────────────────────
   // Load Soldier
@@ -283,10 +380,7 @@ export function SoldierEditPage() {
     setError("");
 
     try {
-      const {
-        data,
-        error: loadError,
-      } = await supabase
+      const { data, error: loadError } = await supabase
         .from("personnel")
         .select(`
           id,
@@ -330,16 +424,11 @@ export function SoldierEditPage() {
         .maybeSingle();
 
       if (loadError) {
-        console.error(
-          "Error loading soldier:",
-          loadError,
-        );
+        console.error("Error loading soldier:", loadError);
 
-        setError(
-          "حدث خطأ أثناء تحميل بيانات الفرد",
-        );
-
+        setError("حدث خطأ أثناء تحميل بيانات الفرد");
         setSoldier(null);
+
         return;
       }
 
@@ -353,159 +442,87 @@ export function SoldierEditPage() {
       const mappedSoldier: Soldier = {
         id: raw.id,
 
-        militaryId:
-          raw.military_number ?? "",
+        militaryId: raw.military_number ?? "",
 
-        name:
-          raw.full_name ?? "",
+        name: raw.full_name ?? "",
 
-        rank:
-          raw.ranks?.name ?? "",
+        rank: raw.ranks?.name ?? "",
 
-        category:
-          raw.personnel_categories?.name ?? "",
+        category: raw.personnel_categories?.name ?? "",
 
-        unit:
-          raw.primary_unit?.name ?? "",
+        unit: raw.primary_unit?.name ?? "",
 
-        serviceStatus:
-          raw.service_statuses?.name ?? "",
+        serviceStatus: raw.service_statuses?.name ?? "",
 
-        dischargeDate:
-          raw.discharge_date
-            ? formatDate(raw.discharge_date)
-            : "",
+        dischargeDate: raw.discharge_date
+          ? formatDate(raw.discharge_date)
+          : "",
 
-        attachmentPlace:
-          raw.attachment_unit?.name ?? "",
+        attachmentPlace: raw.attachment_unit?.name ?? "",
 
-        rankId:
-          raw.rank_id ?? null,
+        rankId: raw.rank_id ?? null,
 
-        categoryId:
-          raw.personnel_category_id ?? null,
+        categoryId: raw.personnel_category_id ?? null,
 
-        unitId:
-          raw.primary_unit_id ?? null,
+        unitId: raw.primary_unit_id ?? null,
       };
 
       setSoldier(mappedSoldier);
 
-      // تعبئة الفورم بالبيانات الحالية
-      setRank(mappedSoldier.rank);
-      setCategory(mappedSoldier.category);
-      setUnit(mappedSoldier.unit);
+      // تحديد القيم الحالية بالـ IDs
+      setRankId(mappedSoldier.rankId);
+      setCategoryId(mappedSoldier.categoryId);
+      setUnitId(mappedSoldier.unitId);
     } catch (err) {
-      console.error(
-        "Unexpected error:",
-        err,
-      );
+      console.error("Unexpected error:", err);
 
-      setError(
-        "حدث خطأ غير متوقع أثناء تحميل البيانات",
-      );
+      setError("حدث خطأ غير متوقع أثناء تحميل البيانات");
     } finally {
       setLoading(false);
     }
   }
 
   // ───────────────────────────────────────────────────────────
-  // Load when page opens
+  // Initial Load
   // ───────────────────────────────────────────────────────────
 
   useEffect(() => {
-    loadSoldier();
+    async function loadPage() {
+      setLoading(true);
+
+      await Promise.all([
+        loadDropdownData(),
+        loadSoldier(),
+      ]);
+
+      setLoading(false);
+    }
+
+    loadPage();
   }, [id]);
-
-  // ───────────────────────────────────────────────────────────
-  // Find IDs from names
-  // ───────────────────────────────────────────────────────────
-
-  async function getRankId(
-    rankName: string,
-  ) {
-    if (!rankName) return null;
-
-    const { data, error } = await supabase
-      .from("ranks")
-      .select("id")
-      .eq("name", rankName)
-      .maybeSingle();
-
-    if (error) {
-      console.error(
-        "Error finding rank:",
-        error,
-      );
-
-      return null;
-    }
-
-    return data?.id ?? null;
-  }
-
-  async function getCategoryId(
-    categoryName: string,
-  ) {
-    if (!categoryName) return null;
-
-    const { data, error } = await supabase
-      .from("personnel_categories")
-      .select("id")
-      .eq("name", categoryName)
-      .maybeSingle();
-
-    if (error) {
-      console.error(
-        "Error finding category:",
-        error,
-      );
-
-      return null;
-    }
-
-    return data?.id ?? null;
-  }
-
-  async function getUnitId(
-    unitName: string,
-  ) {
-    if (!unitName) return null;
-
-    const { data, error } = await supabase
-      .from("units")
-      .select("id")
-      .eq("name", unitName)
-      .maybeSingle();
-
-    if (error) {
-      console.error(
-        "Error finding unit:",
-        error,
-      );
-
-      return null;
-    }
-
-    return data?.id ?? null;
-  }
 
   // ───────────────────────────────────────────────────────────
   // Save
   // ───────────────────────────────────────────────────────────
 
-  async function handleSubmit(
-    e: React.FormEvent,
-  ) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     if (!soldier) return;
 
     // Validation
-    if (!unit.trim()) {
-      setUnitError(
-        "الوحدة الأساسية مطلوبة",
-      );
+    if (!unitId) {
+      setUnitError("الوحدة الأساسية مطلوبة");
+      return;
+    }
+
+    if (!rankId) {
+      setError("الدرجة مطلوبة");
+      return;
+    }
+
+    if (!categoryId) {
+      setError("فئة الفرد مطلوبة");
       return;
     }
 
@@ -514,42 +531,8 @@ export function SoldierEditPage() {
     setSaving(true);
 
     try {
-      // الحصول على IDs المقابلة للقيم المختارة
-      const [
-        rankId,
-        categoryId,
-        unitId,
-      ] = await Promise.all([
-        getRankId(rank),
-        getCategoryId(category),
-        getUnitId(unit),
-      ]);
-
-      if (!rankId) {
-        setError(
-          "لم يتم العثور على الدرجة المحددة في قاعدة البيانات",
-        );
-        return;
-      }
-
-      if (!categoryId) {
-        setError(
-          "لم يتم العثور على فئة الفرد المحددة في قاعدة البيانات",
-        );
-        return;
-      }
-
-      if (!unitId) {
-        setError(
-          "لم يتم العثور على الوحدة المحددة في قاعدة البيانات",
-        );
-        return;
-      }
-
-      // تحديث نفس الفرد باستخدام id الموجود في الرابط
-      const {
-        error: updateError,
-      } = await supabase
+      // تحديث نفس الفرد باستخدام IDs مباشرة
+      const { error: updateError } = await supabase
         .from("personnel")
         .update({
           rank_id: rankId,
@@ -561,29 +544,54 @@ export function SoldierEditPage() {
       if (updateError) {
         console.error(
           "Update personnel error:",
-          updateError,
+          updateError
         );
 
         setError(
           "حدث خطأ أثناء حفظ تعديلات الفرد: " +
-            updateError.message,
+            updateError.message
         );
 
         return;
       }
 
-      // بعد نجاح الحفظ نرجع لتفاصيل نفس الفرد
-      navigate(
-        `/dashboard/individual-query/soldier/${soldier.id}`,
-      );
-    } catch (err) {
-      console.error(
-        "Unexpected save error:",
-        err,
+      // تحديث الحالة المحلية
+      const selectedRank = rankOptions.find(
+        (x) => x.id === rankId
       );
 
+      const selectedCategory = categoryOptions.find(
+        (x) => x.id === categoryId
+      );
+
+      const selectedUnit = unitOptions.find(
+        (x) => x.id === unitId
+      );
+
+      setSoldier((prev) =>
+        prev
+          ? {
+              ...prev,
+              rankId,
+              categoryId,
+              unitId,
+              rank: selectedRank?.name ?? prev.rank,
+              category:
+                selectedCategory?.name ?? prev.category,
+              unit: selectedUnit?.name ?? prev.unit,
+            }
+          : prev
+      );
+
+      // الرجوع لتفاصيل نفس الفرد
+      navigate(
+        `/dashboard/individual-query/soldier/${soldier.id}`
+      );
+    } catch (err) {
+      console.error("Unexpected save error:", err);
+
       setError(
-        "حدث خطأ غير متوقع أثناء حفظ التعديلات",
+        "حدث خطأ غير متوقع أثناء حفظ التعديلات"
       );
     } finally {
       setSaving(false);
@@ -628,6 +636,7 @@ export function SoldierEditPage() {
             ...FONT,
             fontSize: 18,
             color: "#717d96",
+            whiteSpace: "pre-line",
           }}
         >
           {error || "لم يتم العثور على الفرد"}
@@ -636,9 +645,7 @@ export function SoldierEditPage() {
         <button
           type="button"
           onClick={() =>
-            navigate(
-              "/dashboard/individual-query",
-            )
+            navigate("/dashboard/individual-query")
           }
           className="px-4 py-2 rounded-lg text-white"
           style={{
@@ -668,8 +675,7 @@ export function SoldierEditPage() {
         style={{
           ...FONT,
           fontWeight: 700,
-          fontSize:
-            "clamp(20px, 4vw, 28px)",
+          fontSize: "clamp(20px, 4vw, 28px)",
           color: "#2d3648",
           lineHeight: 1.5,
         }}
@@ -717,9 +723,13 @@ export function SoldierEditPage() {
                   </p>
 
                   <EditDropdown
-                    options={RANK_OPTIONS}
-                    value={rank}
-                    onChange={setRank}
+                    options={rankOptions}
+                    value={rankId}
+                    onChange={(option) => {
+                      setRankId(option.id);
+                      setError("");
+                    }}
+                    placeholder="اختر الدرجة"
                   />
                 </div>
               }
@@ -737,9 +747,7 @@ export function SoldierEditPage() {
                   </p>
 
                   <ReadonlyInput
-                    value={
-                      soldier.militaryId
-                    }
+                    value={soldier.militaryId}
                   />
                 </div>
               }
@@ -762,13 +770,13 @@ export function SoldierEditPage() {
                   </p>
 
                   <EditDropdown
-                    options={
-                      CATEGORY_OPTIONS
-                    }
-                    value={category}
-                    onChange={
-                      setCategory
-                    }
+                    options={categoryOptions}
+                    value={categoryId}
+                    onChange={(option) => {
+                      setCategoryId(option.id);
+                      setError("");
+                    }}
+                    placeholder="اختر فئة الفرد"
                   />
                 </div>
               }
@@ -809,12 +817,13 @@ export function SoldierEditPage() {
                   </p>
 
                   <EditDropdown
-                    options={UNIT_OPTIONS}
-                    value={unit}
-                    onChange={(v) => {
-                      setUnit(v);
+                    options={unitOptions}
+                    value={unitId}
+                    onChange={(option) => {
+                      setUnitId(option.id);
                       setUnitError("");
                     }}
+                    placeholder="اختر الوحدة الأساسية"
                   />
 
                   {unitError && (
@@ -871,11 +880,12 @@ export function SoldierEditPage() {
 
                   <EditDropdown
                     options={[]}
-                    value={
-                      soldier.attachmentPlace
-                    }
+                    value={null}
                     onChange={() => {}}
                     disabled
+                    placeholder={
+                      soldier.attachmentPlace || "-"
+                    }
                   />
                 </div>
               }
@@ -893,9 +903,7 @@ export function SoldierEditPage() {
                   </p>
 
                   <ReadonlyInput
-                    value={
-                      soldier.dischargeDate
-                    }
+                    value={soldier.dischargeDate}
                     hasCalendar
                   />
                 </div>
@@ -912,6 +920,7 @@ export function SoldierEditPage() {
                     ...FONT,
                     fontSize: 13,
                     color: "#dc2626",
+                    whiteSpace: "pre-line",
                   }}
                 >
                   {error}
@@ -950,7 +959,6 @@ export function SoldierEditPage() {
                 </span>
               </button>
             </div>
-
           </div>
         </div>
       </form>

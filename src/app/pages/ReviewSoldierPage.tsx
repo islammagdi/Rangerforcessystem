@@ -3,19 +3,32 @@ import { useLocation, useNavigate } from "react-router";
 import { LoadingOverlay } from "../components/LoadingOverlay";
 import { supabase } from "../../lib/supabase";
 
+// ============================================================================
+// Style
+// ============================================================================
+
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
 
+// ============================================================================
+// Types
+// ============================================================================
+
 interface ReviewFormData {
   military_number: string;
   full_name: string;
+
   rank_id: string;
+
   personnel_category_id: string;
   personnel_category: string;
+
   service_status_id: string;
+
   primary_unit_id: string;
   attachment_unit_id: string | null;
+
   discharge_date: string | null;
 
   rank_name: string;
@@ -24,6 +37,25 @@ interface ReviewFormData {
   attachment_unit_name: string;
 }
 
+interface InsertedPersonnel {
+  id: string;
+  created_at: string;
+  military_number: string;
+  full_name: string;
+  rank_id: string;
+  personnel_category_id: string;
+  service_status_id: string;
+  primary_unit_id: string;
+  attachment_unit_id: string | null;
+  discharge_date: string | null;
+  is_active: boolean;
+  updated_at: string | null;
+}
+
+// ============================================================================
+// Page
+// ============================================================================
+
 export function ReviewSoldierPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -31,31 +63,91 @@ export function ReviewSoldierPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // ==========================================================================
+  // البيانات القادمة من صفحة إضافة الفرد
+  // ==========================================================================
+
   const form =
     (location.state as ReviewFormData | null) ?? null;
 
+  // ==========================================================================
+  // اعتماد القيد
+  // ==========================================================================
+
   const handleConfirm = useCallback(async () => {
-    if (!form) return;
+    if (!form) {
+      return;
+    }
 
     try {
       setIsLoading(true);
       setError("");
 
+      // =====================================================
+      // 1. تنظيف البيانات
+      // =====================================================
+
       const militaryNumber =
-        form.military_number.trim();
+        form.military_number?.trim();
+
+      const fullName =
+        form.full_name?.trim();
+
+      if (!militaryNumber) {
+        setError("برجاء إدخال الرقم العسكري.");
+        setIsLoading(false);
+        return;
+      }
+
+      if (!fullName) {
+        setError("برجاء إدخال اسم الفرد.");
+        setIsLoading(false);
+        return;
+      }
+
+      if (!form.rank_id) {
+        setError("برجاء اختيار الدرجة.");
+        setIsLoading(false);
+        return;
+      }
+
+      if (!form.personnel_category_id) {
+        setError("برجاء اختيار فئة الفرد.");
+        setIsLoading(false);
+        return;
+      }
+
+      if (!form.service_status_id) {
+        setError("برجاء اختيار الموقف الخدمي.");
+        setIsLoading(false);
+        return;
+      }
+
+      if (!form.primary_unit_id) {
+        setError("برجاء اختيار الوحدة الأساسية.");
+        setIsLoading(false);
+        return;
+      }
 
       // =====================================================
-      // 1. فحص الرقم العسكري قبل الحفظ
+      // 2. فحص الرقم العسكري قبل الحفظ
       // =====================================================
 
-      const { data: existingPersonnel, error: checkError } =
-        await supabase
-          .from("personnel")
-          .select("id")
-          .eq("military_number", militaryNumber)
-          .maybeSingle();
+      const {
+        data: existingPersonnel,
+        error: checkError,
+      } = await supabase
+        .from("personnel")
+        .select("id")
+        .eq("military_number", militaryNumber)
+        .maybeSingle();
 
       if (checkError) {
+        console.error(
+          "Check military number error:",
+          checkError
+        );
+
         throw checkError;
       }
 
@@ -63,17 +155,35 @@ export function ReviewSoldierPage() {
         setError(
           `الرقم العسكري ${militaryNumber} مسجل بالفعل ولا يمكن تكراره.`
         );
+
         setIsLoading(false);
         return;
       }
 
       // =====================================================
-      // 2. تجهيز البيانات للحفظ
+      // 3. تجهيز تاريخ التسريح
+      // =====================================================
+
+      /*
+       * المتطوع لا يتم حفظ تاريخ تسريح له.
+       *
+       * أما باقي الفئات:
+       * يتم حفظ التاريخ كما جاء من الفورم.
+       */
+
+      const dischargeDate =
+        form.personnel_category === "متطوع"
+          ? null
+          : form.discharge_date || null;
+
+      // =====================================================
+      // 4. تجهيز البيانات للحفظ
       // =====================================================
 
       const payload = {
         military_number: militaryNumber,
-        full_name: form.full_name.trim(),
+
+        full_name: fullName,
 
         rank_id: form.rank_id,
 
@@ -89,47 +199,58 @@ export function ReviewSoldierPage() {
         attachment_unit_id:
           form.attachment_unit_id || null,
 
-        // المتطوع يتم حفظ تاريخ تسريحه NULL
-        discharge_date:
-          form.personnel_category === "متطوع"
-            ? null
-            : form.discharge_date || null,
+        discharge_date: dischargeDate,
 
         is_active: true,
       };
 
+      console.log(
+        "PERSONNEL PAYLOAD:",
+        payload
+      );
+
       // =====================================================
-      // 3. الحفظ النهائي في personnel
+      // 5. الحفظ النهائي في personnel
       // =====================================================
 
-      const { data: insertedPersonnel, error: insertError } =
-        await supabase
-          .from("personnel")
-          .insert(payload)
-          .select(`
-            id,
-            created_at,
-            military_number,
-            full_name,
-            rank_id,
-            personnel_category_id,
-            service_status_id,
-            primary_unit_id,
-            attachment_unit_id,
-            discharge_date,
-            is_active,
-            updated_at
-          `)
-          .single();
+      const {
+        data: insertedPersonnel,
+        error: insertError,
+      } = await supabase
+        .from("personnel")
+        .insert(payload)
+        .select(`
+          id,
+          created_at,
+          military_number,
+          full_name,
+          rank_id,
+          personnel_category_id,
+          service_status_id,
+          primary_unit_id,
+          attachment_unit_id,
+          discharge_date,
+          is_active,
+          updated_at
+        `)
+        .single();
+
+      // =====================================================
+      // 6. معالجة خطأ الحفظ
+      // =====================================================
 
       if (insertError) {
+        console.error(
+          "Insert personnel error:",
+          insertError
+        );
 
-        // حماية إضافية في حالة حدوث duplicate
-        // بسبب إدخال آخر في نفس اللحظة
+        // duplicate
         if (insertError.code === "23505") {
           setError(
             `الرقم العسكري ${militaryNumber} مسجل بالفعل ولا يمكن تكراره.`
           );
+
           setIsLoading(false);
           return;
         }
@@ -137,44 +258,58 @@ export function ReviewSoldierPage() {
         throw insertError;
       }
 
+      if (!insertedPersonnel) {
+        throw new Error(
+          "لم يتم إنشاء سجل الفرد."
+        );
+      }
+
       // =====================================================
-      // 4. الانتقال للصفحة النهائية
-      //    مع البيانات التي تم حفظها فعليًا
+      // 7. التحقق من ID الذي تم إنشاؤه
       // =====================================================
+
+      const personnelId =
+        (insertedPersonnel as InsertedPersonnel).id;
+
+      if (!personnelId) {
+        throw new Error(
+          "لم يتم الحصول على رقم سجل الفرد بعد الحفظ."
+        );
+      }
+
+      console.log(
+        "INSERTED PERSONNEL ID:",
+        personnelId
+      );
+
+      console.log(
+        "INSERTED DISCHARGE DATE:",
+        insertedPersonnel.discharge_date
+      );
+
+      // =====================================================
+      // 8. الانتقال إلى صفحة النجاح
+      // =====================================================
+
+      /*
+       * مهم جدًا:
+       *
+       * SuccessSoldierPage تبحث عن:
+       *
+       * location.state.personnelId
+       *
+       * لذلك يجب إرسال personnelId هنا.
+       */
 
       navigate(
         "/dashboard/add-soldier/success",
         {
           state: {
-            personnel: insertedPersonnel,
-
-            // البيانات المعروضة للمستخدم
-            military_number:
-              insertedPersonnel.military_number,
-
-            full_name:
-              insertedPersonnel.full_name,
-
-            rank_name:
-              form.rank_name,
-
-            personnel_category:
-              form.personnel_category,
-
-            status_name:
-              form.status_name,
-
-            primary_unit_name:
-              form.primary_unit_name,
-
-            attachment_unit_name:
-              form.attachment_unit_name,
-
-            discharge_date:
-              insertedPersonnel.discharge_date,
+            personnelId: personnelId,
           },
         }
       );
+
     } catch (err) {
       console.error(
         "Error saving personnel:",
@@ -189,11 +324,21 @@ export function ReviewSoldierPage() {
     }
   }, [form, navigate]);
 
+  // ==========================================================================
+  // لا توجد بيانات للمراجعة
+  // ==========================================================================
+
   if (!form) {
     return (
       <div
         dir="rtl"
-        className="flex flex-col items-center gap-5 py-20"
+        className="
+          flex
+          flex-col
+          items-center
+          gap-5
+          py-20
+        "
       >
         <p
           style={{
@@ -208,9 +353,15 @@ export function ReviewSoldierPage() {
         <button
           type="button"
           onClick={() =>
-            navigate("/dashboard/add-soldier")
+            navigate(
+              "/dashboard/add-soldier"
+            )
           }
-          className="px-6 h-[44px] rounded-[8px]"
+          className="
+            px-6
+            h-[44px]
+            rounded-[8px]
+          "
           style={{
             background:
               "linear-gradient(to bottom, #00b867, #00522e)",
@@ -229,17 +380,30 @@ export function ReviewSoldierPage() {
     );
   }
 
+  // ==========================================================================
+  // UI
+  // ==========================================================================
+
   return (
     <div
-      className="flex flex-col gap-6 w-full"
+      className="
+        flex
+        flex-col
+        gap-6
+        w-full
+      "
       dir="rtl"
     >
+      {/* Loading */}
+
       {isLoading && (
         <LoadingOverlay
           onDone={() => {}}
           durationMs={5000}
         />
       )}
+
+      {/* Title */}
 
       <h1
         className="text-center"
@@ -253,8 +417,27 @@ export function ReviewSoldierPage() {
         قيد قوة جديدة
       </h1>
 
-      <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full">
-        <div className="flex flex-col gap-6 px-6 py-5">
+      {/* Main Card */}
+
+      <div
+        className="
+          bg-white
+          rounded-[20px]
+          border
+          border-[#eff0f6]
+          w-full
+        "
+      >
+        <div
+          className="
+            flex
+            flex-col
+            gap-6
+            px-6
+            py-5
+          "
+        >
+          {/* Section title */}
 
           <p
             style={{
@@ -267,40 +450,62 @@ export function ReviewSoldierPage() {
             مراجعة البيانات
           </p>
 
+          {/* Divider */}
+
           <div className="w-full h-px bg-[#cbd2e0]" />
 
-          {/* البيانات */}
+          {/* =================================================================
+              البيانات
+          ================================================================== */}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-
+          <div
+            className="
+              grid
+              grid-cols-1
+              md:grid-cols-2
+              gap-5
+            "
+          >
             <InfoRow
               label="الرقم العسكري"
-              value={form.military_number}
+              value={
+                form.military_number
+              }
             />
 
             <InfoRow
               label="الاسم"
-              value={form.full_name}
+              value={
+                form.full_name
+              }
             />
 
             <InfoRow
               label="فئة الفرد"
-              value={form.personnel_category}
+              value={
+                form.personnel_category
+              }
             />
 
             <InfoRow
               label="الدرجة"
-              value={form.rank_name}
+              value={
+                form.rank_name
+              }
             />
 
             <InfoRow
               label="الموقف الخدمي"
-              value={form.status_name}
+              value={
+                form.status_name
+              }
             />
 
             <InfoRow
               label="الوحدة الأساسية"
-              value={form.primary_unit_name}
+              value={
+                form.primary_unit_name
+              }
             />
 
             <InfoRow
@@ -314,23 +519,36 @@ export function ReviewSoldierPage() {
             <InfoRow
               label="تاريخ التسريح"
               value={
-                form.discharge_date
-                  ? form.discharge_date
-                  : "لا يوجد"
+                form.personnel_category ===
+                "متطوع"
+                  ? "لا يوجد"
+                  : form.discharge_date ||
+                    "لا يوجد"
               }
             />
-
           </div>
 
-          {/* رسالة الخطأ */}
+          {/* =================================================================
+              رسالة الخطأ
+          ================================================================== */}
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-[10px] px-4 py-3">
+            <div
+              className="
+                bg-red-50
+                border
+                border-red-200
+                rounded-[10px]
+                px-4
+                py-3
+              "
+            >
               <p
                 style={{
                   ...F,
                   color: "#dc2626",
                   fontSize: 14,
+                  lineHeight: 1.8,
                 }}
               >
                 {error}
@@ -338,14 +556,29 @@ export function ReviewSoldierPage() {
             </div>
           )}
 
-          {/* اعتماد */}
+          {/* =================================================================
+              اعتماد
+          ================================================================== */}
 
-          <div className="flex justify-end pt-3">
+          <div
+            className="
+              flex
+              justify-end
+              pt-3
+            "
+          >
             <button
               type="button"
               onClick={handleConfirm}
               disabled={isLoading}
-              className="h-[44px] px-6 rounded-[8px] disabled:opacity-50"
+              className="
+                h-[44px]
+                px-6
+                rounded-[8px]
+                disabled:opacity-50
+                transition-opacity
+                hover:opacity-90
+              "
               style={{
                 background:
                   "linear-gradient(to bottom, #00b867, #00522e)",
@@ -364,12 +597,15 @@ export function ReviewSoldierPage() {
               </span>
             </button>
           </div>
-
         </div>
       </div>
     </div>
   );
 }
+
+// ============================================================================
+// Info Row
+// ============================================================================
 
 function InfoRow({
   label,
@@ -379,13 +615,21 @@ function InfoRow({
   value: string;
 }) {
   return (
-    <div className="flex gap-2">
+    <div
+      className="
+        flex
+        gap-2
+        min-w-0
+      "
+      dir="rtl"
+    >
       <span
         style={{
           ...F,
           color: "#717d96",
           fontSize: 16,
           minWidth: 130,
+          flexShrink: 0,
         }}
       >
         {label}:
@@ -397,6 +641,9 @@ function InfoRow({
           color: "#2d3648",
           fontSize: 16,
           fontWeight: 600,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
         }}
       >
         {value || "غير محدد"}

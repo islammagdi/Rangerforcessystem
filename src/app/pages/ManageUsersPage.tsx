@@ -54,6 +54,8 @@ type Role = {
   is_active: boolean | null;
 };
 
+const DEFAULT_PASSWORD = "123456789";
+
 export function ManageUsersPage() {
   const [users, setUsers] = useState<Profile[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -99,10 +101,6 @@ export function ManageUsersPage() {
     setError("");
 
     try {
-      // -------------------------------------------------
-      // Profiles
-      // -------------------------------------------------
-
       const {
         data: profilesData,
         error: profilesError,
@@ -239,7 +237,6 @@ export function ManageUsersPage() {
 
       userRolesData.forEach((item: any) => {
         const userId = item.user_id;
-
         const role = rolesMap.get(item.role_id);
 
         const userRole: UserRole = {
@@ -426,7 +423,7 @@ export function ManageUsersPage() {
   }
 
   // =====================================================
-  // إضافة مستخدم
+  // فتح نافذة إضافة مستخدم
   // =====================================================
 
   function openAddModal() {
@@ -449,6 +446,10 @@ export function ManageUsersPage() {
     setSuccess("");
   }
 
+  // =====================================================
+  // إضافة مستخدم
+  // =====================================================
+
   async function createUser() {
     if (!selectedPersonnel) {
       setError("ابحث عن الفرد أولاً");
@@ -465,6 +466,7 @@ export function ManageUsersPage() {
     setSuccess("");
 
     try {
+      // التأكد مرة أخرى من عدم وجود Profile
       const {
         data: existingProfile,
         error: checkError,
@@ -486,6 +488,10 @@ export function ManageUsersPage() {
           `هذا الفرد لديه حساب مستخدم بالفعل (${existingProfile.username})`
         );
       }
+
+      // -------------------------------------------------
+      // إنشاء المستخدم عن طريق Edge Function
+      // -------------------------------------------------
 
       const {
         data,
@@ -772,110 +778,105 @@ export function ManageUsersPage() {
   // =====================================================
 
   async function resetUserPassword() {
-  if (!selectedUser) return;
+    if (!selectedUser) return;
 
-  const confirmed = window.confirm(
-    `هل تريد إعادة تعيين كلمة مرور المستخدم "${selectedUser.username}" إلى كلمة المرور الافتراضية؟`
-  );
-
-  if (!confirmed) return;
-
-  setSaving(true);
-  setError("");
-  setSuccess("");
-
-  try {
-    const {
-      data,
-      error: functionError,
-    } = await supabase.functions.invoke(
-      "reset-user-password",
-      {
-        body: {
-          user_id: selectedUser.id,
-        },
-      }
+    const confirmed = window.confirm(
+      `هل تريد إعادة تعيين كلمة مرور المستخدم "${selectedUser.username}" إلى ${DEFAULT_PASSWORD}؟`
     );
 
-    if (functionError) {
-      console.error(
-        "RESET PASSWORD FUNCTION ERROR:",
-        functionError
-      );
+    if (!confirmed) return;
 
-      /*
-       * محاولة قراءة Response القادمة
-       * من Edge Function
-       */
+    setSaving(true);
+    setError("");
+    setSuccess("");
 
-      const context =
-        (functionError as any)?.context;
-
-      if (context) {
-        try {
-          const errorBody =
-            await context.json();
-
-          console.error(
-            "RESET PASSWORD RESPONSE:",
-            errorBody
-          );
-
-          throw new Error(
-            errorBody?.error ||
-              errorBody?.message ||
-              functionError.message
-          );
-        } catch (contextError: any) {
-          if (
-            contextError?.message &&
-            contextError.message !==
-              functionError.message
-          ) {
-            throw contextError;
-          }
-
-          throw new Error(
-            functionError.message
-          );
+    try {
+      const {
+        data,
+        error: functionError,
+      } = await supabase.functions.invoke(
+        "reset-user-password",
+        {
+          body: {
+            user_id: selectedUser.id,
+          },
         }
+      );
+
+      if (functionError) {
+        console.error(
+          "RESET PASSWORD FUNCTION ERROR:",
+          functionError
+        );
+
+        const context =
+          (functionError as any)?.context;
+
+        if (context) {
+          try {
+            const errorBody =
+              await context.json();
+
+            console.error(
+              "RESET PASSWORD RESPONSE:",
+              errorBody
+            );
+
+            throw new Error(
+              errorBody?.error ||
+                errorBody?.message ||
+                functionError.message
+            );
+          } catch (contextError: any) {
+            if (
+              contextError?.message &&
+              contextError.message !==
+                functionError.message
+            ) {
+              throw contextError;
+            }
+
+            throw new Error(
+              functionError.message
+            );
+          }
+        }
+
+        throw new Error(
+          functionError.message
+        );
       }
 
-      throw new Error(
-        functionError.message
+      console.log(
+        "RESET PASSWORD RESPONSE:",
+        data
       );
-    }
 
-    console.log(
-      "RESET PASSWORD RESPONSE:",
-      data
-    );
+      if (!data?.success) {
+        throw new Error(
+          data?.error ||
+            data?.message ||
+            "فشل إعادة تعيين كلمة المرور"
+        );
+      }
 
-    if (!data?.success) {
-      throw new Error(
-        data?.error ||
-          data?.message ||
-          "فشل إعادة تعيين كلمة المرور"
+      setSuccess(
+        "تم إعادة تعيين كلمة المرور بنجاح"
       );
+    } catch (err: any) {
+      console.error(
+        "RESET PASSWORD ERROR:",
+        err
+      );
+
+      setError(
+        err?.message ||
+          "حدث خطأ أثناء إعادة تعيين كلمة المرور"
+      );
+    } finally {
+      setSaving(false);
     }
-
-    setSuccess(
-      "تم إعادة تعيين كلمة المرور بنجاح إلى كلمة المرور الافتراضية"
-    );
-  } catch (err: any) {
-    console.error(
-      "RESET PASSWORD ERROR:",
-      err
-    );
-
-    setError(
-      err?.message ||
-        "حدث خطأ أثناء إعادة تعيين كلمة المرور"
-    );
-  } finally {
-    setSaving(false);
   }
-}
 
   // =====================================================
   // اسم الصلاحية
@@ -929,9 +930,7 @@ export function ManageUsersPage() {
           "'Almarai', sans-serif",
       }}
     >
-      {/* =================================================
-          Header
-      ================================================= */}
+      {/* Header */}
 
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -957,9 +956,7 @@ export function ManageUsersPage() {
         </button>
       </div>
 
-      {/* =================================================
-          Global Error
-      ================================================= */}
+      {/* Global Error */}
 
       {error &&
         !showModal &&
@@ -977,9 +974,7 @@ export function ManageUsersPage() {
           </div>
         )}
 
-      {/* =================================================
-          Statistics
-      ================================================= */}
+      {/* Statistics */}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         <StatCard
@@ -1011,9 +1006,7 @@ export function ManageUsersPage() {
         />
       </div>
 
-      {/* =================================================
-          Users Table
-      ================================================= */}
+      {/* Users Table */}
 
       <div className="bg-white rounded-2xl border border-[#e2e8f0] overflow-hidden">
         <div className="px-6 py-5 border-b border-[#e2e8f0] flex items-center justify-between">
@@ -1139,8 +1132,6 @@ export function ManageUsersPage() {
 
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2">
-                        {/* تعديل */}
-
                         <button
                           type="button"
                           onClick={() =>
@@ -1151,8 +1142,6 @@ export function ManageUsersPage() {
                         >
                           <Pencil size={17} />
                         </button>
-
-                        {/* Enable / Disable */}
 
                         <button
                           type="button"
@@ -1213,7 +1202,8 @@ export function ManageUsersPage() {
               <button
                 type="button"
                 onClick={closeAddModal}
-                className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center"
+                disabled={saving}
+                className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center disabled:opacity-50"
               >
                 <X size={19} />
               </button>
@@ -1330,7 +1320,7 @@ export function ManageUsersPage() {
                 <>
                   <div className="mt-5">
                     <label className="block text-sm font-medium text-[#334155] mb-2">
-                      البريد الإلكتروني
+                      البريد الإلكتروني الخاص بـ Auth
                     </label>
 
                     <input
@@ -1343,13 +1333,32 @@ export function ManageUsersPage() {
 
                   <div className="mt-4">
                     <label className="block text-sm font-medium text-[#334155] mb-2">
+                      اسم المستخدم
+                    </label>
+
+                    <input
+                      type="text"
+                      readOnly
+                      value={
+                        selectedPersonnel.military_number
+                      }
+                      className="w-full h-12 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] px-4 text-[#64748b] outline-none"
+                    />
+
+                    <p className="text-xs text-[#94a3b8] mt-2">
+                      سيتم حفظ اسم المستخدم في profiles بدون @auth.local
+                    </p>
+                  </div>
+
+                  <div className="mt-4">
+                    <label className="block text-sm font-medium text-[#334155] mb-2">
                       كلمة المرور الافتراضية
                     </label>
 
                     <input
                       type="text"
                       readOnly
-                      value="123456789"
+                      value={DEFAULT_PASSWORD}
                       className="w-full h-12 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] px-4 text-[#64748b] outline-none"
                     />
 
@@ -1395,7 +1404,7 @@ export function ManageUsersPage() {
                 type="button"
                 onClick={closeAddModal}
                 disabled={saving}
-                className="px-5 h-11 rounded-xl border border-[#cbd5e1] text-[#475569] hover:bg-gray-50"
+                className="px-5 h-11 rounded-xl border border-[#cbd5e1] text-[#475569] hover:bg-gray-50 disabled:opacity-50"
               >
                 إلغاء
               </button>
@@ -1435,8 +1444,6 @@ export function ManageUsersPage() {
               className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden"
               dir="rtl"
             >
-              {/* Header */}
-
               <div className="flex items-center justify-between px-6 py-5 border-b border-[#e2e8f0]">
                 <h2 className="font-bold text-lg text-[#081021]">
                   تعديل بيانات المستخدم
@@ -1453,23 +1460,17 @@ export function ManageUsersPage() {
               </div>
 
               <div className="p-6">
-                {/* Error */}
-
                 {error && (
                   <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                     {error}
                   </div>
                 )}
 
-                {/* Success */}
-
                 {success && (
                   <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
                     {success}
                   </div>
                 )}
-
-                {/* User Info */}
 
                 <div className="mb-5 rounded-xl bg-[#f8fafc] p-4">
                   <p className="text-sm text-[#64748b]">
@@ -1492,8 +1493,6 @@ export function ManageUsersPage() {
                   </p>
                 </div>
 
-                {/* Username */}
-
                 <label className="block text-sm font-medium text-[#334155] mb-2">
                   اسم المستخدم
                 </label>
@@ -1510,7 +1509,9 @@ export function ManageUsersPage() {
                   className="w-full h-12 rounded-xl border border-[#cbd5e1] px-4 outline-none focus:border-[#00B867] disabled:bg-gray-100"
                 />
 
-                {/* Role */}
+                <p className="text-xs text-[#94a3b8] mt-2">
+                  يتم حفظ اسم المستخدم في profiles بدون @auth.local
+                </p>
 
                 <label className="block text-sm font-medium text-[#334155] mb-2 mt-4">
                   الصلاحية
@@ -1539,29 +1540,6 @@ export function ManageUsersPage() {
                     </option>
                   ))}
                 </select>
-                <div className="mt-6 pt-5 border-t border-[#e2e8f0]">
-  <button
-    type="button"
-    onClick={resetUserPassword}
-    disabled={saving}
-    className="w-full h-11 rounded-xl border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 flex items-center justify-center gap-2 disabled:opacity-50"
-  >
-    {saving ? (
-      <Loader2
-        size={18}
-        className="animate-spin"
-      />
-    ) : (
-      <span>🔑</span>
-    )}
-
-    إعادة تعيين كلمة المرور
-  </button>
-
-  <p className="text-xs text-[#94a3b8] mt-2 text-center">
-    سيتم تعيين كلمة المرور إلى كلمة المرور الافتراضية
-  </p>
-</div>
 
                 {/* Reset Password */}
 
@@ -1581,7 +1559,7 @@ export function ManageUsersPage() {
                       </p>
 
                       <p className="font-bold text-orange-900 mt-1">
-                        123456789
+                        {DEFAULT_PASSWORD}
                       </p>
                     </div>
                   </div>
@@ -1607,8 +1585,6 @@ export function ManageUsersPage() {
                   </button>
                 </div>
               </div>
-
-              {/* Footer */}
 
               <div className="px-6 py-4 border-t border-[#e2e8f0] flex justify-start gap-3">
                 <button

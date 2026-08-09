@@ -10,9 +10,23 @@ const F: CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
 
-// خط خاص بمعاينة/طباعة الخطاب فقط (لا يؤثر على باقي صفحات المنظومة)
+// خط خاص بمعاينة/طباعة الخطاب فقط
 const PF: CSSProperties = {
   fontFamily: "'Times New Roman', Times, serif",
+};
+
+/* =========================================================
+   تحويل الأرقام الإنجليزية إلى أرقام عربية
+========================================================= */
+
+const toArabicDigits = (
+  value: string | number | null | undefined
+): string => {
+  if (value === null || value === undefined) return "";
+
+  return String(value).replace(/\d/g, (digit) => {
+    return "٠١٢٣٤٥٦٧٨٩"[Number(digit)];
+  });
 };
 
 type Soldier = {
@@ -197,7 +211,7 @@ function SuccessModal({
               marginTop: 10,
             }}
           >
-            رقم الخطاب: {letterNumber}
+            رقم الخطاب: {toArabicDigits(letterNumber)}
           </p>
         )}
 
@@ -383,16 +397,17 @@ function LetterPreview({
   branchHeadName: string;
   branchHeadRank: string;
 }) {
-  const today = new Date().toLocaleDateString("ar-EG", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  /* =======================================================
+     التاريخ بالأرقام العربية
+  ======================================================= */
 
-  const bodyType =
-    letterType === "end-attachment"
-      ? "إنهاء إلحاق"
-      : "إلحاق";
+  const today = toArabicDigits(
+    new Date().toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    })
+  );
 
   return (
     <>
@@ -400,7 +415,7 @@ function LetterPreview({
         className="bg-white border border-[#ddd] rounded-[4px] p-8 w-full max-w-[680px] mx-auto shadow-sm letter-preview"
         dir="rtl"
       >
-        {/* رأس الخطاب: اللوجو أقصى اليسار / الديباجة أقصى اليمين، على خط واحد */}
+        {/* رأس الخطاب */}
         <div
           style={{
             display: "flex",
@@ -420,7 +435,6 @@ function LetterPreview({
               display: "flex",
               flexDirection: "column",
               alignItems: "flex-start",
-              
             }}
           >
             <p
@@ -472,7 +486,10 @@ function LetterPreview({
           </div>
         </div>
 
-        {/* الجهة - في المنتصف */}
+        {/* =================================================
+            الجهة
+        ================================================= */}
+
         <p
           style={{
             ...PF,
@@ -483,10 +500,13 @@ function LetterPreview({
             width: "100%",
           }}
         >
-          إلى / {destination || "..."}
+          إلى / {toArabicDigits(destination || "...")}
         </p>
 
-        {/* نص الخطاب */}
+        {/* =================================================
+            نص الخطاب
+        ================================================= */}
+
         <p
           style={{
             ...PF,
@@ -499,22 +519,24 @@ function LetterPreview({
         >
           {letterType === "end-attachment" ? (
             <>
-              قادم لكم اليوم الفرد/الأفراد المذكور أسمائهم وذلك بعد انتهاء عملهم
-              (مأمورية تدريبية)  بناءً على{" "}
-              {reason || "أوامر قيادة"}  وبياناتهم
-              كالتالي:
+              قادم لكم اليوم الفرد/الأفراد المذكور أسمائهم وذلك بعد انتهاء
+              عملهم (مأمورية تدريبية) بناءً على{" "}
+              {toArabicDigits(reason || "أوامر قيادة")} وبياناتهم كالتالي:
             </>
           ) : (
             <>
               قادم لكم اليوم الفرد/الأفراد المذكور أسمائهم وذلك للعمل
               (مأمورية تدريبية) طرفكم بناءً على{" "}
-              {reason || "أوامر قيادة"} بالأماكن الموضحة قرين كلا منهم وبياناتهم
-              كالتالي:
+              {toArabicDigits(reason || "أوامر قيادة")} بالأماكن الموضحة
+              قرين كلا منهم وبياناتهم كالتالي:
             </>
           )}
         </p>
 
-        {/* الجدول */}
+        {/* =================================================
+            الجدول
+        ================================================= */}
+
         <table
           className="w-full border-collapse mb-4"
           style={{
@@ -523,7 +545,12 @@ function LetterPreview({
           }}
         >
           <thead>
-            <tr style={{ background: "#f5f5f5" ,textAlign: "center"}}>
+            <tr
+              style={{
+                background: "#f5f5f5",
+                textAlign: "center",
+              }}
+            >
               {[
                 "م",
                 "الدرجة",
@@ -548,6 +575,7 @@ function LetterPreview({
           <tbody>
             {soldiers.map((soldier, index) => (
               <tr key={soldier.id}>
+                {/* رقم */}
                 <td
                   style={{
                     padding: "5px",
@@ -555,9 +583,10 @@ function LetterPreview({
                     textAlign: "center",
                   }}
                 >
-                  {index + 1}
+                  {toArabicDigits(index + 1)}
                 </td>
 
+                {/* الدرجة */}
                 <td
                   style={{
                     padding: "5px",
@@ -565,9 +594,10 @@ function LetterPreview({
                     textAlign: "center",
                   }}
                 >
-                  {soldier.rank}
+                  {toArabicDigits(soldier.rank)}
                 </td>
 
+                {/* الاسم */}
                 <td
                   style={{
                     padding: "5px",
@@ -575,9 +605,10 @@ function LetterPreview({
                     border: "1px solid #eee",
                   }}
                 >
-                  {soldier.name}
+                  {toArabicDigits(soldier.name)}
                 </td>
 
+                {/* الوحدة */}
                 <td
                   style={{
                     padding: "5px",
@@ -585,9 +616,10 @@ function LetterPreview({
                     textAlign: "center",
                   }}
                 >
-                  {soldier.unit}
+                  {toArabicDigits(soldier.unit)}
                 </td>
 
+                {/* وحدة الإلحاق */}
                 <td
                   style={{
                     padding: "5px",
@@ -595,16 +627,18 @@ function LetterPreview({
                     border: "1px solid #eee",
                   }}
                 >
-                  {soldier.attachmentUnit ||
-                    attachmentPlace ||
-                    "-"}
+                  {toArabicDigits(
+                    soldier.attachmentUnit ||
+                      attachmentPlace ||
+                      "-"
+                  )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
 
-        {/* التحية - في المنتصف */}
+        {/* التحية */}
         <p
           style={{
             ...PF,
@@ -617,12 +651,7 @@ function LetterPreview({
           مع وافر التحية ،،،
         </p>
 
-        {/* =================================================
-            التوقيع - أقصى اليسار، بمحاذاة واحدة لكل الأسطر
-            (عرض الصندوق = أعرض سطر بداخله تلقائيًا، فتبقى
-            كل الأسطر على نفس المحاذاة دائمًا مهما كان طول
-            الاسم أو الرتبة)
-        ================================================= */}
+        {/* التوقيع */}
         <div
           className="signature-block"
           style={{
@@ -635,7 +664,7 @@ function LetterPreview({
             marginRight: "auto",
             direction: "rtl",
             textAlign: "justify",
-textAlignLast: "right",
+            textAlignLast: "right",
           }}
         >
           <p
@@ -645,7 +674,7 @@ textAlignLast: "right",
               whiteSpace: "pre",
             }}
           >
-            {"التوقيع (                                        )"}
+            {"التوقيع (                                  )"}
           </p>
 
           <p
@@ -654,8 +683,8 @@ textAlignLast: "right",
               fontWeight: 700,
             }}
           >
-            {branchHeadRank || "جاري تحميل الرتبة"} /{" "}
-            {branchHeadName || "جاري تحميل الاسم"}
+            {toArabicDigits(branchHeadRank || "جاري تحميل الرتبة")} /{" "}
+            {toArabicDigits(branchHeadName || "جاري تحميل الاسم")}
           </p>
 
           <p
@@ -672,6 +701,7 @@ textAlignLast: "right",
       {/* =================================================
           CSS الخاص بالخطاب
       ================================================= */}
+
       <style>
         {`
           .print-logo {
@@ -843,10 +873,7 @@ export function LetterReviewPage() {
         .maybeSingle();
 
       if (error) {
-        console.error(
-          "Branch head error:",
-          error
-        );
+        console.error("Branch head error:", error);
         return;
       }
 
@@ -856,13 +883,8 @@ export function LetterReviewPage() {
         ? data.rank[0]
         : data.rank;
 
-      setBranchHeadName(
-        data.full_name ?? ""
-      );
-
-      setBranchHeadRank(
-        rank?.name ?? ""
-      );
+      setBranchHeadName(data.full_name ?? "");
+      setBranchHeadRank(rank?.name ?? "");
     };
 
     void loadBranchHead();
@@ -1235,7 +1257,7 @@ export function LetterReviewPage() {
       : "اصدار خطاب إلحاق";
 
   /* =======================================================
-     PRINT ONLY LETTER (مكرر مرتين في نفس الصفحة)
+     PRINT ONLY LETTER
   ======================================================= */
 
   const handlePrintLetter = () => {
@@ -1262,7 +1284,6 @@ export function LetterReviewPage() {
       return;
     }
 
-    // نفس الخطاب مكرر مرتين فوق بعض في نفس الصفحة
     const letterHtml = letterElement.outerHTML;
 
     printWindow.document.open();
@@ -1281,7 +1302,6 @@ export function LetterReviewPage() {
           <title>معاينة الخطاب</title>
 
           <style>
-
             @page {
               size: A4;
               margin: 10mm;
@@ -1314,7 +1334,6 @@ export function LetterReviewPage() {
                 serif;
             }
 
-            /* الحاوية التي تجمع النسختين في نفس الصفحة */
             .print-page {
               display: flex;
               flex-direction: column;
@@ -1322,10 +1341,9 @@ export function LetterReviewPage() {
               gap: 6mm;
 
               width: 100%;
-              height: 277mm; /* ارتفاع A4 تقريباً بعد خصم الهوامش */
+              height: 277mm;
             }
 
-            /* كل نسخة من الخطاب تأخذ نصف الصفحة تقريباً */
             .print-copy {
               flex: 1 1 50%;
               overflow: hidden;
@@ -1378,7 +1396,6 @@ export function LetterReviewPage() {
 
             table {
               width: 100% !important;
-
               border-collapse: collapse !important;
             }
 
@@ -1392,7 +1409,6 @@ export function LetterReviewPage() {
             }
 
             @media print {
-
               html,
               body {
                 width: 100%;
@@ -1405,17 +1421,14 @@ export function LetterReviewPage() {
                 page-break-inside: avoid;
               }
             }
-
           </style>
         </head>
 
         <body>
-
           <div class="print-page">
             <div class="print-copy">${letterHtml}</div>
             <div class="print-copy">${letterHtml}</div>
           </div>
-
         </body>
       </html>
     `);
@@ -1453,8 +1466,8 @@ export function LetterReviewPage() {
       className="flex flex-col gap-6 w-full pb-10"
       dir="rtl"
     >
-
       {/* عنوان الصفحة */}
+
       <h1
         className="text-center"
         style={{
@@ -1468,11 +1481,13 @@ export function LetterReviewPage() {
       </h1>
 
       {/* Stepper */}
+
       <div className="flex justify-center">
         <Stepper />
       </div>
 
       {/* Error */}
+
       {error && (
         <div
           className="w-full rounded-[10px] px-5 py-4"
@@ -1493,7 +1508,6 @@ export function LetterReviewPage() {
       ================================================= */}
 
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
-
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
           <span
             style={{
@@ -1507,7 +1521,6 @@ export function LetterReviewPage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 px-6 py-5">
-
           <InfoPair
             label="نوع الخطاب"
             value={
@@ -1522,31 +1535,39 @@ export function LetterReviewPage() {
             label="رقم الخطاب"
             value={
               letterNumber !== null
-                ? String(letterNumber)
+                ? toArabicDigits(letterNumber)
                 : "سيتم توليده عند الحفظ"
             }
           />
 
           <InfoPair
             label="جهة الخطاب"
-            value={letterData.destination}
+            value={toArabicDigits(
+              letterData.destination
+            )}
           />
 
           <InfoPair
             label="تاريخ الخطاب"
-            value={new Date().toLocaleDateString(
-              "en-GB"
+            value={toArabicDigits(
+              new Date().toLocaleDateString(
+                "en-GB"
+              )
             )}
           />
 
           <InfoPair
             label="الوحدة الأساسية"
-            value={soldiers[0]?.unit ?? ""}
+            value={toArabicDigits(
+              soldiers[0]?.unit ?? ""
+            )}
           />
 
           <InfoPair
             label="عدد الأفراد"
-            value={String(soldiers.length)}
+            value={toArabicDigits(
+              soldiers.length
+            )}
           />
 
           <InfoPair
@@ -1554,20 +1575,21 @@ export function LetterReviewPage() {
             value={
               letterType === "end-attachment"
                 ? "سيتم إنهاء الإلحاق"
-                : letterData.attachmentPlace ||
-                  soldiers[0]?.attachmentUnit ||
-                  "لا يوجد"
+                : toArabicDigits(
+                    letterData.attachmentPlace ||
+                      soldiers[0]?.attachmentUnit ||
+                      "لا يوجد"
+                  )
             }
           />
 
           <InfoPair
             label="رئيس الفرع"
-            value={
+            value={toArabicDigits(
               branchHeadName ||
-              "جاري التحميل"
-            }
+                "جاري التحميل"
+            )}
           />
-
         </div>
       </section>
 
@@ -1576,9 +1598,7 @@ export function LetterReviewPage() {
       ================================================= */}
 
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
-
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
-
           <span
             style={{
               ...F,
@@ -1588,28 +1608,22 @@ export function LetterReviewPage() {
           >
             بيانات الأفراد
           </span>
-
         </div>
 
         <div className="overflow-x-auto">
-
           <table className="w-full min-w-[600px] border-collapse">
-
             <thead>
               <tr className="bg-[#f7f9fc]">
-
                 {[
                   "درجة",
                   "اسم",
                   "الوحدة",
                   "وحدة الإلحاق",
                 ].map((header) => (
-
                   <th
                     key={header}
                     className="px-4 py-3 text-right border-b"
                   >
-
                     <span
                       style={{
                         ...F,
@@ -1619,53 +1633,47 @@ export function LetterReviewPage() {
                     >
                       {header}
                     </span>
-
                   </th>
-
                 ))}
-
               </tr>
             </thead>
 
             <tbody>
-
               {soldiers.map((soldier) => (
-
                 <tr key={soldier.id}>
-
                   <td className="px-4 py-3 border-b">
-                    {soldier.rank}
+                    {toArabicDigits(
+                      soldier.rank
+                    )}
                   </td>
 
                   <td className="px-4 py-3 border-b">
-                    {soldier.name}
+                    {toArabicDigits(
+                      soldier.name
+                    )}
                   </td>
 
                   <td className="px-4 py-3 border-b">
-                    {soldier.unit}
+                    {toArabicDigits(
+                      soldier.unit
+                    )}
                   </td>
 
                   <td className="px-4 py-3 border-b">
-
                     {letterType ===
                     "end-attachment"
                       ? "لا يوجد"
-                      : soldier.attachmentUnit ||
-                        letterData.attachmentPlace ||
-                        "لا يوجد"}
-
+                      : toArabicDigits(
+                          soldier.attachmentUnit ||
+                            letterData.attachmentPlace ||
+                            "لا يوجد"
+                        )}
                   </td>
-
                 </tr>
-
               ))}
-
             </tbody>
-
           </table>
-
         </div>
-
       </section>
 
       {/* =================================================
@@ -1673,9 +1681,7 @@ export function LetterReviewPage() {
       ================================================= */}
 
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
-
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
-
           <span
             style={{
               ...F,
@@ -1685,11 +1691,9 @@ export function LetterReviewPage() {
           >
             معاينة الخطاب
           </span>
-
         </div>
 
         <div className="p-6 bg-[#f7f9fc]">
-
           <LetterPreview
             soldiers={soldiers}
             destination={
@@ -1707,9 +1711,7 @@ export function LetterReviewPage() {
               branchHeadRank
             }
           />
-
         </div>
-
       </section>
 
       {/* =================================================
@@ -1717,7 +1719,6 @@ export function LetterReviewPage() {
       ================================================= */}
 
       <div className="flex flex-wrap items-center gap-4">
-
         {/* حفظ الخطاب */}
 
         <button
@@ -1736,7 +1737,6 @@ export function LetterReviewPage() {
                 : 1,
           }}
         >
-
           <Printer
             size={16}
             color="#fff"
@@ -1753,19 +1753,15 @@ export function LetterReviewPage() {
               ? "جاري الحفظ..."
               : "تأكيد وحفظ الخطاب"}
           </span>
-
         </button>
 
-        {/* =================================================
-            طباعة / معاينة الخطاب فقط
-        ================================================= */}
+        {/* طباعة / معاينة */}
 
         <button
           type="button"
           onClick={handlePrintLetter}
           className="flex items-center gap-2 min-h-[48px] px-6 rounded-[8px] border border-[#2d3648] bg-white"
         >
-
           <Download
             size={16}
             color="#2d3648"
@@ -1780,7 +1776,6 @@ export function LetterReviewPage() {
           >
             طباعة / تحميل المعاينة
           </span>
-
         </button>
 
         {/* إلغاء */}
@@ -1793,7 +1788,6 @@ export function LetterReviewPage() {
           }
           className="min-h-[48px] px-4"
         >
-
           <span
             style={{
               ...F,
@@ -1804,9 +1798,7 @@ export function LetterReviewPage() {
           >
             إلغاء
           </span>
-
         </button>
-
       </div>
 
       {/* =================================================
@@ -1820,7 +1812,6 @@ export function LetterReviewPage() {
           letterNumber={letterNumber}
         />
       )}
-
     </div>
   );
 }
