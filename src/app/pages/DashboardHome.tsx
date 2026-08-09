@@ -160,6 +160,12 @@ export function DashboardHome() {
 
   // ============================================================
   // إحصائيات القوة والخوارج
+  //
+  // ✅ FIX: مصدر الحقيقة الوحيد لحالة الفرد (بالخدمة / منتهي خدمته) هو
+  // service_status_id فقط. تم حذف شرط is_active = true من كل الاستعلامات
+  // هنا لأنه كان بيسبب عدم توافق مع باقي الصفحات (تفاصيل الفرد / دفعات
+  // الرديف) في حالة عدم تزامن is_active مع service_status_id بعد أي
+  // تعديل يدوي من صفحة تعديل بيانات الفرد.
   // ============================================================
 
   const loadPersonnelStats = async () => {
@@ -263,6 +269,8 @@ export function DashboardHome() {
       // 3. إجمالي المتطوعين
       //
       // UNIT_FORCE + ATTACHED
+      // ✅ FIX: تم حذف .eq("is_active", true) — الفلترة بقت معتمدة
+      // فقط على service_status_id (مصدر الحقيقة الوحيد)
       // --------------------------------------------------------
 
       const {
@@ -281,8 +289,7 @@ export function DashboardHome() {
         .in("service_status_id", [
           unitForceStatus.id,
           attachedStatus.id,
-        ])
-        .eq("is_active", true);
+        ]);
 
       if (volunteersError) {
         console.error(
@@ -296,6 +303,7 @@ export function DashboardHome() {
       // 4. إجمالي المجندين
       //
       // UNIT_FORCE + ATTACHED
+      // ✅ FIX: تم حذف .eq("is_active", true)
       // --------------------------------------------------------
 
       const {
@@ -314,8 +322,7 @@ export function DashboardHome() {
         .in("service_status_id", [
           unitForceStatus.id,
           attachedStatus.id,
-        ])
-        .eq("is_active", true);
+        ]);
 
       if (conscriptsError) {
         console.error(
@@ -329,6 +336,7 @@ export function DashboardHome() {
       // 5. خوارج المتطوعين
       //
       // ATTACHED فقط
+      // ✅ FIX: تم حذف .eq("is_active", true)
       // --------------------------------------------------------
 
       const {
@@ -347,8 +355,7 @@ export function DashboardHome() {
         .eq(
           "service_status_id",
           attachedStatus.id
-        )
-        .eq("is_active", true);
+        );
 
       if (outsideVolunteersError) {
         console.error(
@@ -362,6 +369,7 @@ export function DashboardHome() {
       // 6. خوارج المجندين
       //
       // ATTACHED فقط
+      // ✅ FIX: تم حذف .eq("is_active", true)
       // --------------------------------------------------------
 
       const {
@@ -380,8 +388,7 @@ export function DashboardHome() {
         .eq(
           "service_status_id",
           attachedStatus.id
-        )
-        .eq("is_active", true);
+        );
 
       if (outsideConscriptsError) {
         console.error(
@@ -595,7 +602,10 @@ export function DashboardHome() {
       //
       // مجند فقط
       // تاريخ التسريح = تاريخ الدفعة القادمة
-      // نشط فقط
+      // ✅ FIX: تم حذف .eq("is_active", true) — لو كان الفرد اتحدد له
+      // discharge_date يبقى ده كافي؛ الفلترة على is_active منفصل كانت
+      // ممكن تستبعد أفراد اتحدث service_status_id بتاعهم من صفحة
+      // التعديل من غير ما يتزامن is_active معاه.
       // --------------------------------------------------------
 
       const {
@@ -614,10 +624,6 @@ export function DashboardHome() {
         .eq(
           "discharge_date",
           formattedBatchDate
-        )
-        .eq(
-          "is_active",
-          true
         );
 
 

@@ -45,23 +45,35 @@ const DISCHARGED_STATUS_ID =
   "ac8ddfa3-1578-455b-9b6a-b056260fcb1f";
 
 /* =========================================================
-   التحقق من الرقمين السابع والثامن
+   أهلية الرخصة
+   الرقم السابع والثامن = 66
    ========================================================= */
 
 function hasLicenseEligibility(militaryId: string) {
   const value = String(militaryId ?? "").trim();
 
-  // الرقم السابع والثامن من اليسار
-  return value.length >= 8 &&
-    value.substring(6, 8) === "66";
+  return (
+    value.length >= 8 &&
+    value.substring(6, 8) === "66"
+  );
 }
+
+/* =========================================================
+   التاريخ
+   ========================================================= */
 
 function formatBatchDate(date: string) {
   const [year, month, day] = date.split("-");
   return `${day}/${month}/${year}`;
 }
 
-function documentStateToDb(value: DocumentState) {
+/* =========================================================
+   تحويل حالة المستند
+   ========================================================= */
+
+function documentStateToDb(
+  value: DocumentState
+) {
   if (value === "تم الاستلام") {
     return "DELIVERED";
   }
@@ -98,7 +110,10 @@ function BatchDropdown({
   disabled = false,
 }: {
   value: string;
-  options: { label: string; value: string }[];
+  options: {
+    label: string;
+    value: string;
+  }[];
   onChange: (v: string) => void;
   disabled?: boolean;
 }) {
@@ -110,7 +125,8 @@ function BatchDropdown({
         type="button"
         disabled={disabled}
         onClick={() =>
-          !disabled && setOpen((o) => !o)
+          !disabled &&
+          setOpen((o) => !o)
         }
         className="w-full h-[54px] bg-white border border-[#e2e7f0] rounded-[8px] flex items-center gap-2 px-3 hover:border-[#a0aec0] transition-colors disabled:bg-[#f5f6f8] disabled:cursor-not-allowed"
         dir="rtl"
@@ -185,7 +201,6 @@ function BatchDropdown({
 
 /* =========================================================
    DOCUMENT DROPDOWN
-   أضفنا disabled للرخصة
    ========================================================= */
 
 function DocumentDropdown({
@@ -194,7 +209,9 @@ function DocumentDropdown({
   disabled = false,
 }: {
   value: DocumentState;
-  onChange: (value: DocumentState) => void;
+  onChange: (
+    value: DocumentState
+  ) => void;
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -251,21 +268,15 @@ function DocumentDropdown({
       window.innerHeight - rect.bottom;
 
     const openUp =
-      spaceAbove >= menuHeight + gap ||
+      spaceAbove >=
+        menuHeight + gap ||
       spaceAbove > spaceBelow;
 
-    let top: number;
-
-    if (openUp) {
-      top =
-        rect.top -
+    let top = openUp
+      ? rect.top -
         menuHeight -
-        gap;
-    } else {
-      top =
-        rect.bottom +
-        gap;
-    }
+        gap
+      : rect.bottom + gap;
 
     top = Math.max(
       4,
@@ -278,8 +289,7 @@ function DocumentDropdown({
     );
 
     let left =
-      rect.right -
-      menuWidth;
+      rect.right - menuWidth;
 
     left = Math.max(
       4,
@@ -383,8 +393,7 @@ function DocumentDropdown({
                   ...F,
                   fontSize: 11,
                   color: colors[option],
-                  background:
-                    "#ffffff",
+                  background: "#ffffff",
                 }}
               >
                 {option}
@@ -424,9 +433,7 @@ function DocumentDropdown({
               ? "not-allowed"
               : "pointer",
 
-            opacity: disabled
-              ? 0.65
-              : 1,
+            opacity: disabled ? 0.65 : 1,
 
             ...F,
             fontSize: 11,
@@ -619,11 +626,16 @@ function EndServiceDialog({
   onConfirm: () => void;
   saving: boolean;
 }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/50 p-4"
+      dir="rtl"
+    >
       <div
-        className="bg-white rounded-[16px] p-5 w-[90%] max-w-sm flex flex-col gap-4 shadow-xl"
-        dir="rtl"
+        className="bg-white rounded-[16px] p-5 w-full max-w-sm flex flex-col gap-4 shadow-2xl"
+        onClick={(e) =>
+          e.stopPropagation()
+        }
       >
         <div className="flex items-center gap-2">
           <AlertTriangle
@@ -647,9 +659,9 @@ function EndServiceDialog({
             type="button"
             onClick={onCancel}
             disabled={saving}
-            className="shrink-0 text-[#ccc] hover:text-[#888]"
+            className="shrink-0 text-[#aaa] hover:text-[#555]"
           >
-            <X size={18} />
+            <X size={20} />
           </button>
         </div>
 
@@ -659,14 +671,14 @@ function EndServiceDialog({
             fontSize: 16,
             color: "#333",
             textAlign: "right",
-            lineHeight: 1.6,
+            lineHeight: 1.7,
           }}
         >
-          هل انت متأكد من انهاء خدمة
-          الافراد المحددين؟
+          هل أنت متأكد من إنهاء خدمة
+          الأفراد المحددين؟
         </p>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 justify-start">
           <button
             type="button"
             onClick={onConfirm}
@@ -675,13 +687,13 @@ function EndServiceDialog({
             style={{
               background: "#e3282c",
               ...F,
-              fontSize: 16,
+              fontSize: 15,
               color: "#fff",
             }}
           >
             {saving
               ? "جاري الحفظ..."
-              : "انهاء خدمة الافراد"}
+              : "إنهاء خدمة الأفراد"}
           </button>
 
           <button
@@ -691,15 +703,16 @@ function EndServiceDialog({
             className="px-4 py-2 rounded-[8px] disabled:opacity-50"
             style={{
               ...F,
-              fontSize: 16,
+              fontSize: 15,
               color: "#888",
             }}
           >
-            الغاء
+            إلغاء
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -711,10 +724,14 @@ function TransferDialog({
   batches,
   onCancel,
   onConfirm,
+  saving,
 }: {
   batches: ReserveBatch[];
   onCancel: () => void;
-  onConfirm: (batchId: string) => void;
+  onConfirm: (
+    batchId: string
+  ) => void;
+  saving: boolean;
 }) {
   const [targetBatch, setTargetBatch] =
     useState("");
@@ -730,15 +747,21 @@ function TransferDialog({
     })
   );
 
-  const selectedTarget = batches.find(
-    (b) => b.id === targetBatch
-  );
+  const selectedTarget =
+    batches.find(
+      (b) => b.id === targetBatch
+    );
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/50 p-4"
+      dir="rtl"
+    >
       <div
-        className="bg-white rounded-[24px] p-6 w-[90%] max-w-sm flex flex-col gap-6 shadow-xl"
-        dir="rtl"
+        className="bg-white rounded-[24px] p-6 w-full max-w-sm flex flex-col gap-6 shadow-2xl"
+        onClick={(e) =>
+          e.stopPropagation()
+        }
       >
         <div className="flex justify-between items-center">
           <div
@@ -758,7 +781,8 @@ function TransferDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="text-[#aaa]"
+            disabled={saving}
+            className="text-[#aaa] hover:text-[#555]"
           >
             <X size={20} />
           </button>
@@ -783,8 +807,8 @@ function TransferDialog({
               color: "#404040",
             }}
           >
-            يرجى اختيار دفعة الترحيل الجديدة
-            للأفراد
+            يرجى اختيار دفعة الترحيل
+            الجديدة للأفراد
           </p>
         </div>
 
@@ -803,7 +827,9 @@ function TransferDialog({
 
         <button
           type="button"
-          disabled={!targetBatch}
+          disabled={
+            !targetBatch || saving
+          }
           onClick={() =>
             onConfirm(targetBatch)
           }
@@ -820,11 +846,14 @@ function TransferDialog({
               color: "#fff",
             }}
           >
-            حفظ وترحيل الأفراد
+            {saving
+              ? "جاري الترحيل..."
+              : "حفظ وترحيل الأفراد"}
           </span>
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -874,9 +903,6 @@ export function ReserveBatchesPage() {
   const [checkedRows, setCheckedRows] =
     useState<Set<string>>(new Set());
 
-  const [allChecked, setAllChecked] =
-    useState(false);
-
   const [showEndDialog, setShowEndDialog] =
     useState(false);
 
@@ -895,7 +921,17 @@ export function ReserveBatchesPage() {
     useState(false);
 
   /* =========================================================
-     تحميل دفعات الرديف
+     allChecked أصبح قيمة محسوبة
+     وليس state منفصل
+     ========================================================= */
+
+  const allChecked =
+    soldierData.length > 0 &&
+    checkedRows.size ===
+      soldierData.length;
+
+  /* =========================================================
+     تحميل الدفعات
      ========================================================= */
 
   useEffect(() => {
@@ -974,11 +1010,14 @@ export function ReserveBatchesPage() {
       : "";
 
   /* =========================================================
-     تحميل أفراد الدفعة
+     تحميل الأفراد
      ========================================================= */
 
   async function loadSoldiers() {
     if (!selectedBatchObject) {
+      setBatchError(
+        "يرجى اختيار دفعة أولاً"
+      );
       return;
     }
 
@@ -1029,7 +1068,6 @@ export function ReserveBatchesPage() {
     if (personnel.length === 0) {
       setSoldierData([]);
       setCheckedRows(new Set());
-      setAllChecked(false);
       return;
     }
 
@@ -1155,25 +1193,26 @@ export function ReserveBatchesPage() {
                   null
               ),
 
+            // ✅ FIX: بنعتمد على service_status_id فقط كمصدر وحيد للحقيقة
+            // بخصوص حالة الفرد (بالخدمة / منتهي خدمته)، بنفس المنطق
+            // المستخدم في SoldierDetailPage، بدل الاعتماد على is_active
+            // اللي ممكن يكون غير متزامن مع service_status_id لو اتعدّل
+            // الفرد من صفحة تانية (زي صفحة تعديل بيانات الفرد).
             status:
               person.service_status_id ===
               DISCHARGED_STATUS_ID
                 ? "منتهي خدمته"
-                : person.is_active ===
-                    false
-                  ? "منتهي خدمته"
-                  : "بالخدمة",
+                : "بالخدمة",
           };
         }
       );
 
     setSoldierData(mapped);
     setCheckedRows(new Set());
-    setAllChecked(false);
   }
 
   /* =========================================================
-     اختيار الصف
+     اختيار فرد
      ========================================================= */
 
   function toggleRow(id: string) {
@@ -1186,35 +1225,31 @@ export function ReserveBatchesPage() {
         next.add(id);
       }
 
-      setAllChecked(
-        next.size > 0 &&
-          next.size ===
-            soldierData.length
-      );
-
       return next;
     });
   }
 
+  /* =========================================================
+     تحديد الكل
+     ========================================================= */
+
   function toggleAll() {
     if (allChecked) {
       setCheckedRows(new Set());
-      setAllChecked(false);
-    } else {
-      setCheckedRows(
-        new Set(
-          soldierData.map(
-            (s) => s.id
-          )
-        )
-      );
-
-      setAllChecked(true);
+      return;
     }
+
+    setCheckedRows(
+      new Set(
+        soldierData.map(
+          (soldier) => soldier.id
+        )
+      )
+    );
   }
 
   /* =========================================================
-     تعديل حالة المستند
+     تعديل المستند
      ========================================================= */
 
   function toggleSoldierField(
@@ -1289,10 +1324,6 @@ export function ReserveBatchesPage() {
               new Date().toISOString(),
           });
 
-          /*
-           * حفظ الرخصة فقط لو الفرد
-           * مسموح له بالرخصة
-           */
           if (
             hasLicenseEligibility(
               soldier.militaryId
@@ -1363,16 +1394,29 @@ export function ReserveBatchesPage() {
   }
 
   /* =========================================================
-     إنهاء الخدمة
+     فتح Popup إنهاء الخدمة
      ========================================================= */
 
   function handleEndService() {
+    console.log(
+      "End Service clicked",
+      checkedRows.size
+    );
+
     if (checkedRows.size === 0) {
+      setBatchError(
+        "يرجى تحديد فرد واحد على الأقل"
+      );
       return;
     }
 
+    setBatchError("");
     setShowEndDialog(true);
   }
+
+  /* =========================================================
+     تأكيد إنهاء الخدمة
+     ========================================================= */
 
   async function confirmEndService() {
     if (!selectedBatchObject) {
@@ -1386,6 +1430,12 @@ export function ReserveBatchesPage() {
       Array.from(checkedRows);
 
     if (ids.length === 0) {
+      setShowEndDialog(false);
+
+      setBatchError(
+        "يرجى تحديد فرد واحد على الأقل"
+      );
+
       return;
     }
 
@@ -1414,7 +1464,8 @@ export function ReserveBatchesPage() {
 
       const {
         data: existingDocuments,
-        error: documentsFetchError,
+        error:
+          documentsFetchError,
       } = await supabase
         .from(
           "reserve_batch_documents"
@@ -1509,21 +1560,13 @@ export function ReserveBatchesPage() {
             updated_at:
               new Date().toISOString(),
           });
-
-          /*
-           * الرخصة يتم التعامل معها
-           * لاحقًا حسب أهلية الفرد.
-           */
         }
       );
 
-      /*
-       * نحتاج معرفة الأفراد المحددين
-       * لمعرفة من منهم رقماه 7 و8 = 66
-       */
       const selectedPersonnel =
-        soldierData.filter((soldier) =>
-          ids.includes(soldier.id)
+        soldierData.filter(
+          (soldier) =>
+            ids.includes(soldier.id)
         );
 
       selectedPersonnel.forEach(
@@ -1562,7 +1605,8 @@ export function ReserveBatchesPage() {
       );
 
       const {
-        error: documentsUpsertError,
+        error:
+          documentsUpsertError,
       } = await supabase
         .from(
           "reserve_batch_documents"
@@ -1579,27 +1623,9 @@ export function ReserveBatchesPage() {
         throw documentsUpsertError;
       }
 
-      setSoldierData((prev) =>
-        prev.map((soldier) =>
-          checkedRows.has(
-            soldier.id
-          )
-            ? {
-                ...soldier,
-                status:
-                  "منتهي خدمته",
-              }
-            : soldier
-        )
-      );
-
-      setCheckedRows(
-        new Set()
-      );
-
-      setAllChecked(false);
-
       setShowEndDialog(false);
+
+      setCheckedRows(new Set());
 
       setSuccessMsg(
         "تم إنهاء خدمة الأفراد المحددين وتحديث حالتهم بنجاح"
@@ -1629,16 +1655,29 @@ export function ReserveBatchesPage() {
   }
 
   /* =========================================================
-     ترحيل الدفعة
+     فتح Popup الترحيل
      ========================================================= */
 
   function handleTransfer() {
+    console.log(
+      "Transfer clicked",
+      checkedRows.size
+    );
+
     if (checkedRows.size === 0) {
+      setBatchError(
+        "يرجى تحديد فرد واحد على الأقل"
+      );
       return;
     }
 
+    setBatchError("");
     setShowTransferDialog(true);
   }
+
+  /* =========================================================
+     تأكيد الترحيل
+     ========================================================= */
 
   async function confirmTransfer(
     targetBatchId: string
@@ -1651,60 +1690,84 @@ export function ReserveBatchesPage() {
       );
 
     if (!targetBatch) {
+      setBatchError(
+        "يرجى اختيار دفعة الترحيل"
+      );
       return;
     }
 
     const ids =
       Array.from(checkedRows);
 
-    setSaving(true);
-    setBatchError("");
+    if (ids.length === 0) {
+      setShowTransferDialog(false);
 
-    const { error } =
-      await supabase
-        .from("personnel")
-        .update({
-          discharge_date:
-            targetBatch.batch_date,
-
-          updated_at:
-            new Date().toISOString(),
-        })
-        .in("id", ids);
-
-    setSaving(false);
-
-    if (error) {
       setBatchError(
-        `حدث خطأ أثناء ترحيل الأفراد: ${error.message}`
+        "يرجى تحديد فرد واحد على الأقل"
       );
+
       return;
     }
 
-    setShowTransferDialog(false);
+    setSaving(true);
+    setBatchError("");
 
-    setCheckedRows(
-      new Set()
-    );
+    try {
+      const { error } =
+        await supabase
+          .from("personnel")
+          .update({
+            discharge_date:
+              targetBatch.batch_date,
 
-    setAllChecked(false);
+            updated_at:
+              new Date().toISOString(),
+          })
+          .in("id", ids);
 
-    setSuccessMsg(
-      `تم ترحيل الأفراد إلى ${
-        targetBatch.name ||
-        formatBatchDate(
-          targetBatch.batch_date
-        )
-      } بنجاح`
-    );
+      if (error) {
+        throw error;
+      }
 
-    setTimeout(
-      () => setSuccessMsg(""),
-      3000
-    );
+      setShowTransferDialog(false);
 
-    await loadSoldiers();
+      setCheckedRows(new Set());
+
+      setSuccessMsg(
+        `تم ترحيل الأفراد إلى ${
+          targetBatch.name ||
+          formatBatchDate(
+            targetBatch.batch_date
+          )
+        } بنجاح`
+      );
+
+      setTimeout(
+        () => setSuccessMsg(""),
+        3000
+      );
+
+      await loadSoldiers();
+    } catch (error: any) {
+      console.error(
+        "transfer error:",
+        error
+      );
+
+      setBatchError(
+        `حدث خطأ أثناء ترحيل الأفراد: ${
+          error?.message ||
+          "خطأ غير معروف"
+        }`
+      );
+    } finally {
+      setSaving(false);
+    }
   }
+
+  /* =========================================================
+     الطباعة
+     ========================================================= */
 
   function handlePrint() {
     window.print();
@@ -1715,6 +1778,10 @@ export function ReserveBatchesPage() {
 
   const tdClass =
     "px-4 py-3 text-right border-b border-[#e2e7f0]";
+
+  /* =========================================================
+     RETURN
+     ========================================================= */
 
   return (
     <div
@@ -1763,6 +1830,10 @@ export function ReserveBatchesPage() {
         `}
       </style>
 
+      {/* =====================================================
+          العنوان
+          ===================================================== */}
+
       <h1
         className="text-center"
         style={{
@@ -1777,7 +1848,9 @@ export function ReserveBatchesPage() {
         دفعات الرديف
       </h1>
 
-      {/* اختيار الدفعة */}
+      {/* =====================================================
+          اختيار الدفعة
+          ===================================================== */}
 
       <div className="flex flex-wrap items-end gap-3 justify-start no-print">
         <div className="flex flex-col gap-1.5 flex-1 min-w-[200px] max-w-xs">
@@ -1839,11 +1912,13 @@ export function ReserveBatchesPage() {
             color: "#fff",
           }}
         >
-          عرض الافراد
+          عرض الأفراد
         </button>
       </div>
 
-      {/* Error */}
+      {/* =====================================================
+          ERROR
+          ===================================================== */}
 
       {batchError && (
         <div
@@ -1859,14 +1934,15 @@ export function ReserveBatchesPage() {
         </div>
       )}
 
-      {/* Success */}
+      {/* =====================================================
+          SUCCESS
+          ===================================================== */}
 
       {successMsg && (
         <div
           className="w-full rounded-[10px] px-4 py-3 flex items-center gap-2 justify-end"
           style={{
-            background:
-              "#dcfce7",
+            background: "#dcfce7",
           }}
         >
           <span
@@ -1880,6 +1956,10 @@ export function ReserveBatchesPage() {
           </span>
         </div>
       )}
+
+      {/* =====================================================
+          النتائج
+          ===================================================== */}
 
       {showResults &&
         selectedBatchObject && (
@@ -1911,7 +1991,9 @@ export function ReserveBatchesPage() {
               </p>
             </div>
 
-            {/* Stats */}
+            {/* =================================================
+                STATS
+                ================================================= */}
 
             <div className="flex flex-wrap gap-4 w-full no-print">
 
@@ -1980,7 +2062,9 @@ export function ReserveBatchesPage() {
               />
             </div>
 
-            {/* Progress */}
+            {/* =================================================
+                PROGRESS
+                ================================================= */}
 
             <div className="flex flex-wrap gap-4 w-full mt-4 no-print">
 
@@ -2033,20 +2117,20 @@ export function ReserveBatchesPage() {
               />
             </div>
 
-            {/* Buttons */}
+            {/* =================================================
+                BUTTONS
+                ================================================= */}
 
             <div className="flex flex-wrap items-end gap-3 mt-4 no-print">
+
+              {/* إنهاء الخدمة */}
 
               <button
                 type="button"
                 onClick={
                   handleEndService
                 }
-                disabled={
-                  checkedRows.size ===
-                    0 ||
-                  saving
-                }
+                disabled={saving}
                 className="h-[44px] px-5 rounded-[8px] flex items-center justify-center shrink-0 disabled:opacity-50"
                 style={{
                   background:
@@ -2054,30 +2138,36 @@ export function ReserveBatchesPage() {
                   ...F,
                   fontSize: 15,
                   color: "#fff",
+                  cursor: saving
+                    ? "not-allowed"
+                    : "pointer",
                 }}
               >
-                انهاء خدمة الافراد
+                إنهاء خدمة الأفراد
               </button>
+
+              {/* ترحيل الدفعة */}
 
               <button
                 type="button"
                 onClick={
                   handleTransfer
                 }
-                disabled={
-                  checkedRows.size ===
-                    0 ||
-                  saving
-                }
+                disabled={saving}
                 className="h-[44px] px-5 rounded-[8px] border border-[#e2e7f0] bg-white disabled:opacity-50"
                 style={{
                   ...F,
                   fontSize: 15,
                   color: "#2d3648",
+                  cursor: saving
+                    ? "not-allowed"
+                    : "pointer",
                 }}
               >
                 ترحيل دفعة
               </button>
+
+              {/* طباعة */}
 
               <button
                 type="button"
@@ -2095,7 +2185,9 @@ export function ReserveBatchesPage() {
               </button>
             </div>
 
-            {/* TABLE */}
+            {/* =================================================
+                TABLE
+                ================================================= */}
 
             <div className="bg-white rounded-[12px] border border-[#e2e7f0] w-full overflow-x-auto mt-4">
 
@@ -2103,9 +2195,10 @@ export function ReserveBatchesPage() {
                 className="w-full min-w-[1100px] border-collapse"
                 dir="rtl"
               >
-
                 <thead>
                   <tr>
+
+                    {/* تحديد الكل */}
 
                     <th
                       className={`${thClass} no-print`}
@@ -2150,7 +2243,6 @@ export function ReserveBatchesPage() {
                         }
                       >
                         <div className="flex items-center gap-1">
-
                           <span
                             style={{
                               ...F,
@@ -2170,7 +2262,6 @@ export function ReserveBatchesPage() {
                 </thead>
 
                 <tbody>
-
                   {soldierData.length ===
                   0 ? (
                     <tr>
@@ -2194,14 +2285,14 @@ export function ReserveBatchesPage() {
                         soldier,
                         idx
                       ) => {
-
-                        /*
-                         * هنا يتم فحص كل فرد
-                         * بشكل مستقل
-                         */
                         const licenseEnabled =
                           hasLicenseEligibility(
                             soldier.militaryId
+                          );
+
+                        const isChecked =
+                          checkedRows.has(
+                            soldier.id
                           );
 
                         return (
@@ -2209,7 +2300,11 @@ export function ReserveBatchesPage() {
                             key={
                               soldier.id
                             }
-                            className="hover:bg-[#fafbff]"
+                            className={`hover:bg-[#fafbff] ${
+                              isChecked
+                                ? "bg-[#f4f7ff]"
+                                : ""
+                            }`}
                           >
 
                             {/* Checkbox */}
@@ -2225,9 +2320,7 @@ export function ReserveBatchesPage() {
                                   )
                                 }
                               >
-                                {checkedRows.has(
-                                  soldier.id
-                                ) ? (
+                                {isChecked ? (
                                   <CheckSquare
                                     size={
                                       16
@@ -2245,7 +2338,7 @@ export function ReserveBatchesPage() {
                               </button>
                             </td>
 
-                            {/* رقم */}
+                            {/* م */}
 
                             <td
                               className={
@@ -2359,10 +2452,7 @@ export function ReserveBatchesPage() {
                               />
                             </td>
 
-                            {/* =================================================
-                               الرخصة
-                               لكل فرد بشكل مستقل
-                               ================================================= */}
+                            {/* الرخصة */}
 
                             <td
                               className={`${tdClass} text-center`}
@@ -2426,15 +2516,15 @@ export function ReserveBatchesPage() {
                       }
                     )
                   )}
-
                 </tbody>
               </table>
             </div>
 
-            {/* Save */}
+            {/* =================================================
+                SAVE
+                ================================================= */}
 
             <div className="flex justify-end mt-4 no-print">
-
               <button
                 type="button"
                 onClick={
@@ -2452,22 +2542,24 @@ export function ReserveBatchesPage() {
                   ? "جاري الحفظ..."
                   : "حفظ التعديلات"}
               </button>
-
             </div>
 
           </div>
         )}
 
-      {/* End Service */}
+      {/* =====================================================
+          END SERVICE POPUP
+          ===================================================== */}
 
       {showEndDialog && (
         <EndServiceDialog
-          onCancel={() =>
-            !saving &&
-            setShowEndDialog(
-              false
-            )
-          }
+          onCancel={() => {
+            if (!saving) {
+              setShowEndDialog(
+                false
+              );
+            }
+          }}
           onConfirm={
             confirmEndService
           }
@@ -2475,23 +2567,26 @@ export function ReserveBatchesPage() {
         />
       )}
 
-      {/* Transfer */}
+      {/* =====================================================
+          TRANSFER POPUP
+          ===================================================== */}
 
       {showTransferDialog && (
         <TransferDialog
           batches={batches}
-          onCancel={() =>
-            !saving &&
-            setShowTransferDialog(
-              false
-            )
-          }
+          onCancel={() => {
+            if (!saving) {
+              setShowTransferDialog(
+                false
+              );
+            }
+          }}
           onConfirm={
             confirmTransfer
           }
+          saving={saving}
         />
       )}
-
     </div>
   );
 }
