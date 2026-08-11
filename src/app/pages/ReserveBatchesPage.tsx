@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronDown,
@@ -7,6 +7,7 @@ import {
   Square,
   AlertTriangle,
   ArrowLeftRight,
+  Search,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 
@@ -100,14 +101,17 @@ function dbStateToDocumentState(
 }
 
 /* =========================================================
-   BATCH DROPDOWN
+   GENERIC DROPDOWN (تُستخدم لكل من فلتر الدفعة وفلتر الوحدة)
    ========================================================= */
 
-function BatchDropdown({
+function GenericDropdown({
   value,
   options,
   onChange,
+  placeholder,
   disabled = false,
+  allowClear = false,
+  clearLabel = "الكل",
 }: {
   value: string;
   options: {
@@ -115,7 +119,10 @@ function BatchDropdown({
     value: string;
   }[];
   onChange: (v: string) => void;
+  placeholder: string;
   disabled?: boolean;
+  allowClear?: boolean;
+  clearLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -148,7 +155,7 @@ function BatchDropdown({
               : "#a1aebe",
           }}
         >
-          {value || "اختر تاريخ التسريح"}
+          {value || placeholder}
         </span>
       </button>
 
@@ -157,6 +164,26 @@ function BatchDropdown({
           className="absolute z-50 top-full mt-1 w-full bg-white border border-[#e2e7f0] rounded-[8px] shadow-lg overflow-hidden max-h-[300px] overflow-y-auto"
           dir="rtl"
         >
+          {allowClear && (
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange("");
+                  setOpen(false);
+                }}
+                className="w-full text-right px-4 py-2.5 hover:bg-[#f5f6fb] transition-colors"
+                style={{
+                  ...F,
+                  fontSize: 15,
+                  color: "#717d96",
+                }}
+              >
+                {clearLabel}
+              </button>
+            </li>
+          )}
+
           {options.length === 0 ? (
             <li
               className="px-4 py-3 text-right"
@@ -166,7 +193,7 @@ function BatchDropdown({
                 color: "#a1aebe",
               }}
             >
-              لا توجد دفعات
+              لا توجد نتائج
             </li>
           ) : (
             options.map((opt) => (
@@ -812,7 +839,7 @@ function TransferDialog({
           </p>
         </div>
 
-        <BatchDropdown
+        <GenericDropdown
           value={
             selectedTarget
               ? selectedTarget.name ||
@@ -823,6 +850,7 @@ function TransferDialog({
           }
           options={options}
           onChange={setTargetBatch}
+          placeholder="اختر تاريخ التسريح"
         />
 
         <button
@@ -920,15 +948,19 @@ export function ReserveBatchesPage() {
   const [saving, setSaving] =
     useState(false);
 
+  // ✅ فلتر الوحدة: يعمل على الوحدات الموجودة فعليًا داخل الأفراد
+  // المحمّلين حاليًا في الجدول (مش استعلام منفصل لجدول units).
+  const [unitFilter, setUnitFilter] =
+    useState("");
+
+  // ✅ بحث بالرقم العسكري: مطابقة جزئية (includes) مش شرط كتابته كامل.
+  const [militarySearch, setMilitarySearch] =
+    useState("");
+
   /* =========================================================
      allChecked أصبح قيمة محسوبة
      وليس state منفصل
      ========================================================= */
-
-  const allChecked =
-    soldierData.length > 0 &&
-    checkedRows.size ===
-      soldierData.length;
 
   /* =========================================================
      تحميل الدفعات
@@ -1023,6 +1055,10 @@ export function ReserveBatchesPage() {
 
     setShowResults(true);
     setBatchError("");
+
+    // ✅ إعادة ضبط الفلاتر عند تحميل دفعة جديدة
+    setUnitFilter("");
+    setMilitarySearch("");
 
     const { data, error } =
       await supabase
@@ -1212,6 +1248,73 @@ export function ReserveBatchesPage() {
   }
 
   /* =========================================================
+     ✅ قائمة الوحدات لفلتر الجدول
+     مبنية من الوحدات الموجودة فعليًا في الأفراد المحمّلين حاليًا
+     (مش استعلام منفصل لجدول units)
+     ========================================================= */
+
+  const unitFilterOptions = useMemo(() => {
+    const uniqueNames = Array.from(
+      new Set(
+        soldierData
+          .map((s) => s.unit)
+          .filter(
+            (name) =>
+              !!name && name !== "-"
+          )
+      )
+    ).sort((a, b) =>
+      a.localeCompare(b, "ar")
+    );
+
+    return uniqueNames.map((name) => ({
+      value: name,
+      label: name,
+    }));
+  }, [soldierData]);
+
+  /* =========================================================
+     ✅ الأفراد بعد تطبيق فلتر الوحدة + بحث الرقم العسكري
+     ========================================================= */
+
+  const filteredSoldierData = useMemo(() => {
+    const searchTerm = militarySearch
+      .trim();
+
+    return soldierData.filter(
+      (soldier) => {
+        if (
+          unitFilter &&
+          soldier.unit !== unitFilter
+        ) {
+          return false;
+        }
+
+        if (
+          searchTerm &&
+          !soldier.militaryId.includes(
+            searchTerm
+          )
+        ) {
+          return false;
+        }
+
+        return true;
+      }
+    );
+  }, [
+    soldierData,
+    unitFilter,
+    militarySearch,
+  ]);
+
+  const allChecked =
+    filteredSoldierData.length > 0 &&
+    filteredSoldierData.every((s) =>
+      checkedRows.has(s.id)
+    );
+
+  /* =========================================================
      اختيار فرد
      ========================================================= */
 
@@ -1231,21 +1334,25 @@ export function ReserveBatchesPage() {
 
   /* =========================================================
      تحديد الكل
+     ✅ يعمل على الأفراد الظاهرين حاليًا بعد الفلترة فقط
      ========================================================= */
 
   function toggleAll() {
-    if (allChecked) {
-      setCheckedRows(new Set());
-      return;
-    }
+    setCheckedRows((prev) => {
+      const next = new Set(prev);
 
-    setCheckedRows(
-      new Set(
-        soldierData.map(
-          (soldier) => soldier.id
-        )
-      )
-    );
+      if (allChecked) {
+        filteredSoldierData.forEach(
+          (s) => next.delete(s.id)
+        );
+      } else {
+        filteredSoldierData.forEach(
+          (s) => next.add(s.id)
+        );
+      }
+
+      return next;
+    });
   }
 
   /* =========================================================
@@ -1876,7 +1983,7 @@ export function ReserveBatchesPage() {
               جاري تحميل الدفعات...
             </div>
           ) : (
-            <BatchDropdown
+            <GenericDropdown
               value={
                 selectedBatchLabel
               }
@@ -1886,6 +1993,7 @@ export function ReserveBatchesPage() {
               onChange={
                 setSelectedBatch
               }
+              placeholder="اختر تاريخ التسريح"
               disabled={
                 batches.length ===
                 0
@@ -2172,6 +2280,109 @@ export function ReserveBatchesPage() {
             </div>
 
             {/* =================================================
+                FILTERS (فلتر الوحدة + بحث الرقم العسكري)
+                ================================================= */}
+
+            <div className="flex flex-wrap items-end gap-3 mt-4 no-print">
+
+              {/* بحث بالرقم العسكري */}
+
+              <div className="flex flex-col gap-1.5 flex-1 min-w-[220px] max-w-xs">
+                <label
+                  style={{
+                    ...F,
+                    fontSize: 14,
+                    color: "#717d96",
+                  }}
+                >
+                  بحث بالرقم العسكري
+                </label>
+
+                <div
+                  className="flex items-center gap-2 bg-white border border-[#e2e7f0] rounded-[8px] px-3 h-[54px]"
+                  dir="rtl"
+                >
+                  <input
+                    type="text"
+                    value={
+                      militarySearch
+                    }
+                    onChange={(e) =>
+                      setMilitarySearch(
+                        e.target
+                          .value
+                      )
+                    }
+                    placeholder="اكتب الرقم العسكري أو جزء منه"
+                    className="flex-1 bg-transparent outline-none text-right"
+                    style={{
+                      ...F,
+                      fontSize: 15,
+                      color: "#2d3648",
+                    }}
+                    dir="rtl"
+                  />
+
+                  <Search
+                    size={18}
+                    className="shrink-0 text-[#2d3648]"
+                  />
+                </div>
+              </div>
+
+              {/* فلتر الوحدة */}
+
+              <div className="flex flex-col gap-1.5 flex-1 min-w-[220px] max-w-xs">
+                <label
+                  style={{
+                    ...F,
+                    fontSize: 14,
+                    color: "#717d96",
+                  }}
+                >
+                  فلتر حسب الوحدة
+                </label>
+
+                <GenericDropdown
+                  value={unitFilter}
+                  options={
+                    unitFilterOptions
+                  }
+                  onChange={
+                    setUnitFilter
+                  }
+                  placeholder="كل الوحدات"
+                  allowClear
+                  clearLabel="كل الوحدات"
+                  disabled={
+                    unitFilterOptions.length ===
+                    0
+                  }
+                />
+              </div>
+
+              {/* عدد النتائج بعد الفلترة */}
+
+              <div
+                className="flex items-center h-[54px] px-2"
+                dir="rtl"
+              >
+                <span
+                  style={{
+                    ...F,
+                    fontSize: 14,
+                    color: "#717d96",
+                  }}
+                >
+                  عدد النتائج:{" "}
+                  {filteredSoldierData.length.toLocaleString(
+                    "ar-EG"
+                  )}
+                </span>
+              </div>
+            </div>
+
+            {/* =================================================
                 BUTTONS
                 ================================================= */}
 
@@ -2333,8 +2544,26 @@ export function ReserveBatchesPage() {
                         هذه الدفعة
                       </td>
                     </tr>
+                  ) : filteredSoldierData.length ===
+                    0 ? (
+                    <tr>
+                      <td
+                        colSpan={9}
+                        className="py-10 text-center"
+                        style={{
+                          ...F,
+                          fontSize: 15,
+                          color:
+                            "#a1aebe",
+                        }}
+                      >
+                        لا توجد نتائج
+                        مطابقة للفلاتر
+                        المحددة
+                      </td>
+                    </tr>
                   ) : (
-                    soldierData.map(
+                    filteredSoldierData.map(
                       (
                         soldier,
                         idx

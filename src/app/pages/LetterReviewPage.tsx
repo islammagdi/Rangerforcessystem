@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Download, Printer } from "lucide-react";
 import type { CSSProperties } from "react";
+import html2canvas from "html2canvas-pro";
 
 import { supabase } from "../../lib/supabase";
 import imgEagle from "figma:asset/af406d517dfa4e5b22e9993bd61d8e4e002646b6.png";
@@ -58,6 +59,194 @@ type PageState = {
   soldiers?: Soldier[];
   letterData?: LetterData;
 };
+
+/* =========================================================
+   نتيجة عملية إنشاء ورفع المعاينة المؤقتة — تُستخدم للتشخيص
+   ولمعرفة سبب الفشل بدقة بدل الاكتفاء بتسجيل الخطأ فقط.
+========================================================= */
+
+type PreviewResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason:
+        | "no-preview-element"
+        | "capture-failed"
+        | "tainted-canvas"
+        | "empty-blob"
+        | "upload-failed"
+        | "db-update-failed";
+    };
+
+/* =========================================================
+   تحويل عنصر الـ HTML الخاص بمعاينة الخطاب إلى PNG ورفعه
+   كصورة مؤقتة لحين رفع النسخة الموقعة رسميًا.
+
+   هذه الدالة "Best effort": أي فشل هنا لا يوقف عملية حفظ
+   الخطاب نفسها، فقط يتم تسجيل الخطأ بالتفصيل في الـ console
+   حتى يسهل تشخيص أي مشكلة مستقبلية (CORS / RLS / عمود مفقود...).
+========================================================= */
+
+async function generateAndUploadPreview(
+  letterId: string
+): Promise<PreviewResult> {
+  console.log(
+    "[PREVIEW] بدء إنشاء المعاينة المؤقتة لـ letterId:",
+    letterId
+  );
+
+  const previewElement = document.querySelector(
+    ".letter-preview"
+  ) as HTMLElement | null;
+
+  if (!previewElement) {
+    console.warn(
+      "[PREVIEW] لم يتم العثور على عنصر .letter-preview في الـ DOM — تخطي إنشاء المعاينة المؤقتة"
+    );
+    return { ok: false, reason: "no-preview-element" };
+  }
+
+  // -----------------------------------------------------
+  // ✅ التأكد إن كل الصور جوه العنصر خلصت تحميل قبل الالتقاط
+  // (خصوصًا شعار الجمهورية) — تفادي التقاط الصورة وهي لسه
+  // بتتحمل، وهو سبب شائع لصور فاضية أو مقطوعة في النتيجة.
+  // -----------------------------------------------------
+
+  const images = Array.from(
+    previewElement.querySelectorAll("img")
+  );
+
+  await Promise.all(
+    images.map((img) => {
+      if (img.complete) return Promise.resolve();
+
+      return new Promise<void>((resolve) => {
+        img.onload = () => resolve();
+        img.onerror = () => {
+          console.warn(
+            "[PREVIEW] فشل تحميل صورة داخل المعاينة:",
+            img.src
+          );
+          resolve(); // نكمل حتى لو صورة واحدة فشلت تحميلها
+        };
+      });
+    })
+  );
+
+  console.log(
+    "[PREVIEW] كل الصور جاهزة، جاري الالتقاط بـ html2canvas..."
+  );
+
+  let canvas: HTMLCanvasElement;
+
+  try {
+    canvas = await html2canvas(previewElement, {
+      scale: 2,
+      backgroundColor: "#ffffff",
+      useCORS: true,
+      allowTaint: false,
+      logging: true, // يطبع تفاصيل html2canvas الداخلية في الكونسول للتشخيص
+    });
+  } catch (captureError) {
+    console.error(
+      "[PREVIEW] فشل html2canvas أثناء الالتقاط:",
+      captureError
+    );
+    return { ok: false, reason: "capture-failed" };
+  }
+
+  console.log(
+    "[PREVIEW] تم الالتقاط بنجاح. أبعاد الـ canvas:",
+    canvas.width,
+    "x",
+    canvas.height
+  );
+
+  let blob: Blob | null = null;
+
+  try {
+    blob = await new Promise<Blob | null>((resolve, reject) => {
+      try {
+        canvas.toBlob((b) => resolve(b), "image/png");
+      } catch (taintedError) {
+        // canvas.toBlob بيرمي SecurityError مباشرة لو الـ canvas
+        // "tainted" بسبب صورة cross-origin بدون CORS headers صحيحة
+        reject(taintedError);
+      }
+    });
+  } catch (blobError) {
+    console.error(
+      "[PREVIEW] ⚠️ فشل تحويل الـ canvas إلى Blob — على الأرجح الـ canvas أصبح tainted بسبب صورة الشعار (imgEagle) التي لا تدعم CORS بشكل صحيح:",
+      blobError
+    );
+    return { ok: false, reason: "tainted-canvas" };
+  }
+
+  if (!blob) {
+    console.warn(
+      "[PREVIEW] canvas.toBlob رجّع null بدون سبب واضح — تخطي رفع المعاينة المؤقتة"
+    );
+    return { ok: false, reason: "empty-blob" };
+  }
+
+  console.log(
+    "[PREVIEW] تم إنشاء الـ Blob بنجاح. الحجم بالبايت:",
+    blob.size
+  );
+
+  const previewPath = `${letterId}/preview.png`;
+
+  console.log(
+    "[PREVIEW] جاري رفع الملف إلى Storage على المسار:",
+    previewPath
+  );
+
+  const { error: uploadError } = await supabase.storage
+    .from("letter-attachments")
+    .upload(previewPath, blob, {
+      cacheControl: "3600",
+      upsert: true,
+      contentType: "image/png",
+    });
+
+  if (uploadError) {
+    console.error(
+      "[PREVIEW] ❌ فشل رفع الملف إلى Storage:",
+      uploadError.message,
+      uploadError
+    );
+    return { ok: false, reason: "upload-failed" };
+  }
+
+  console.log(
+    "[PREVIEW] ✅ تم رفع الملف بنجاح، جاري تحديث جدول letters..."
+  );
+
+  const {
+    error: updateError,
+    data: updateData,
+  } = await supabase
+    .from("letters")
+    .update({ preview_image_path: previewPath })
+    .eq("id", letterId)
+    .select("id, preview_image_path");
+
+  if (updateError) {
+    console.error(
+      "[PREVIEW] ❌ فشل تحديث عمود preview_image_path — تحقق من وجود العمود في جدول letters وصلاحيات RLS للـ UPDATE:",
+      updateError.message,
+      updateError
+    );
+    return { ok: false, reason: "db-update-failed" };
+  }
+
+  console.log(
+    "[PREVIEW] ✅ تم تحديث preview_image_path بنجاح:",
+    updateData
+  );
+
+  return { ok: true };
+}
 
 /* =========================================================
    Loading Modal
@@ -477,6 +666,7 @@ function LetterPreview({
             <img
               src={imgEagle}
               alt="شعار الجمهورية"
+              crossOrigin="anonymous"
               style={{
                 width: "200%",
                 height: "200%",
@@ -812,6 +1002,11 @@ export function LetterReviewPage() {
 
   const [error, setError] = useState("");
 
+  // ✅ تنبيه غير حاجب (non-blocking) يظهر للمستخدم لو فشل حفظ
+  // المعاينة المؤقتة فقط، دون التأثير على نجاح حفظ الخطاب نفسه.
+  const [previewWarning, setPreviewWarning] =
+    useState("");
+
   /* =======================================================
      Check Session
   ======================================================= */
@@ -911,6 +1106,7 @@ export function LetterReviewPage() {
 
     setSaving(true);
     setError("");
+    setPreviewWarning("");
 
     let createdLetterId: string | null = null;
 
@@ -1168,6 +1364,42 @@ export function LetterReviewPage() {
       if (invalidPersonnel.length > 0) {
         throw new Error(
           "فشل التحقق من تحديث حالة أو جهة إلحاق بعض الأفراد."
+        );
+      }
+
+      // =====================================================
+      // ✅ إنشاء صورة PNG من معاينة الخطاب ورفعها مؤقتًا
+      //
+      // هذه خطوة "Best effort": أي فشل هنا لا يجب أن يوقف نجاح
+      // حفظ الخطاب، لذلك تم عزلها في try/catch منفصل. لكن على
+      // عكس النسخة السابقة، هنا بنعرض تحذير غير حاجب للمستخدم
+      // ولوج مفصّل في الكونسول لتسهيل التشخيص.
+      // =====================================================
+
+      try {
+        const previewResult =
+          await generateAndUploadPreview(
+            newLetter.id
+          );
+
+        if (!previewResult.ok) {
+          console.warn(
+            "[SAVE LETTER] المعاينة المؤقتة لم تُحفظ — السبب:",
+            previewResult.reason
+          );
+
+          setPreviewWarning(
+            "تم حفظ الخطاب بنجاح، لكن تعذّر إنشاء نسخة المعاينة المؤقتة. يمكنك رفع النسخة الموقعة مباشرة من صفحة تفاصيل الخطاب."
+          );
+        }
+      } catch (previewError) {
+        console.error(
+          "PREVIEW GENERATION ERROR:",
+          previewError
+        );
+
+        setPreviewWarning(
+          "تم حفظ الخطاب بنجاح، لكن تعذّر إنشاء نسخة المعاينة المؤقتة. يمكنك رفع النسخة الموقعة مباشرة من صفحة تفاصيل الخطاب."
         );
       }
 
@@ -1500,6 +1732,23 @@ export function LetterReviewPage() {
           }}
         >
           {error}
+        </div>
+      )}
+
+      {/* Preview Warning (تحذير غير حاجب) */}
+
+      {previewWarning && !error && (
+        <div
+          className="w-full rounded-[10px] px-5 py-4"
+          style={{
+            ...F,
+            background: "#fff8e8",
+            border: "1px solid #f4d58d",
+            color: "#8a6500",
+            whiteSpace: "pre-line",
+          }}
+        >
+          {previewWarning}
         </div>
       )}
 

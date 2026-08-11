@@ -94,7 +94,7 @@ interface ClassifiedPersonnelRow extends GroupPersonnelRow {
 // ============================================================
 
 const EXCEL_TEMPLATE_URL =
-  "https://github.com/islammagdi/Rangerforcessystem/raw/0639ca38fd820f9e59a1891492d4bb1592aebca8/Data.xlsx";
+  "https://qgsqlqlkdppxljyjujsq.supabase.co/storage/v1/object/sign/files/Data.xlsx?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9lZTY4MzBjYi1hMmVmLTQyN2EtOWRiZi1hNWZmZmY0MjFjY2QiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJmaWxlcy9EYXRhLnhsc3giLCJzY29wZSI6ImRvd25sb2FkIiwiaWF0IjoxNzg2MzUxMTc3LCJleHAiOjQ5Mzk5NTExNzd9.QDqzqpx0y-gWmeTrpbPNpUhz6MrB8xUY_b3tf4TOfcE";
 
 const REQUIRED_EXCEL_COLUMNS = [
   "الرقم العسكري",
@@ -1810,7 +1810,7 @@ export function AddNewSoldierPage() {
                 <FieldGroup label="الدرجة">
                   <FormDropdown
                     placeholder={
-                      category === "مجند" ? "جندي فقط" : "اختيار الدرجة"
+                      category === "مجند" ? "اختر الدرجه" : "اختيار الدرجة"
                     }
                     options={rankOptions}
                     value={rank}
@@ -1911,7 +1911,7 @@ export function AddNewSoldierPage() {
                 <div className="bg-[#f5f8f5] border border-[#dce8dd] rounded-[10px] px-4 py-3">
                   <p style={{ ...F, fontSize: 13, color: "#415844" }}>
                     جهة الإلحاق غير متاحة لهذا الموقف، وسيتم حفظ
-                    attachment_unit_id بقيمة NULL.
+                    وحده الالحاق بقيمة فارغه.
                   </p>
                 </div>
               )}
@@ -1919,7 +1919,7 @@ export function AddNewSoldierPage() {
               {category === "متطوع" && (
                 <div className="bg-[#f5f8f5] border border-[#dce8dd] rounded-[10px] px-4 py-3">
                   <p style={{ ...F, fontSize: 13, color: "#415844" }}>
-                    الأفراد من فئة متطوع سيتم حفظ تاريخ التسريح لهم بقيمة NULL.
+                    الافراد من فئة متطوع ليس لهم تاريخ تسريح.
                   </p>
                 </div>
               )}

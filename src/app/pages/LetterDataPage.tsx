@@ -625,6 +625,12 @@ export function LetterDataPage() {
 
   // ─────────────────────────────────────────────────────────
   // Get Soldier Attachment
+  //
+  // ✅ في حالة خطاب "إنهاء إلحاق" فقط:
+  // القيمة المعروضة/المُرسلة هي قيمة attachment_unit_id الحالية
+  // الخاصة بالفرد (soldier.attachmentPlace) كما هي — بدون أي
+  // fallback على الوحدة الأساسية — وتفضل كده طالما المستخدم لم
+  // يعدلها يدويًا من جدول الأفراد (override).
   // ─────────────────────────────────────────────────────────
 
   function getAttachmentUnit(
@@ -635,11 +641,7 @@ export function LetterDataPage() {
     }
 
     if (isEndAttachment) {
-      return (
-        soldier.attachmentPlace ||
-        soldier.unit ||
-        ""
-      );
+      return soldier.attachmentPlace || "";
     }
 
     return (
@@ -658,11 +660,12 @@ export function LetterDataPage() {
     }
 
     if (isEndAttachment) {
+      if (!soldier.attachmentPlace) {
+        return null;
+      }
+
       const unit = units.find(
-        (u) =>
-          u.name ===
-          (soldier.attachmentPlace ||
-            soldier.unit)
+        (u) => u.name === soldier.attachmentPlace
       );
 
       return unit?.id ?? null;
@@ -1199,7 +1202,7 @@ export function LetterDataPage() {
                             >
                               {getAttachmentUnit(
                                 soldier
-                              )}
+                              ) || "-"}
                             </span>
                           )}
 

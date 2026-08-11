@@ -664,6 +664,11 @@ export function LetterDetailPage() {
   const [signedFileType, setSignedFileType] =
     useState("");
 
+  // ✅ رابط صورة المعاينة المؤقتة (PNG) الناتجة عن تحويل معاينة
+  // الخطاب وقت الحفظ، وتُستخدم للطباعة لحين رفع النسخة الموقعة.
+  const [previewImageUrl, setPreviewImageUrl] =
+    useState("");
+
   /* =======================================================
      LOAD LETTER
   ======================================================= */
@@ -703,7 +708,8 @@ export function LetterDetailPage() {
             reason,
             branch_head_id,
             branch_head_name,
-            branch_head_rank
+            branch_head_rank,
+            preview_image_path
           `)
           .eq("id", id)
           .maybeSingle();
@@ -978,7 +984,7 @@ export function LetterDetailPage() {
         }
 
         /* =================================================
-           11. SIGNED URL
+           11. SIGNED URL (النسخة الموقعة الرسمية)
         ================================================= */
 
         let attachmentUrl = "";
@@ -1002,6 +1008,34 @@ export function LetterDetailPage() {
           } else {
             attachmentUrl =
               signedData?.signedUrl || "";
+          }
+        }
+
+        /* =================================================
+           11.b SIGNED URL (المعاينة المؤقتة PNG)
+        ================================================= */
+
+        let previewUrl = "";
+
+        if (dbLetter.preview_image_path) {
+          const {
+            data: previewSignedData,
+            error: previewSignedError,
+          } = await supabase.storage
+            .from("letter-attachments")
+            .createSignedUrl(
+              dbLetter.preview_image_path,
+              60 * 60 * 24
+            );
+
+          if (previewSignedError) {
+            console.error(
+              "PREVIEW SIGNED URL ERROR:",
+              previewSignedError
+            );
+          } else {
+            previewUrl =
+              previewSignedData?.signedUrl || "";
           }
         }
 
@@ -1058,6 +1092,8 @@ export function LetterDetailPage() {
           attachment?.file_type || ""
         );
 
+        setPreviewImageUrl(previewUrl);
+
       } catch (error) {
         console.error(
           "LOAD LETTER DATA ERROR:",
@@ -1069,6 +1105,7 @@ export function LetterDetailPage() {
           setSaved(false);
           setSignedFileUrl("");
           setSignedFileType("");
+          setPreviewImageUrl("");
 
           setLoadError(
             error instanceof Error
@@ -1186,6 +1223,127 @@ export function LetterDetailPage() {
     "px-4 py-3 text-right border-b border-[#e2e7f0]";
 
   /* =======================================================
+     TOP PRINT BUTTON (بجانب الحذف)
+     ✅ لو الخطاب موثق ويوجد ملف موقع → يطبع الملف الموقع.
+     ✅ لو غير موثق ويوجد معاينة مؤقتة (PNG) → يطبع المعاينة.
+     ✅ غير كده → يطبع الصفحة كاملة كـ fallback أخير.
+  ======================================================= */
+
+  function handleTopPrint() {
+    const printUrl = isVerified
+      ? signedFileUrl
+      : previewImageUrl;
+
+    if (!printUrl) {
+      window.print();
+      return;
+    }
+
+    const printWindow = window.open(
+      "",
+      "_blank",
+      "width=900,height=1200"
+    );
+
+    if (!printWindow) {
+      alert(
+        "يرجى السماح بالنوافذ المنبثقة للمتصفح حتى تتم الطباعة."
+      );
+      return;
+    }
+
+    const isPdf =
+      (isVerified &&
+        signedFileType === "application/pdf") ||
+      printUrl.toLowerCase().includes(".pdf");
+
+    printWindow.document.open();
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html lang="ar" dir="rtl">
+        <head>
+          <meta charset="UTF-8" />
+
+          <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0"
+          />
+
+          <title>طباعة الخطاب</title>
+
+          <style>
+            @page {
+              size: A4;
+              margin: 10mm;
+            }
+
+            * {
+              box-sizing: border-box;
+
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+
+            html,
+            body {
+              margin: 0;
+              padding: 0;
+
+              width: 100%;
+              min-height: 100%;
+
+              background: #fff;
+            }
+
+            body {
+              direction: rtl;
+            }
+
+            img {
+              display: block;
+              width: 100%;
+              height: auto;
+            }
+
+            iframe {
+              width: 100%;
+              height: 100vh;
+              border: none;
+            }
+          </style>
+        </head>
+
+        <body>
+          ${
+            isPdf
+              ? `<iframe src="${printUrl}"></iframe>`
+              : `<img src="${printUrl}" alt="معاينة الخطاب" />`
+          }
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+
+    const doPrint = () => {
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+      }, 500);
+    };
+
+    if (
+      printWindow.document.readyState ===
+      "complete"
+    ) {
+      doPrint();
+    } else {
+      printWindow.onload = doPrint;
+    }
+  }
+
+  /* =======================================================
      RENDER
   ======================================================= */
 
@@ -1237,9 +1395,7 @@ export function LetterDetailPage() {
             <button
               type="button"
               title="طباعة"
-              onClick={() =>
-                window.print()
-              }
+              onClick={handleTopPrint}
               className="w-9 h-9 rounded-[8px] flex items-center justify-center"
               style={{
                 backgroundColor: "#ebedfd",
@@ -1526,9 +1682,7 @@ export function LetterDetailPage() {
 
               <button
                 type="button"
-                onClick={() =>
-                  window.print()
-                }
+                onClick={handleTopPrint}
                 className="w-full h-[52px] rounded-[8px] flex items-center justify-center gap-2"
                 style={{
                   background:
@@ -1558,34 +1712,80 @@ export function LetterDetailPage() {
 
           ) : (
 
-            <UploadArea
-              letterId={id ?? ""}
-              onSave={(
-                fileUrl,
-                fileType
-              ) => {
+            <>
 
-                setSignedFileUrl(
-                  fileUrl
-                );
+              {/* ===========================================
+                  معاينة مؤقتة (PNG) لحين رفع النسخة الموقعة
+              =========================================== */}
 
-                setSignedFileType(
+              {previewImageUrl && (
+                <div className="flex flex-col gap-3">
+
+                  <div
+                    className="w-full rounded-[10px] px-4 py-2.5"
+                    dir="rtl"
+                    style={{
+                      background: "#fff8e8",
+                      border: "1px solid #f4d58d",
+                    }}
+                  >
+                    <span
+                      style={{
+                        ...F,
+                        fontSize: 13,
+                        color: "#8a6500",
+                      }}
+                    >
+                      معاينة مؤقتة للخطاب — سيتم استبدالها
+                      بالنسخة الموقعة بعد رفعها.
+                    </span>
+                  </div>
+
+                  <div className="w-full flex justify-center">
+                    <img
+                      src={previewImageUrl}
+                      alt="معاينة مؤقتة للخطاب"
+                      className="max-w-full rounded-[12px] border border-[#e2e7f0]"
+                      style={{
+                        maxHeight: "500px",
+                        objectFit: "contain",
+                      }}
+                    />
+                  </div>
+
+                </div>
+              )}
+
+              <UploadArea
+                letterId={id ?? ""}
+                onSave={(
+                  fileUrl,
                   fileType
-                );
+                ) => {
 
-                setSaved(true);
+                  setSignedFileUrl(
+                    fileUrl
+                  );
 
-                setLetter(
-                  (previous) =>
-                    previous
-                      ? {
-                          ...previous,
-                          status: "موثق",
-                        }
-                      : previous
-                );
-              }}
-            />
+                  setSignedFileType(
+                    fileType
+                  );
+
+                  setSaved(true);
+
+                  setLetter(
+                    (previous) =>
+                      previous
+                        ? {
+                            ...previous,
+                            status: "موثق",
+                          }
+                        : previous
+                  );
+                }}
+              />
+
+            </>
 
           )}
 

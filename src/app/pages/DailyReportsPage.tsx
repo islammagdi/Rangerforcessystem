@@ -6,6 +6,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import { fetchAllRows } from "../../lib/supabase";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
@@ -434,6 +435,10 @@ function SimpleDropdown({
 // Step 2
 // ============================================================
 
+// ============================================================
+// Step 2
+// ============================================================
+
 function Step2({
   reportTitle,
   units,
@@ -460,20 +465,27 @@ function Step2({
   // ==========================================================
   // تحديد الوحدات التي ستظهر في Dropdown
   //
-  // جميع الوحدات في الحالات التالية:
+  // جميع الوحدات (بدون فلترة MAIN):
+  // - كشف الأفراد الملحقين على وحدة
   //
-  // 1. يومية عددية بقوة الوحدة
-  // 2. كشف الأفراد الملحقين على وحدة
-  //
-  // باقي اليوميات:
+  // باقي اليوميات (التي تعرض الدروب داون أصلًا):
   // MAIN فقط
+  //
+  // ملحوظة: "يومية عددية بقوة الوحدة" بقت تعرض MAIN فقط بدل كل
+  // الوحدات، و"يومية عددية بخوارج الوحدات" بقت مش بتعرض دروب داون
+  // خالص (شوف hideUnitDropdown تحت).
   // ==========================================================
 
   const shouldShowAllUnits =
-    reportTitle ===
-      "يومية عددية بقوة الوحدة" ||
-    reportTitle ===
-      "كشف الأفراد الملحقين على وحدة";
+    reportTitle === "كشف الأفراد الملحقين على وحدة";
+
+  // ==========================================================
+  // اليوميات التي لا تحتاج اختيار وحدة على الإطلاق
+  // (يومية عددية بخوارج الوحدات: بتعرض كل الوحدات الرئيسية مرة واحدة)
+  // ==========================================================
+
+  const hideUnitDropdown =
+    reportTitle === "يومية عددية بخوارج الوحدات";
 
   const availableUnits = shouldShowAllUnits
     ? units
@@ -503,23 +515,27 @@ function Step2({
   // ==========================================================
 
   function handleSubmit() {
-    if (!selectedUnit) {
-      alert("برجاء اختيار الوحدة");
-      return;
-    }
+    // لو الدروب داون مخفي (يومية عددية بخوارج الوحدات) نتخطى
+    // التحقق من اختيار الوحدة تمامًا.
+    if (!hideUnitDropdown) {
+      if (!selectedUnit) {
+        alert("برجاء اختيار الوحدة");
+        return;
+      }
 
-    // ========================================================
-    // التأكد أن الوحدة المختارة مسموح بها لهذه اليومية
-    // ========================================================
+      // ========================================================
+      // التأكد أن الوحدة المختارة مسموح بها لهذه اليومية
+      // ========================================================
 
-    if (
-      !shouldShowAllUnits &&
-      selectedUnit.unit_type !== "MAIN"
-    ) {
-      alert(
-        "هذه اليومية متاحة للوحدات الرئيسية فقط"
-      );
-      return;
+      if (
+        !shouldShowAllUnits &&
+        selectedUnit.unit_type !== "MAIN"
+      ) {
+        alert(
+          "هذه اليومية متاحة للوحدات الرئيسية فقط"
+        );
+        return;
+      }
     }
 
     if (excludeBatch && !dischargeDate) {
@@ -528,8 +544,14 @@ function Step2({
     }
 
     onNext({
-      unitId: selectedUnit.id,
-      unitName: selectedUnit.name,
+      unitId: hideUnitDropdown
+        ? ""
+        : selectedUnit!.id,
+
+      unitName: hideUnitDropdown
+        ? "جميع الوحدات الرئيسية"
+        : selectedUnit!.name,
+
       category,
       excludeBatch,
       dischargeDate,
@@ -559,27 +581,30 @@ function Step2({
 
       {/* ======================================================
           Unit Dropdown
+          بيتخفي بالكامل لو hideUnitDropdown = true
          ====================================================== */}
 
-      <div className="flex flex-col gap-2">
-        <label
-          style={{
-            ...F,
-            fontSize: 15,
-            color: "#2d3648",
-            fontWeight: 700,
-          }}
-        >
-          اختيار الوحدة
-        </label>
+      {!hideUnitDropdown && (
+        <div className="flex flex-col gap-2">
+          <label
+            style={{
+              ...F,
+              fontSize: 15,
+              color: "#2d3648",
+              fontWeight: 700,
+            }}
+          >
+            اختيار الوحدة
+          </label>
 
-        <SimpleDropdown
-          value={selectedUnit?.name ?? ""}
-          options={unitOptions}
-          onChange={handleUnitChange}
-          placeholder="اختر الوحدة"
-        />
-      </div>
+          <SimpleDropdown
+            value={selectedUnit?.name ?? ""}
+            options={unitOptions}
+            onChange={handleUnitChange}
+            placeholder="اختر الوحدة"
+          />
+        </div>
+      )}
 
       {/* ======================================================
           Category
@@ -1493,13 +1518,13 @@ function UnitOutsidersReport({
   );
 
   const grouped = new Map<
-    string,
-    {
-      unit: Unit;
-      soldiers: number;
-      nco: number;
-    }
-  >();
+  string,
+  {
+    unit: Unit;
+    soldiers: number;
+    nco: number;
+  }
+>();
 
   attachedPeople.forEach((person) => {
     const attachmentUnit =
@@ -2013,61 +2038,59 @@ export function DailyReportsPage() {
 
       // --------------------------------------------------------
       // Personnel
+      //
+      // ✅ جلب كل صفوف الأفراد صفحة صفحة بدل استعلام واحد
+      // محدود بـ1000 صف افتراضيًا من PostgREST — نفس دقة
+      // الداشبورد بالظبط.
       // --------------------------------------------------------
 
-      const {
-        data: personnelData,
-        error: personnelError,
-      } = await supabase
-        .from("personnel")
-        .select(`
-          id,
-          military_number,
-          full_name,
-          discharge_date,
-          is_active,
+      const personnelData = await fetchAllRows<Personnel>(
+        (from, to) =>
+          supabase
+            .from("personnel")
+            .select(`
+              id,
+              military_number,
+              full_name,
+              discharge_date,
+              is_active,
 
-          rank:ranks(
-            id,
-            name,
-            code,
-            sort_order
-          ),
+              rank:ranks(
+                id,
+                name,
+                code,
+                sort_order
+              ),
 
-          category:personnel_categories(
-            id,
-            name,
-            code
-          ),
+              category:personnel_categories(
+                id,
+                name,
+                code
+              ),
 
-          service_status:service_statuses(
-            id,
-            name,
-            code
-          ),
+              service_status:service_statuses(
+                id,
+                name,
+                code
+              ),
 
-          primary_unit:units!personnel_primary_unit_id_fkey(
-            id,
-            name,
-            unit_type
-          ),
+              primary_unit:units!personnel_primary_unit_id_fkey(
+                id,
+                name,
+                unit_type
+              ),
 
-          attachment_unit:units!personnel_attachment_unit_id_fkey(
-            id,
-            name,
-            unit_type
-          )
-        `)
-        .eq("is_active", true);
-
-      if (personnelError) {
-        throw personnelError;
-      }
-
-      setPeople(
-        (personnelData ??
-          []) as unknown as Personnel[]
+              attachment_unit:units!personnel_attachment_unit_id_fkey(
+                id,
+                name,
+                unit_type
+              )
+            `)
+            .eq("is_active", true)
+            .range(from, to)
       );
+
+      setPeople(personnelData as unknown as Personnel[]);
     } catch (err: any) {
       console.error(
         "Daily reports loading error:",
@@ -2300,7 +2323,6 @@ export function DailyReportsPage() {
               selectedCard.title
             }
             units={units}
-            reportType={selectedCard.id}
             onNext={handleSettings}
           />
         )}

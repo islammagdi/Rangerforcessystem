@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Search, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router";
 import { supabase } from "../../lib/supabase";
+import { fetchAllRows } from "../../lib/supabase";
+
+
 
 // ─── Shared style ─────────────────────────────────────────────────────────────
 const F: React.CSSProperties = {
@@ -333,55 +336,52 @@ export function UnitsReportPage() {
     loadReportData();
   }, []);
 
-  async function loadReportData() {
-    try {
-      setLoading(true);
+ async function loadReportData() {
+  try {
+    setLoading(true);
 
-      const [unitsResult, personnelResult, categoriesResult, statusesResult] =
-        await Promise.all([
-          supabase
-            .from("units")
-            .select("id,name,code,unit_type,parent_unit_id,is_active")
-            .eq("is_active", true)
-            .order("name", { ascending: true }),
+    const [unitsResult, categoriesResult, statusesResult] = await Promise.all([
+      supabase
+        .from("units")
+        .select("id,name,code,unit_type,parent_unit_id,is_active")
+        .eq("is_active", true)
+        .order("name", { ascending: true }),
 
-          // ✅ مصدر الحقيقة الوحيد لحالة الفرد: is_active يستبعد المسرَّحين
-          // والمنقولين خارج السلاح فعليًا. فرد "قوة الوحدة" أو "ملحق" يُحسب
-          // كلاهما ضمن قوة وحدته الأصلية — نفس المبدأ المطبّق في الداشبورد
-          // وصفحة اليوميات.
-          supabase
-            .from("personnel")
-            .select(
-              "id,primary_unit_id,attachment_unit_id,personnel_category_id,service_status_id,is_active"
-            )
-            .eq("is_active", true),
+      supabase.from("personnel_categories").select("id,name,code"),
 
-          supabase.from("personnel_categories").select("id,name,code"),
+      supabase.from("service_statuses").select("id,name,code"),
+    ]);
 
-          supabase.from("service_statuses").select("id,name,code"),
-        ]);
+    if (unitsResult.error) throw unitsResult.error;
+    if (categoriesResult.error) throw categoriesResult.error;
+    if (statusesResult.error) throw statusesResult.error;
 
-      if (unitsResult.error) throw unitsResult.error;
-      if (personnelResult.error) throw personnelResult.error;
-      if (categoriesResult.error) throw categoriesResult.error;
-      if (statusesResult.error) throw statusesResult.error;
+    // ✅ جلب كل صفوف الأفراد بدون التقيد بحد الـ 1000 صف — نفس دقة الداشبورد بالظبط
+    const personnelData = await fetchAllRows<DbPersonnelRow>((from, to) =>
+      supabase
+        .from("personnel")
+        .select(
+          "id,primary_unit_id,attachment_unit_id,personnel_category_id,service_status_id,is_active"
+        )
+        .eq("is_active", true)
+        .range(from, to)
+    );
 
-      setUnits(unitsResult.data ?? []);
-      setPersonnel(personnelResult.data ?? []);
-      setCategories(categoriesResult.data ?? []);
-      setServiceStatuses(statusesResult.data ?? []);
-    } catch (error: any) {
-      console.error("Error loading units report data:", error);
-
-      alert(
-        `حدث خطأ أثناء تحميل بيانات الوحدات من قاعدة البيانات${
-          error?.message ? `\n\nتفاصيل الخطأ: ${error.message}` : ""
-        }`
-      );
-    } finally {
-      setLoading(false);
-    }
+    setUnits(unitsResult.data ?? []);
+    setPersonnel(personnelData);
+    setCategories(categoriesResult.data ?? []);
+    setServiceStatuses(statusesResult.data ?? []);
+  } catch (error: any) {
+    console.error("Error loading units report data:", error);
+    alert(
+      `حدث خطأ أثناء تحميل بيانات الوحدات من قاعدة البيانات${
+        error?.message ? `\n\nتفاصيل الخطأ: ${error.message}` : ""
+      }`
+    );
+  } finally {
+    setLoading(false);
   }
+}
 
   // ---- مجموعات مساعدة للمطابقة (فئة الفرد / حالة الخدمة) ----
 
