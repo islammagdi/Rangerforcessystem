@@ -636,7 +636,7 @@ export function ManageUsersPage() {
     setSelectedUser(user);
 
     setEditUsername(
-      user.username
+       user.personnel?.full_name || user.username
     );
 
     const currentRole =
@@ -1185,9 +1185,9 @@ export function ManageUsersPage() {
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div
-            className="bg-white w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden"
-            dir="rtl"
-          >
+  className="bg-white w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+  dir="rtl"
+>
             <div className="flex items-center justify-between px-6 py-5 border-b border-[#e2e8f0]">
               <div>
                 <h2 className="text-lg font-bold text-[#081021]">
@@ -1209,7 +1209,7 @@ export function ManageUsersPage() {
               </button>
             </div>
 
-            <div className="p-6">
+            <div className="p-6 overflow-y-auto flex-1">
               {error && (
                 <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                   {error}
@@ -1332,24 +1332,23 @@ export function ManageUsersPage() {
                   </div>
 
                   <div className="mt-4">
-                    <label className="block text-sm font-medium text-[#334155] mb-2">
-                      اسم المستخدم
-                    </label>
+  <label className="block text-sm font-medium text-[#334155] mb-2">
+    اسم المستخدم
+  </label>
 
-                    <input
-                      type="text"
-                      readOnly
-                      value={
-                        selectedPersonnel.military_number
-                      }
-                      className="w-full h-12 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] px-4 text-[#64748b] outline-none"
-                    />
+  <input
+    type="text"
+    readOnly
+    value={
+      selectedPersonnel.full_name
+    }
+    className="w-full h-12 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] px-4 text-[#64748b] outline-none"
+  />
 
-                    <p className="text-xs text-[#94a3b8] mt-2">
-                      سيتم حفظ اسم المستخدم في profiles بدون @auth.local
-                    </p>
-                  </div>
-
+  <p className="text-xs text-[#94a3b8] mt-2">
+    سيتم حفظ اسم الفرد كاسم مستخدم في profiles
+  </p>
+</div>
                   <div className="mt-4">
                     <label className="block text-sm font-medium text-[#334155] mb-2">
                       كلمة المرور الافتراضية
@@ -1441,9 +1440,9 @@ export function ManageUsersPage() {
         selectedUser && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
             <div
-              className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden"
-              dir="rtl"
-            >
+  className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+  dir="rtl"
+>
               <div className="flex items-center justify-between px-6 py-5 border-b border-[#e2e8f0]">
                 <h2 className="font-bold text-lg text-[#081021]">
                   تعديل بيانات المستخدم
@@ -1459,7 +1458,7 @@ export function ManageUsersPage() {
                 </button>
               </div>
 
-              <div className="p-6">
+              <div className="p-6 overflow-y-auto flex-1">
                 {error && (
                   <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                     {error}

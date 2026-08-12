@@ -440,7 +440,7 @@ export function Sidebar({
   // Logout
   // ===================================================
 
-  async function handleLogout() {
+async function handleLogout() {
   if (loggingOut) return;
 
   setLoggingOut(true);
@@ -451,15 +451,24 @@ export function Sidebar({
     } = await supabase.auth.getUser();
 
     if (user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const currentUserName =
+        profile?.username ??
+        sessionStorage.getItem("username") ??
+        "مستخدم غير معروف";
+
       await logActivity({
         userId: user.id,
-        userName:
-          sessionStorage.getItem("username") ??
-          "مستخدم غير معروف",
+        userName: currentUserName,
         actionType: "LOGOUT",
         action: "تسجيل خروج",
         entity: "النظام",
-        details: "تم تسجيل خروج المستخدم من المنظومة",
+        details: `تم تسجيل خروج المستخدم بواسطة ${currentUserName} من المنظومة`,
       });
     }
 

@@ -367,7 +367,7 @@ await logActivity({
   actionType: "LOGIN",
   action: "تسجيل دخول",
   entity: "النظام",
-  details: "تم تسجيل الدخول إلى المنظومة",
+ details: `تم تسجيل الدخول إلى المنظومة بواسطة ${profile.username}`,
 });
 
 
