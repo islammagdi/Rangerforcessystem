@@ -22,6 +22,7 @@ interface SoldierRow {
   serviceType: string;
   status: "داخل الوحده" | "خارج الوحده";
   attachment: string;
+  dischargeDate: string;
 }
 
 interface UnitMeta {
@@ -209,7 +210,58 @@ function FilterBtnGroup<T extends string>({
 }
 
 // ─── Table columns ────────────────────────────────────────────────────────────
+// ترتيب رتب المتطوعين (الأعلى أولاً)
+const VOLUNTEER_RANK_ORDER = [
+  "مساعد اول",
+  "مساعد",
+  "رقيب اول",
+  "رقيب",
+  "عريف",
+];
 
+function isVolunteerRow(row: SoldierRow): boolean {
+  return (
+    row.serviceType.includes("متطوع") &&
+    !row.serviceType.includes("مجند")
+  );
+}
+
+function getVolunteerRankIndex(rank: string): number {
+  const idx = VOLUNTEER_RANK_ORDER.findIndex((r) => rank.includes(r));
+  return idx === -1 ? VOLUNTEER_RANK_ORDER.length : idx;
+}
+
+function sortSoldierRows(rows: SoldierRow[]): SoldierRow[] {
+  return [...rows].sort((a, b) => {
+    const aIsVolunteer = isVolunteerRow(a);
+    const bIsVolunteer = isVolunteerRow(b);
+
+    // المتطوعين أولاً، ثم الجنود
+    if (aIsVolunteer && !bIsVolunteer) return -1;
+    if (!aIsVolunteer && bIsVolunteer) return 1;
+
+    // لو الاتنين متطوعين: رتب حسب ترتيب الرتب
+    if (aIsVolunteer && bIsVolunteer) {
+      return getVolunteerRankIndex(a.rank) - getVolunteerRankIndex(b.rank);
+    }
+
+    // لو الاتنين جنود: رتب بالاسم أبجديًا
+    return a.name.localeCompare(b.name, "ar");
+  });
+}
+
+function formatDischargeDate(row: SoldierRow, rawDate: string | null): string {
+  if (isVolunteerRow(row)) {
+    return "لا يوجد";
+  }
+
+  if (!rawDate) {
+    return "-";
+  }
+
+  const [year, month, day] = rawDate.split("-");
+  return `${day}/${month}/${year}`;
+}
 const TABLE_COLS = [
   { key: "milId", label: "رقم عسكري" },
   { key: "rank", label: "درجة" },
@@ -217,9 +269,121 @@ const TABLE_COLS = [
   { key: "serviceType", label: "نوع الخدمه" },
   { key: "status", label: "حالة التوزيع" },
   { key: "attachment", label: "مكان الالحاق" },
+  { key: "dischargeDate", label: "تاريخ التسريح" },
   { key: "actions", label: "الاجراء" },
 ];
+function PrintStyles() {
+  return (
+    <style>
+      {`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
 
+          .soldiers-print-area,
+          .soldiers-print-area * {
+            visibility: visible !important;
+          }
+
+          .soldiers-print-area {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+          }
+
+          .no-print {
+            display: none !important;
+          }
+
+          table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+          }
+
+          th, td {
+            border: 1px solid #ccc;
+            padding: 6px !important;
+            font-size: 11px !important;
+          }
+
+          @page {
+            size: A4 landscape;
+            margin: 10mm;
+          }
+        }
+      `}
+    </style>
+  );
+}
+function UnitSoldiersPrintReport({
+  unit,
+  rows,
+}: {
+  unit: UnitMeta;
+  rows: SoldierRow[];
+}) {
+  const today = new Date().toLocaleString("ar-EG");
+
+  return (
+    <div className="soldiers-print-area hidden print:block" dir="rtl">
+      {/* نفس الهيدر الموجود في الصفحة */}
+      <div className="mb-4">
+        <p style={{ ...F, fontWeight: 700, fontSize: 22 }}>
+          {unit.name}
+        </p>
+
+        <div className="flex items-center gap-6 flex-wrap mt-2">
+          <span style={{ ...F, fontSize: 14 }}>
+            القوة: {unit.total} فرد
+          </span>
+          <span style={{ ...F, fontSize: 14 }}>
+            ضباط صف: {unit.nco} ضابط صف
+          </span>
+          <span style={{ ...F, fontSize: 14 }}>
+            الجنود: {unit.soldiers} جندي
+          </span>
+          <span style={{ ...F, fontSize: 14 }}>
+            خوارج: {unit.khawarij} فرد
+          </span>
+          <span style={{ ...F, fontSize: 14 }}>
+            المتبقي: {unit.remaining} فرد
+          </span>
+        </div>
+      </div>
+
+      {/* جدول الأفراد بنفس ترتيب الأعمدة المعروض */}
+      <table className="w-full" style={F}>
+        <thead>
+          <tr>
+            {TABLE_COLS.filter((c) => c.key !== "actions").map((c) => (
+              <th key={c.key}>{c.label}</th>
+            ))}
+          </tr>
+        </thead>
+
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id}>
+              <td>{row.milId}</td>
+              <td>{row.rank}</td>
+              <td>{row.name}</td>
+              <td>{row.serviceType}</td>
+              <td>{row.status}</td>
+              <td>{row.attachment}</td>
+              <td>{row.dischargeDate}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <p style={{ ...F, fontSize: 12, marginTop: 12, textAlign: "left" }}>
+        تاريخ الطباعة: {today} — عدد النتائج: {rows.length} فرد
+      </p>
+    </div>
+  );
+}
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function UnitSoldiersPage() {
@@ -291,22 +455,22 @@ export function UnitSoldiersPage() {
       // ───────────────────────────────────────────────────────────────────────
 
       const { data: personnelData, error: personnelError } =
-        await supabase
-          .from("personnel")
-          .select(`
-            id,
-            military_number,
-            full_name,
-            rank_id,
-            personnel_category_id,
-            service_status_id,
-            primary_unit_id,
-            attachment_unit_id,
-            is_active
-          `)
-          .eq("primary_unit_id", unitId)
-          .order("full_name", { ascending: true });
-
+  await supabase
+    .from("personnel")
+    .select(`
+      id,
+      military_number,
+      full_name,
+      rank_id,
+      personnel_category_id,
+      service_status_id,
+      primary_unit_id,
+      attachment_unit_id,
+      is_active,
+      discharge_date
+    `)
+    .eq("primary_unit_id", unitId)
+    .order("full_name", { ascending: true });
       if (personnelError) {
         throw personnelError;
       }
@@ -415,41 +579,48 @@ export function UnitSoldiersPage() {
       // ───────────────────────────────────────────────────────────────────────
 
       const rows: SoldierRow[] = personnel.map((person) => {
-        const isInside =
-          !person.attachment_unit_id ||
-          person.attachment_unit_id === unitId;
+  const isInside =
+    !person.attachment_unit_id ||
+    person.attachment_unit_id === unitId;
 
-        const attachment =
-          person.attachment_unit_id &&
-          person.attachment_unit_id !== unitId
-            ? attachmentUnitMap.get(person.attachment_unit_id) ??
-              "غير محدد"
-            : "لا يوجد";
+  const attachment =
+    person.attachment_unit_id &&
+    person.attachment_unit_id !== unitId
+      ? attachmentUnitMap.get(person.attachment_unit_id) ??
+        "غير محدد"
+      : "لا يوجد";
 
-        return {
-          id: person.id,
+  const baseRow: SoldierRow = {
+    id: person.id,
 
-          milId: person.military_number ?? "",
+    milId: person.military_number ?? "",
 
-          rank:
-            rankMap.get(person.rank_id) ??
-            "غير محدد",
+    rank:
+      rankMap.get(person.rank_id) ??
+      "غير محدد",
 
-          name:
-            person.full_name ??
-            "",
+    name:
+      person.full_name ??
+      "",
 
-          serviceType:
-            categoryMap.get(person.personnel_category_id) ??
-            "غير محدد",
+    serviceType:
+      categoryMap.get(person.personnel_category_id) ??
+      "غير محدد",
 
-          status: isInside
-            ? "داخل الوحده"
-            : "خارج الوحده",
+    status: isInside
+      ? "داخل الوحده"
+      : "خارج الوحده",
 
-          attachment,
-        };
-      });
+    attachment,
+
+    dischargeDate: "",
+  };
+
+  return {
+    ...baseRow,
+    dischargeDate: formatDischargeDate(baseRow, person.discharge_date),
+  };
+});
 
       // ───────────────────────────────────────────────────────────────────────
       // 7) Calculate statistics
@@ -472,15 +643,15 @@ export function UnitSoldiersPage() {
       ).length;
 
       setUnit({
-        id: unitData.id,
-        name: unitData.name,
-        total: rows.length,
-        soldiers,
-        nco,
-        khawarij,
-        remaining,
-        rows,
-      });
+  id: unitData.id,
+  name: unitData.name,
+  total: rows.length,
+  soldiers,
+  nco,
+  khawarij,
+  remaining,
+  rows: sortSoldierRows(rows),
+});
     } catch (err: any) {
       console.error("Error loading unit personnel:", err);
 
@@ -550,7 +721,15 @@ export function UnitSoldiersPage() {
     { value: "soldiers", label: "جنود" },
     { value: "nco", label: "ضباط صف" },
   ];
+function handlePrintSoldiersList() {
+   const originalTitle = document.title;
 
+  document.title = `كشف اسماء ${unit.name}`;
+
+  window.print();
+
+  document.title = originalTitle;
+}
   // ───────────────────────────────────────────────────────────────────────────
   // Loading
   // ───────────────────────────────────────────────────────────────────────────
@@ -619,6 +798,8 @@ export function UnitSoldiersPage() {
       className="flex flex-col gap-5 w-full"
       dir="rtl"
     >
+      <PrintStyles />
+    <UnitSoldiersPrintReport unit={unit} rows={filtered} />
       {/* Page title */}
 
       <h1
@@ -653,25 +834,29 @@ export function UnitSoldiersPage() {
           <div className="flex items-start gap-6 flex-wrap justify-start">
             {[
               {
-                label: "المتبقي:",
-                value: `${unit.remaining} فرد`,
-              },
-              {
-                label: "خوارج:",
-                value: `${unit.khawarij} فرد`,
+                label: "القوة:",
+                value: `${unit.total} فرد`,
               },
               {
                 label: "ضباط صف:",
                 value: `${unit.nco} ضابط صف`,
               },
+              
               {
                 label: "الجنود:",
                 value: `${unit.soldiers} جندي`,
               },
               {
-                label: "القوة:",
-                value: `${unit.total} فرد`,
+                label: "خوارج:",
+                value: `${unit.khawarij} فرد`,
               },
+              
+              {
+                label: "المتبقي:",
+                value: `${unit.remaining} فرد`,
+              },
+              
+              
             ].map((s, i, arr) => (
               <div
                 key={s.label}
@@ -709,6 +894,7 @@ export function UnitSoldiersPage() {
 
           <button
             type="button"
+            onClick={handlePrintSoldiersList}
             className="flex items-center gap-1.5 bg-[#DCF4DF] rounded-[8px] px-3 py-2 hover:opacity-80 transition-opacity shrink-0"
           >
             <svg
@@ -865,7 +1051,7 @@ export function UnitSoldiersPage() {
                     key={c.key}
                     className="px-4 py-3 text-right whitespace-nowrap"
                   >
-                    <div className="flex items-center gap-1 justify-end">
+                    <div className="flex items-center gap-1 justify-start">
                       <span
                         style={{
                           ...F,
@@ -1006,7 +1192,18 @@ export function UnitSoldiersPage() {
                         {row.attachment}
                       </span>
                     </td>
-
+<td className="px-4 py-3">
+  <span
+    style={{
+      ...F,
+      fontSize: 14,
+      color: "#2d3648",
+      whiteSpace: "nowrap",
+    }}
+  >
+    {row.dischargeDate}
+  </span>
+</td>
                     <td className="px-4 py-3">
                       <ActionBtns
                         onView={() =>
@@ -1026,28 +1223,7 @@ export function UnitSoldiersPage() {
         {/* Footer */}
 
         <div className="flex items-center justify-between px-5 py-3 bg-[#fafbff] border-t border-[#eff0f6] flex-wrap gap-2">
-          <div className="flex items-center gap-1">
-            <span
-              style={{
-                ...F,
-                fontSize: 14,
-                color: "#a0abc0",
-              }}
-            >
-              المستخدم الحالي:
-            </span>
-
-            <span
-              style={{
-                ...F,
-                fontSize: 14,
-                color: "#4a5468",
-                fontWeight: 700,
-              }}
-            >
-              جندي / اسلام مجدي عبدالستار
-            </span>
-          </div>
+         
 
           <div>
             <span

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router";
 import { createPortal } from "react-dom";
 import { ChevronDown, CalendarDays } from "lucide-react";
 import { supabase } from "../../lib/supabase";
-
+import { logActivity } from "../../lib/logActivity";
 // ─────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────
@@ -1428,7 +1428,33 @@ export function SoldierEditPage() {
 
         return;
       }
-
+await logActivity({
+  userName: soldier.name,
+  actionType: "UPDATE",
+  action: "تعديل بيانات فرد",
+  entity: `الفرد: ${soldier.name}`,
+  details: [
+    `الرقم العسكري: ${soldier.militaryId} → ${trimmedMilitaryNumber}`,
+    `الدرجة: ${soldier.rank} → ${
+      rankOptions.find((o) => o.id === rankId)?.name ?? "-"
+    }`,
+    `الفئة: ${soldier.category} → ${
+      categoryOptions.find((o) => o.id === categoryId)?.name ?? "-"
+    }`,
+    `الوحدة: ${soldier.unit} → ${
+      unitOptions.find((o) => o.id === unitId)?.name ?? "-"
+    }`,
+    `الموقف الخدمي: ${soldier.serviceStatus} → ${
+      serviceStatusOptions.find((o) => o.id === serviceStatusId)?.name ?? "-"
+    }`,
+    `جهة الإلحاق: ${soldier.attachmentPlace || "-"} → ${
+      attachmentUnitOptions.find((o) => o.id === attachmentUnitId)?.name ?? "-"
+    }`,
+    `تاريخ التسريح: ${soldier.dischargeDate || "-"} → ${
+      dischargeDateIso ? isoToDisplayDate(dischargeDateIso) : "-"
+    }`,
+  ].join("\n"),
+});
       // الرجوع لشاشة بيانات الفرد بعد نجاح الحفظ
       navigate(`/dashboard/individual-query/soldier/${soldier.id}`);
     } catch (err) {

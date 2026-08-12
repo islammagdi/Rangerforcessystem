@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { logActivity } from "../../lib/logActivity"; // عدّل المسار حسب مكان الملف عندك
 import {
   ChevronDown,
   X,
@@ -57,6 +58,29 @@ function hasLicenseEligibility(militaryId: string) {
     value.length >= 8 &&
     value.substring(6, 8) === "66"
   );
+}
+async function getCurrentUserInfo(): Promise<{
+  userId: string | null;
+  userName: string;
+}> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.user) {
+    return { userId: null, userName: "غير معروف" };
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("username")
+    .eq("id", session.user.id)
+    .maybeSingle();
+
+  return {
+    userId: session.user.id,
+    userName: profile?.username ?? "غير معروف",
+  };
 }
 
 /* =========================================================
@@ -1096,8 +1120,12 @@ export function ReserveBatchesPage() {
       );
 
       setSoldierData([]);
+      
+      
       return;
+      
     }
+    
 
     const personnel = data ?? [];
 
@@ -1245,6 +1273,22 @@ export function ReserveBatchesPage() {
 
     setSoldierData(mapped);
     setCheckedRows(new Set());
+    const { userId, userName } = await getCurrentUserInfo();
+
+await logActivity({
+  userId,
+  userName,
+  actionType: "QUERY",
+  action: "بحث عن دفعة رديف",
+  entity: "reserve_batches",
+  details: JSON.stringify({
+    queryBasis: "دفعة الرديف",
+    queryValue:
+      selectedBatchObject.name ||
+      formatBatchDate(selectedBatchObject.batch_date),
+    resultsCount: mapped.length,
+  }),
+});
   }
 
   /* =========================================================
@@ -1394,6 +1438,7 @@ export function ReserveBatchesPage() {
       setSuccessMsg(
         "لا توجد بيانات لحفظها"
       );
+      
 
       setTimeout(
         () => setSuccessMsg(""),
@@ -1474,6 +1519,23 @@ export function ReserveBatchesPage() {
       if (error) {
         throw error;
       }
+      const { userId, userName } = await getCurrentUserInfo();
+
+await logActivity({
+  userId,
+  userName,
+  actionType: "UPDATE",
+  action: "تحديث حالة الكارنيه/الرخصة للأفراد",
+  entity: "reserve_batch_documents",
+  details: JSON.stringify({
+    queryBasis: "دفعة الرديف",
+    queryValue:
+      selectedBatchObject.name ||
+      formatBatchDate(selectedBatchObject.batch_date),
+    resultsCount: soldierData.length,
+    militaryNumbers: soldierData.map((s) => s.militaryId),
+  }),
+});
 
       setSuccessMsg(
         "تم حفظ جميع التعديلات بنجاح"
@@ -1729,6 +1791,19 @@ export function ReserveBatchesPage() {
       if (documentsUpsertError) {
         throw documentsUpsertError;
       }
+      const { userId, userName } = await getCurrentUserInfo();
+
+await logActivity({
+  userId,
+  userName,
+  actionType: "UPDATE",
+  action: "إنهاء خدمة أفراد",
+  entity: "personnel",
+  details: JSON.stringify({
+    resultsCount: selectedPersonnel.length,
+    militaryNumbers: selectedPersonnel.map((s) => s.militaryId),
+  }),
+});
 
       setShowEndDialog(false);
 
@@ -1835,6 +1910,26 @@ export function ReserveBatchesPage() {
       if (error) {
         throw error;
       }
+const transferredSoldiers = soldierData.filter((s) =>
+  ids.includes(s.id)
+);
+
+const { userId, userName } = await getCurrentUserInfo();
+
+await logActivity({
+  userId,
+  userName,
+  actionType: "UPDATE",
+  action: "ترحيل أفراد إلى دفعة أخرى",
+  entity: "personnel",
+  details: JSON.stringify({
+    queryValue:
+      targetBatch.name ||
+      formatBatchDate(targetBatch.batch_date),
+    resultsCount: transferredSoldiers.length,
+    militaryNumbers: transferredSoldiers.map((s) => s.militaryId),
+  }),
+});
 
       setShowTransferDialog(false);
 
@@ -1876,9 +1971,38 @@ export function ReserveBatchesPage() {
      الطباعة
      ========================================================= */
 
-  function handlePrint() {
-    window.print();
-  }
+  async function handlePrint() {
+  const { userId, userName } = await getCurrentUserInfo();
+
+  await logActivity({
+    userId,
+    userName,
+    actionType: "PRINT",
+    action: "طباعة كشف دفعة الرديف",
+    entity: "reserve_batches",
+    details: JSON.stringify({
+      queryValue: selectedBatchObject
+        ? selectedBatchObject.name ||
+          formatBatchDate(selectedBatchObject.batch_date)
+        : "",
+      resultsCount: filteredSoldierData.length,
+    }),
+  });
+
+    const originalTitle = document.title;
+
+  const batchLabel =
+    selectedBatchObject?.name ||
+    (selectedBatchObject
+      ? formatBatchDate(selectedBatchObject.batch_date)
+      : "");
+
+  document.title = `كشف دفعة الرديف ${batchLabel}`;
+
+  window.print();
+
+  document.title = originalTitle;
+}
 
   const thClass =
     "px-4 py-3 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]";

@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { LoadingOverlay } from "../components/LoadingOverlay";
 import { supabase } from "../../lib/supabase";
+import { logActivity } from "../../lib/logActivity";
 
 // ============================================================================
 // Style
@@ -276,6 +277,48 @@ export function ReviewSoldierPage() {
           "لم يتم الحصول على رقم سجل الفرد بعد الحفظ."
         );
       }
+      // =====================================================
+// تسجيل إضافة الفرد في audit_logs
+// =====================================================
+
+const {
+  data: { user },
+} = await supabase.auth.getUser();
+
+let userName = "غير معروف";
+
+if (user) {
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("username")
+    .eq("id", user.id)
+    .single();
+
+  if (profileError) {
+    console.error("Profile error:", profileError);
+  }
+
+  userName = profile?.username ?? "غير معروف";
+}
+
+await logActivity({
+  userId: user?.id ?? null,
+  userName,
+  actionType: "CREATE",
+  action: "إضافة فرد",
+  entity: "personnel",
+  details: JSON.stringify({
+    personnelId,
+    militaryNumber,
+    fullName,
+    personnelCategory: form.personnel_category,
+    rank: form.rank_name,
+    serviceStatus: form.status_name,
+    primaryUnit: form.primary_unit_name,
+    attachmentUnit: form.attachment_unit_name,
+    dischargeDate,
+  }),
+});
 
       console.log(
         "INSERTED PERSONNEL ID:",

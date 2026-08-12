@@ -118,6 +118,58 @@ const REPORT_TYPES: ReportCard[] = [
     desc: "كشف الأفراد الملحقين من خارج الوحدة المحددة",
   },
 ];
+const RANK_ORDER = [
+  "مساعد اول",
+  "مساعد",
+  "رقيب اول",
+  "رقيب",
+  "عريف",
+  "جندى",
+];
+const ALL_OUTSIDERS_UNIT_ORDER = [
+  "قيادة المجموعة 127 صاعقة",
+  "كتيبة 33 صاعقة",
+  "كتيبة 43 صاعقة",
+  "كتيبة 53 صاعقة",
+  "كتيبة 103 صاعقة",
+
+  "قيادة المجموعة 129 صاعقة",
+  "كتيبة 13 صاعقة",
+  "كتيبة 23 صاعقة",
+  "كتيبة 83 صاعقة",
+  "كتيبة 113 صاعقة",
+
+  "قيادة المجموعة 145 صاعقة",
+  "كتيبة 63 صاعقة",
+  "كتيبة 93 صاعقة",
+  "كتيبة 73 صاعقة",
+  "كتيبة 143 صاعقة",
+
+  "قيادة المجموعة 101 صاعقة",
+  "كتيبة 11 صاعقة",
+  "كتيبة 21 صاعقة",
+  "كتيبة 31 صاعقة",
+  "كتيبة 41 صاعقة",
+
+  "قياده مجموعه العمليات الخاصه",
+  "الوحدة 777 قتال",
+  "الوحدة 999 قتال",
+  "كتيبة 50 صاعقة",
+  "سرية العائمات",
+  "فصيلة شئون مظلات",
+  "سريه القياده",
+  "كتيبة القيادة",
+  "سرية الإيجلا",
+  "كتيبة التأمين الفني",
+  "ميس 4",
+  "سرية 279 نقل",
+  "فصيلة 121 شرطة عسكرية",
+  "سرية 680 إشارة",
+  "مدرسة الصاعقة",
+  "فرقة الموسيقى",
+  "السرية الزراعية",
+  "كتيبة 49 مدفعية",
+];
 
 // ============================================================
 // Helpers
@@ -367,12 +419,34 @@ function SimpleDropdown({
   placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filteredOptions = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    if (!query) return options;
+
+    return options.filter((opt) =>
+      opt.label.toLowerCase().includes(query)
+    );
+  }, [options, search]);
+
+  function handleSelect(value: string) {
+    onChange(value);
+    setSearch("");
+    setOpen(false);
+  }
+
+  function handleOpen() {
+    setOpen((o) => !o);
+    setSearch("");
+  }
 
   return (
     <div className="relative w-full">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={handleOpen}
         className="w-full h-[54px] bg-white border border-[#e2e7f0] rounded-[8px] flex items-center gap-2 px-3 hover:border-[#a0aec0] transition-colors"
         dir="rtl"
       >
@@ -388,9 +462,7 @@ function SimpleDropdown({
           style={{
             ...F,
             fontSize: 16,
-            color: value
-              ? "#2d3648"
-              : "#4a5468",
+            color: value ? "#2d3648" : "#4a5468",
           }}
         >
           {value || placeholder || "اختر"}
@@ -398,34 +470,68 @@ function SimpleDropdown({
       </button>
 
       {open && (
-        <ul
-          className="absolute z-50 top-full mt-1 w-full bg-white border border-[#e2e7f0] rounded-[8px] shadow-lg overflow-hidden max-h-[280px] overflow-y-auto"
+        <div
+          className="absolute z-50 top-full mt-1 w-full bg-white border border-[#e2e7f0] rounded-[8px] shadow-lg overflow-hidden"
           dir="rtl"
         >
-          {options.map((opt) => (
-            <li key={opt.value}>
-              <button
-                type="button"
-                onClick={() => {
-                  onChange(opt.value);
+          <div className="p-2 border-b border-[#e2e7f0] bg-white">
+            <input
+              autoFocus
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setSearch("");
                   setOpen(false);
-                }}
-                className={[
-                  "w-full text-right px-4 py-3 transition-colors",
-                  opt.value === value
-                    ? "bg-[#f0f2fd] text-[#1f3d97]"
-                    : "hover:bg-[#f5f6fb] text-[#2d3648]",
-                ].join(" ")}
+                }
+              }}
+              placeholder="اكتب جزء من اسم الوحدة..."
+              className="w-full h-[44px] px-3 rounded-[7px] border border-[#e2e7f0] outline-none focus:border-[#00b867]"
+              style={{
+                ...F,
+                fontSize: 14,
+                color: "#2d3648",
+              }}
+            />
+          </div>
+
+          <ul className="max-h-[280px] overflow-y-auto">
+            {filteredOptions.length > 0 ? (
+              filteredOptions.map((opt) => (
+                <li key={opt.value}>
+                  <button
+                    type="button"
+                    onClick={() => handleSelect(opt.value)}
+                    className={[
+                      "w-full text-right px-4 py-3 transition-colors",
+                      opt.value === value
+                        ? "bg-[#f0f2fd] text-[#1f3d97]"
+                        : "hover:bg-[#f5f6fb] text-[#2d3648]",
+                    ].join(" ")}
+                    style={{
+                      ...F,
+                      fontSize: 15,
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                </li>
+              ))
+            ) : (
+              <li
+                className="px-4 py-5 text-center"
                 style={{
                   ...F,
-                  fontSize: 15,
+                  fontSize: 14,
+                  color: "#717d96",
                 }}
               >
-                {opt.label}
-              </button>
-            </li>
-          ))}
-        </ul>
+                لا توجد وحدة مطابقة
+              </li>
+            )}
+          </ul>
+        </div>
       )}
     </div>
   );
@@ -888,7 +994,7 @@ function ReportHeader({
 // ============================================================
 
 const TH_CLASS =
-  "px-5 py-3 text-right border border-[#dde3ef] bg-[#f7f9fc]";
+  "px-5 py-3 text-center border border-[#dde3ef] bg-[#f7f9fc]";
 
 const TD_CLASS =
   "px-5 py-3 text-center border border-[#dde3ef]";
@@ -1087,10 +1193,20 @@ function AllUnitsOutsidersReport({
   config: ReportConfig;
 }) {
   const rows = units
-    .filter(
-      (unit) => unit.unit_type === "MAIN"
-    )
-    .map((unit) => {
+  .filter((unit) => unit.unit_type === "MAIN")
+ .sort((a, b) => {
+  const indexA =
+    ALL_OUTSIDERS_UNIT_ORDER.indexOf(a.name.trim());
+
+  const indexB =
+    ALL_OUTSIDERS_UNIT_ORDER.indexOf(b.name.trim());
+
+  if (indexA === -1) return 1;
+  if (indexB === -1) return -1;
+
+  return indexA - indexB;
+})
+  .map((unit) => {
       // ✅ قوة كل وحدة = نفس مبدأ UnitForceReport بالظبط (كل الأفراد
       // اللي وحدتهم الأساسية هي دي، بغض النظر عن حالتهم)
       const unitPeople = people.filter(
@@ -1391,16 +1507,36 @@ function AttachedOutsideUnitReport({
   people: Personnel[];
   config: ReportConfig;
 }) {
-  const rows = people.filter(
+const rows = people
+  .filter(
     (person) =>
-      person.primary_unit?.id ===
-        config.unitId &&
+      person.primary_unit?.id === config.unitId &&
       isOutsider(person) &&
-      matchesCategory(
-        person,
-        config.category
-      )
+      matchesCategory(person, config.category)
+  )
+ .sort((a, b) => {
+  // المتطوعون أولًا
+  const categoryA = isNco(a) ? 0 : 1;
+  const categoryB = isNco(b) ? 0 : 1;
+
+  if (categoryA !== categoryB) {
+    return categoryA - categoryB;
+  }
+
+  // ثم ترتيب الدرجات
+  const rankA = RANK_ORDER.indexOf(
+    a.rank?.name?.trim() ?? ""
   );
+
+  const rankB = RANK_ORDER.indexOf(
+    b.rank?.name?.trim() ?? ""
+  );
+
+  if (rankA === -1) return 1;
+  if (rankB === -1) return -1;
+
+  return rankA - rankB;
+})
 
   return (
     <ReportTableWrapper>
@@ -1446,6 +1582,11 @@ function AttachedOutsideUnitReport({
                 جهة الإلحاق
               </TableText>
             </th>
+            <th className={`${TH_CLASS} text-center`}>
+  <TableText bold>
+    تاريخ التسريح
+  </TableText>
+</th>
           </tr>
         </thead>
 
@@ -1482,11 +1623,18 @@ function AttachedOutsideUnitReport({
                     "-"}
                 </TableText>
               </td>
+              <td className={TD_CLASS}>
+  <TableText>
+    {isNco(person)
+      ? "-"
+      : formatDate(person.discharge_date)}
+  </TableText>
+</td>
             </tr>
           ))}
 
           {rows.length === 0 && (
-            <EmptyRow colSpan={5} />
+            <EmptyRow colSpan={6} />
           )}
         </tbody>
       </table>
@@ -1717,7 +1865,8 @@ function AttachedToUnitReport({
   people: Personnel[];
   config: ReportConfig;
 }) {
-  const rows = people.filter(
+const rows = people
+  .filter(
     (person) =>
       person.attachment_unit?.id ===
         config.unitId &&
@@ -1728,7 +1877,40 @@ function AttachedToUnitReport({
         person,
         config.category
       )
-  );
+  )
+  .sort((a, b) => {
+    // المتطوعون أولًا
+    const categoryA = isNco(a) ? 0 : 1;
+    const categoryB = isNco(b) ? 0 : 1;
+
+    if (categoryA !== categoryB) {
+      return categoryA - categoryB;
+    }
+
+    // ثم ترتيب الدرجات
+    const rankA = RANK_ORDER.indexOf(
+      a.rank?.name?.trim() ?? ""
+    );
+
+    const rankB = RANK_ORDER.indexOf(
+      b.rank?.name?.trim() ?? ""
+    );
+
+    // أي درجة غير موجودة في القائمة تذهب للنهاية
+    if (rankA === -1 && rankB === -1) {
+      return 0;
+    }
+
+    if (rankA === -1) {
+      return 1;
+    }
+
+    if (rankB === -1) {
+      return -1;
+    }
+
+    return rankA - rankB;
+  });
 
   return (
     <ReportTableWrapper>
@@ -1774,6 +1956,11 @@ function AttachedToUnitReport({
                 الوحدة الأساسية
               </TableText>
             </th>
+            <th className={`${TH_CLASS} text-center`}>
+  <TableText bold>
+    تاريخ التسريح
+  </TableText>
+</th>
           </tr>
         </thead>
 
@@ -1810,11 +1997,18 @@ function AttachedToUnitReport({
                     "-"}
                 </TableText>
               </td>
+              <td className={TD_CLASS}>
+  <TableText>
+    {isNco(person)
+      ? "-"
+      : formatDate(person.discharge_date)}
+  </TableText>
+</td>
             </tr>
           ))}
 
           {rows.length === 0 && (
-            <EmptyRow colSpan={5} />
+            <EmptyRow colSpan={6} />
           )}
         </tbody>
       </table>

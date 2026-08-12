@@ -4,31 +4,38 @@ import { Download, Printer } from "lucide-react";
 import type { CSSProperties } from "react";
 import html2canvas from "html2canvas-pro";
 
+
 import { supabase } from "../../lib/supabase";
 import imgEagle from "figma:asset/af406d517dfa4e5b22e9993bd61d8e4e002646b6.png";
+
 
 const F: CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
+
 
 // خط خاص بمعاينة/طباعة الخطاب فقط
 const PF: CSSProperties = {
   fontFamily: "'Times New Roman', Times, serif",
 };
 
+
 /* =========================================================
    تحويل الأرقام الإنجليزية إلى أرقام عربية
 ========================================================= */
+
 
 const toArabicDigits = (
   value: string | number | null | undefined
 ): string => {
   if (value === null || value === undefined) return "";
 
+
   return String(value).replace(/\d/g, (digit) => {
     return "٠١٢٣٤٥٦٧٨٩"[Number(digit)];
   });
 };
+
 
 type Soldier = {
   id: string;
@@ -43,6 +50,7 @@ type Soldier = {
   dischargeDate: string | null;
 };
 
+
 type LetterData = {
   destination: string;
   attachmentPlace: string;
@@ -50,6 +58,7 @@ type LetterData = {
   issuingUnitId?: string;
   attachmentUnitId?: string;
 };
+
 
 type PageState = {
   letterType?: "attachment" | "end-attachment";
@@ -60,10 +69,12 @@ type PageState = {
   letterData?: LetterData;
 };
 
+
 /* =========================================================
    نتيجة عملية إنشاء ورفع المعاينة المؤقتة — تُستخدم للتشخيص
    ولمعرفة سبب الفشل بدقة بدل الاكتفاء بتسجيل الخطأ فقط.
 ========================================================= */
+
 
 type PreviewResult =
   | { ok: true }
@@ -78,14 +89,17 @@ type PreviewResult =
         | "db-update-failed";
     };
 
+
 /* =========================================================
    تحويل عنصر الـ HTML الخاص بمعاينة الخطاب إلى PNG ورفعه
    كصورة مؤقتة لحين رفع النسخة الموقعة رسميًا.
+
 
    هذه الدالة "Best effort": أي فشل هنا لا يوقف عملية حفظ
    الخطاب نفسها، فقط يتم تسجيل الخطأ بالتفصيل في الـ console
    حتى يسهل تشخيص أي مشكلة مستقبلية (CORS / RLS / عمود مفقود...).
 ========================================================= */
+
 
 async function generateAndUploadPreview(
   letterId: string
@@ -95,9 +109,11 @@ async function generateAndUploadPreview(
     letterId
   );
 
+
   const previewElement = document.querySelector(
     ".letter-preview"
   ) as HTMLElement | null;
+
 
   if (!previewElement) {
     console.warn(
@@ -106,19 +122,23 @@ async function generateAndUploadPreview(
     return { ok: false, reason: "no-preview-element" };
   }
 
+
   // -----------------------------------------------------
   // ✅ التأكد إن كل الصور جوه العنصر خلصت تحميل قبل الالتقاط
   // (خصوصًا شعار الجمهورية) — تفادي التقاط الصورة وهي لسه
   // بتتحمل، وهو سبب شائع لصور فاضية أو مقطوعة في النتيجة.
   // -----------------------------------------------------
 
+
   const images = Array.from(
     previewElement.querySelectorAll("img")
   );
 
+
   await Promise.all(
     images.map((img) => {
       if (img.complete) return Promise.resolve();
+
 
       return new Promise<void>((resolve) => {
         img.onload = () => resolve();
@@ -133,11 +153,14 @@ async function generateAndUploadPreview(
     })
   );
 
+
   console.log(
     "[PREVIEW] كل الصور جاهزة، جاري الالتقاط بـ html2canvas..."
   );
 
+
   let canvas: HTMLCanvasElement;
+
 
   try {
     canvas = await html2canvas(previewElement, {
@@ -155,6 +178,7 @@ async function generateAndUploadPreview(
     return { ok: false, reason: "capture-failed" };
   }
 
+
   console.log(
     "[PREVIEW] تم الالتقاط بنجاح. أبعاد الـ canvas:",
     canvas.width,
@@ -162,7 +186,9 @@ async function generateAndUploadPreview(
     canvas.height
   );
 
+
   let blob: Blob | null = null;
+
 
   try {
     blob = await new Promise<Blob | null>((resolve, reject) => {
@@ -182,6 +208,7 @@ async function generateAndUploadPreview(
     return { ok: false, reason: "tainted-canvas" };
   }
 
+
   if (!blob) {
     console.warn(
       "[PREVIEW] canvas.toBlob رجّع null بدون سبب واضح — تخطي رفع المعاينة المؤقتة"
@@ -189,17 +216,21 @@ async function generateAndUploadPreview(
     return { ok: false, reason: "empty-blob" };
   }
 
+
   console.log(
     "[PREVIEW] تم إنشاء الـ Blob بنجاح. الحجم بالبايت:",
     blob.size
   );
 
+
   const previewPath = `${letterId}/preview.png`;
+
 
   console.log(
     "[PREVIEW] جاري رفع الملف إلى Storage على المسار:",
     previewPath
   );
+
 
   const { error: uploadError } = await supabase.storage
     .from("letter-attachments")
@@ -208,6 +239,7 @@ async function generateAndUploadPreview(
       upsert: true,
       contentType: "image/png",
     });
+
 
   if (uploadError) {
     console.error(
@@ -218,9 +250,11 @@ async function generateAndUploadPreview(
     return { ok: false, reason: "upload-failed" };
   }
 
+
   console.log(
     "[PREVIEW] ✅ تم رفع الملف بنجاح، جاري تحديث جدول letters..."
   );
+
 
   const {
     error: updateError,
@@ -231,6 +265,7 @@ async function generateAndUploadPreview(
     .eq("id", letterId)
     .select("id, preview_image_path");
 
+
   if (updateError) {
     console.error(
       "[PREVIEW] ❌ فشل تحديث عمود preview_image_path — تحقق من وجود العمود في جدول letters وصلاحيات RLS للـ UPDATE:",
@@ -240,17 +275,21 @@ async function generateAndUploadPreview(
     return { ok: false, reason: "db-update-failed" };
   }
 
+
   console.log(
     "[PREVIEW] ✅ تم تحديث preview_image_path بنجاح:",
     updateData
   );
 
+
   return { ok: true };
 }
+
 
 /* =========================================================
    Loading Modal
 ========================================================= */
+
 
 function LoadingModal() {
   return (
@@ -282,6 +321,7 @@ function LoadingModal() {
           ))}
         </div>
 
+
         <p
           style={{
             ...F,
@@ -293,6 +333,7 @@ function LoadingModal() {
         >
           يرجى الانتظار
         </p>
+
 
         <p
           style={{
@@ -307,6 +348,7 @@ function LoadingModal() {
         </p>
       </div>
 
+
       <style>
         {`
           @keyframes reviewBounce {
@@ -314,6 +356,7 @@ function LoadingModal() {
               transform: translateY(0);
               opacity: 1;
             }
+
 
             40% {
               transform: translateY(-14px);
@@ -326,9 +369,11 @@ function LoadingModal() {
   );
 }
 
+
 /* =========================================================
    Success Modal
 ========================================================= */
+
 
 function SuccessModal({
   letterNumber,
@@ -366,6 +411,7 @@ function SuccessModal({
           </span>
         </div>
 
+
         <p
           style={{
             ...F,
@@ -378,6 +424,7 @@ function SuccessModal({
           عملية ناجحة!
         </p>
 
+
         <p
           style={{
             ...F,
@@ -389,6 +436,7 @@ function SuccessModal({
         >
           تم حفظ الخطاب وتحديث بيانات الأفراد بنجاح
         </p>
+
 
         {letterNumber !== null && (
           <p
@@ -403,6 +451,7 @@ function SuccessModal({
             رقم الخطاب: {toArabicDigits(letterNumber)}
           </p>
         )}
+
 
         <p
           style={{
@@ -419,9 +468,11 @@ function SuccessModal({
   );
 }
 
+
 /* =========================================================
    Step Bubble
 ========================================================= */
+
 
 function StepBubble({
   number,
@@ -458,6 +509,7 @@ function StepBubble({
         </span>
       </div>
 
+
       <span
         style={{
           ...F,
@@ -476,9 +528,11 @@ function StepBubble({
   );
 }
 
+
 /* =========================================================
    Stepper
 ========================================================= */
+
 
 function Stepper() {
   const steps = [
@@ -487,6 +541,7 @@ function Stepper() {
     "بيانات الخطاب",
     "المراجعة والتصديق",
   ];
+
 
   return (
     <div
@@ -501,6 +556,7 @@ function Stepper() {
             done={index < 3}
             active={index === 3}
           />
+
 
           {index < 3 && (
             <div className="flex items-center gap-[3px] mt-4 mx-2">
@@ -519,9 +575,11 @@ function Stepper() {
   );
 }
 
+
 /* =========================================================
    Info Pair
 ========================================================= */
+
 
 function InfoPair({
   label,
@@ -542,6 +600,7 @@ function InfoPair({
         {label}
       </span>
 
+
       <span
         style={{
           ...F,
@@ -551,6 +610,7 @@ function InfoPair({
       >
         :
       </span>
+
 
       <span
         style={{
@@ -565,9 +625,11 @@ function InfoPair({
   );
 }
 
+
 /* =========================================================
    Letter Preview
 ========================================================= */
+
 
 function LetterPreview({
   soldiers,
@@ -590,6 +652,7 @@ function LetterPreview({
      التاريخ بالأرقام العربية
   ======================================================= */
 
+
   const today = toArabicDigits(
     new Date().toLocaleDateString("en-GB", {
       day: "2-digit",
@@ -597,6 +660,7 @@ function LetterPreview({
       year: "numeric",
     })
   );
+
 
   return (
     <>
@@ -638,6 +702,7 @@ function LetterPreview({
               قيادة قـــوات الصاعقــة
             </p>
 
+
             <p
               style={{
                 ...PF,
@@ -648,6 +713,7 @@ function LetterPreview({
             >
               فــرع التنظيـــم والإدارة
             </p>
+
 
             <p
               style={{
@@ -660,6 +726,7 @@ function LetterPreview({
               التاريخ : {today}
             </p>
           </div>
+
 
           {/* اللوجو */}
           <div className="print-logo" style={{ flexShrink: 0 }}>
@@ -676,9 +743,11 @@ function LetterPreview({
           </div>
         </div>
 
+
         {/* =================================================
             الجهة
         ================================================= */}
+
 
         <p
           style={{
@@ -693,9 +762,11 @@ function LetterPreview({
           إلى / {toArabicDigits(destination || "...")}
         </p>
 
+
         {/* =================================================
             نص الخطاب
         ================================================= */}
+
 
         <p
           style={{
@@ -723,9 +794,11 @@ function LetterPreview({
           )}
         </p>
 
+
         {/* =================================================
             الجدول
         ================================================= */}
+
 
         <table
           className="w-full border-collapse mb-4"
@@ -762,6 +835,7 @@ function LetterPreview({
             </tr>
           </thead>
 
+
           <tbody>
             {soldiers.map((soldier, index) => (
               <tr key={soldier.id}>
@@ -776,6 +850,7 @@ function LetterPreview({
                   {toArabicDigits(index + 1)}
                 </td>
 
+
                 {/* الدرجة */}
                 <td
                   style={{
@@ -786,6 +861,7 @@ function LetterPreview({
                 >
                   {toArabicDigits(soldier.rank)}
                 </td>
+
 
                 {/* الاسم */}
                 <td
@@ -798,6 +874,7 @@ function LetterPreview({
                   {toArabicDigits(soldier.name)}
                 </td>
 
+
                 {/* الوحدة */}
                 <td
                   style={{
@@ -808,6 +885,7 @@ function LetterPreview({
                 >
                   {toArabicDigits(soldier.unit)}
                 </td>
+
 
                 {/* وحدة الإلحاق */}
                 <td
@@ -828,6 +906,7 @@ function LetterPreview({
           </tbody>
         </table>
 
+
         {/* التحية */}
         <p
           style={{
@@ -840,6 +919,7 @@ function LetterPreview({
         >
           مع وافر التحية ،،،
         </p>
+
 
         {/* التوقيع */}
         <div
@@ -867,6 +947,7 @@ function LetterPreview({
             {"التوقيع (                                  )"}
           </p>
 
+
           <p
             style={{
               margin: "6px 0 0",
@@ -876,6 +957,7 @@ function LetterPreview({
             {toArabicDigits(branchHeadRank || "جاري تحميل الرتبة")} /{" "}
             {toArabicDigits(branchHeadName || "جاري تحميل الاسم")}
           </p>
+
 
           <p
             style={{
@@ -888,9 +970,11 @@ function LetterPreview({
         </div>
       </div>
 
+
       {/* =================================================
           CSS الخاص بالخطاب
       ================================================= */}
+
 
       <style>
         {`
@@ -898,12 +982,15 @@ function LetterPreview({
             width: 80px;
             height: 80px;
 
+
             display: flex;
             align-items: center;
             justify-content: center;
 
+
             flex-shrink: 0;
           }
+
 
           .print-logo img {
             width: 100%;
@@ -911,25 +998,31 @@ function LetterPreview({
             object-fit: contain;
           }
 
+
           @media print {
             .print-logo {
               width: 32px !important;
               height: 32px !important;
+
 
               display: flex !important;
               align-items: center !important;
               justify-content: center !important;
             }
 
+
             .print-logo img {
               width: 32px !important;
               height: 32px !important;
 
+
               max-width: 32px !important;
               max-height: 32px !important;
 
+
               object-fit: contain !important;
             }
+
 
             .letter-preview {
               box-shadow: none !important;
@@ -939,15 +1032,18 @@ function LetterPreview({
               padding: 16px !important;
             }
 
+
             body {
               background: #fff !important;
             }
+
 
             * {
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
             }
           }
+
 
           @page {
             size: A4;
@@ -959,22 +1055,28 @@ function LetterPreview({
   );
 }
 
+
 /* =========================================================
    Main Page
 ========================================================= */
+
 
 export function LetterReviewPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
+
   const state = location.state as PageState | null;
+
 
   const letterType =
     state?.letterType === "end-attachment"
       ? "end-attachment"
       : "attachment";
 
+
   const soldiers = state?.soldiers ?? [];
+
 
   const letterData: LetterData =
     state?.letterData ?? {
@@ -987,29 +1089,38 @@ export function LetterReviewPage() {
         soldiers[0]?.attachmentUnitId ?? undefined,
     };
 
+
   const [letterNumber, setLetterNumber] =
     useState<number | null>(null);
+
 
   const [branchHeadName, setBranchHeadName] =
     useState("");
 
+
   const [branchHeadRank, setBranchHeadRank] =
     useState("");
 
+
   const [saving, setSaving] = useState(false);
+
 
   const [success, setSuccess] = useState(false);
 
+
   const [error, setError] = useState("");
+
 
   // ✅ تنبيه غير حاجب (non-blocking) يظهر للمستخدم لو فشل حفظ
   // المعاينة المؤقتة فقط، دون التأثير على نجاح حفظ الخطاب نفسه.
   const [previewWarning, setPreviewWarning] =
     useState("");
 
+
   /* =======================================================
      Check Session
   ======================================================= */
+
 
   useEffect(() => {
     const checkSession = async () => {
@@ -1018,15 +1129,19 @@ export function LetterReviewPage() {
         error: sessionError,
       } = await supabase.auth.getSession();
 
+
       if (sessionError) {
         console.error(sessionError);
+
 
         setError(
           "حدث خطأ أثناء التحقق من جلسة الدخول."
         );
 
+
         return;
       }
+
 
       if (!session?.user) {
         setError(
@@ -1035,12 +1150,15 @@ export function LetterReviewPage() {
       }
     };
 
+
     void checkSession();
   }, []);
+
 
   /* =======================================================
      Load Branch Head
   ======================================================= */
+
 
   useEffect(() => {
     const loadBranchHead = async () => {
@@ -1048,7 +1166,9 @@ export function LetterReviewPage() {
         data: { session },
       } = await supabase.auth.getSession();
 
+
       if (!session?.user) return;
+
 
       const { data, error } = await supabase
         .from("branch_heads")
@@ -1067,35 +1187,44 @@ export function LetterReviewPage() {
         .limit(1)
         .maybeSingle();
 
+
       if (error) {
         console.error("Branch head error:", error);
         return;
       }
 
+
       if (!data) return;
+
 
       const rank = Array.isArray(data.rank)
         ? data.rank[0]
         : data.rank;
 
+
       setBranchHeadName(data.full_name ?? "");
       setBranchHeadRank(rank?.name ?? "");
     };
 
+
     void loadBranchHead();
   }, []);
+
 
   /* =======================================================
      Save Letter
   ======================================================= */
 
+
   const saveLetter = useCallback(async () => {
     if (saving) return;
+
 
     if (!soldiers.length) {
       setError("لا يوجد أفراد في الخطاب.");
       return;
     }
+
 
     if (!state?.letterTypeId) {
       setError(
@@ -1104,11 +1233,14 @@ export function LetterReviewPage() {
       return;
     }
 
+
     setSaving(true);
     setError("");
     setPreviewWarning("");
 
+
     let createdLetterId: string | null = null;
+
 
     try {
       const {
@@ -1116,11 +1248,13 @@ export function LetterReviewPage() {
         error: sessionError,
       } = await supabase.auth.getSession();
 
+
       if (sessionError) {
         throw new Error(
           `خطأ في جلسة الدخول: ${sessionError.message}`
         );
       }
+
 
       if (!session?.user) {
         throw new Error(
@@ -1128,7 +1262,9 @@ export function LetterReviewPage() {
         );
       }
 
+
       const userId = session.user.id;
+
 
       const {
         data: letterTypeRow,
@@ -1139,11 +1275,13 @@ export function LetterReviewPage() {
         .eq("id", state.letterTypeId)
         .maybeSingle();
 
+
       if (typeError) {
         throw new Error(
           `خطأ في نوع الخطاب: ${typeError.message}`
         );
       }
+
 
       if (!letterTypeRow) {
         throw new Error(
@@ -1151,11 +1289,14 @@ export function LetterReviewPage() {
         );
       }
 
+
       const isAttach =
         letterTypeRow.code === "ATTACH";
 
+
       const isDetach =
         letterTypeRow.code === "DEATTACH";
+
 
       if (!isAttach && !isDetach) {
         throw new Error(
@@ -1163,9 +1304,11 @@ export function LetterReviewPage() {
         );
       }
 
+
       const issuingUnitId =
         letterData.issuingUnitId ??
         soldiers[0]?.unitId;
+
 
       if (!issuingUnitId) {
         throw new Error(
@@ -1173,10 +1316,12 @@ export function LetterReviewPage() {
         );
       }
 
+
       const attachmentUnitId =
         letterData.attachmentUnitId ??
         soldiers[0]?.attachmentUnitId ??
         null;
+
 
       if (isAttach && !attachmentUnitId) {
         throw new Error(
@@ -1184,12 +1329,15 @@ export function LetterReviewPage() {
         );
       }
 
+
       const finalAttachmentUnitId =
         isDetach ? null : attachmentUnitId;
+
 
       const newServiceStatusId = isAttach
         ? "d443b755-802a-4e5d-8a1b-0c372c5f94dd"
         : "b64822a7-38e3-4c98-b738-0f0f077bb6f2";
+
 
       const {
         data: branchHead,
@@ -1209,11 +1357,13 @@ export function LetterReviewPage() {
         .limit(1)
         .maybeSingle();
 
+
       if (branchError) {
         throw new Error(
           `خطأ في تحميل رئيس الفرع: ${branchError.message}`
         );
       }
+
 
       if (!branchHead) {
         throw new Error(
@@ -1221,42 +1371,53 @@ export function LetterReviewPage() {
         );
       }
 
+
       const branchRank = Array.isArray(
         branchHead.rank
       )
         ? branchHead.rank[0]
         : branchHead.rank;
 
+
       const letterInsert = {
         letter_type_id: letterTypeRow.id,
 
-        letter_date: new Date()
-          .toISOString()
-          .split("T")[0],
+
+       
+
 
         issuing_unit_id: issuingUnitId,
 
+
         attachment_unit_id:
           finalAttachmentUnitId,
+
 
         reason:
           letterData.reason ||
           "أوامر قيادة",
 
+
         personnel_count: soldiers.length,
 
+
         branch_head_id: branchHead.id,
+
 
         branch_head_name:
           branchHead.full_name,
 
+
         branch_head_rank:
           branchRank?.name ?? "",
 
+
         status: "UNDOCUMENTED",
+
 
         created_by: userId,
       };
+
 
       const {
         data: newLetter,
@@ -1267,11 +1428,13 @@ export function LetterReviewPage() {
         .select("id, letter_number")
         .single();
 
+
       if (insertLetterError) {
         throw new Error(
           `خطأ في حفظ الخطاب: ${insertLetterError.message}`
         );
       }
+
 
       if (!newLetter) {
         throw new Error(
@@ -1279,7 +1442,9 @@ export function LetterReviewPage() {
         );
       }
 
+
       createdLetterId = newLetter.id;
+
 
       const personnelRows = soldiers.map(
         (soldier) => ({
@@ -1288,11 +1453,13 @@ export function LetterReviewPage() {
         })
       );
 
+
       const {
         error: personnelError,
       } = await supabase
         .from("letter_personnel")
         .insert(personnelRows);
+
 
       if (personnelError) {
         throw new Error(
@@ -1300,72 +1467,177 @@ export function LetterReviewPage() {
         );
       }
 
-      const personnelIds = soldiers.map(
-        (soldier) => soldier.id
-      );
 
-      const {
-        error: updatePersonnelError,
-      } = await supabase
-        .from("personnel")
-        .update({
-          service_status_id:
-            newServiceStatusId,
+     const personnelIds = soldiers.map(
+  (soldier) => soldier.id
+);
 
-          attachment_unit_id:
-            finalAttachmentUnitId,
+// ✅ كل فرد له تحديث منفصل: نستخدم وحدة الإلحاق الخاصة به
+// (لو اتعدّلت من الجدول) بدل ما نطبّق قيمة واحدة عامة على الجميع.
+const updateResults = await Promise.all(
+  soldiers.map((soldier) => {
+    const soldierAttachmentId = isDetach
+      ? null
+      : soldier.attachmentUnitId ?? finalAttachmentUnitId;
 
-          updated_at:
-            new Date().toISOString(),
-        })
-        .in("id", personnelIds);
+    return supabase
+      .from("personnel")
+      .update({
+        service_status_id: newServiceStatusId,
+        attachment_unit_id: soldierAttachmentId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", soldier.id);
+  })
+);
 
-      if (updatePersonnelError) {
-        throw new Error(
-          `تم حفظ الخطاب وربط الأفراد، ولكن فشل تحديث حالة الأفراد: ${updatePersonnelError.message}`
-        );
-      }
+const updatePersonnelError = updateResults.find(
+  (result) => result.error
+)?.error;
 
-      const {
-        data: updatedPersonnel,
-        error: verifyPersonnelError,
-      } = await supabase
-        .from("personnel")
-        .select(
-          "id, service_status_id, attachment_unit_id"
-        )
-        .in("id", personnelIds);
+if (updatePersonnelError) {
+  throw new Error(
+    `تم حفظ الخطاب وربط الأفراد، ولكن فشل تحديث حالة الأفراد: ${updatePersonnelError.message}`
+  );
+}
 
-      if (verifyPersonnelError) {
-        throw new Error(
-          `تعذر التحقق من تحديث بيانات الأفراد: ${verifyPersonnelError.message}`
-        );
-      }
 
-      if (
-        !updatedPersonnel ||
-        updatedPersonnel.length !==
-          personnelIds.length
-      ) {
-        throw new Error(
-          "لم يتم تحديث جميع الأفراد المحددين."
-        );
-      }
+     const {
+  data: updatedPersonnel,
+  error: verifyPersonnelError,
+} = await supabase
+  .from("personnel")
+  .select(
+    "id, service_status_id, attachment_unit_id"
+  )
+  .in("id", personnelIds);
 
-      const invalidPersonnel =
-        updatedPersonnel.filter(
-          (person) =>
-            person.service_status_id !==
-              newServiceStatusId ||
-            person.attachment_unit_id !==
-              finalAttachmentUnitId
-        );
+if (verifyPersonnelError) {
+  throw new Error(
+    `تعذر التحقق من تحديث بيانات الأفراد: ${verifyPersonnelError.message}`
+  );
+}
 
-      if (invalidPersonnel.length > 0) {
-        throw new Error(
-          "فشل التحقق من تحديث حالة أو جهة إلحاق بعض الأفراد."
-        );
-      }
+if (
+  !updatedPersonnel ||
+  updatedPersonnel.length !==
+    personnelIds.length
+) {
+  throw new Error(
+    "لم يتم تحديث جميع الأفراد المحددين."
+  );
+}
+
+// ✅ نبني خريطة توقعات لكل فرد بقيمته الخاصة بدل قيمة واحدة عامة
+const expectedAttachmentBySoldierId = new Map(
+  soldiers.map((soldier) => [
+    soldier.id,
+    isDetach ? null : soldier.attachmentUnitId ?? finalAttachmentUnitId,
+  ])
+);
+
+const invalidPersonnel = updatedPersonnel.filter((person) => {
+  const expectedAttachment = expectedAttachmentBySoldierId.get(person.id);
+
+  return (
+    person.service_status_id !== newServiceStatusId ||
+    person.attachment_unit_id !== expectedAttachment
+  );
+});
+
+if (invalidPersonnel.length > 0) {
+  throw new Error(
+    "فشل التحقق من تحديث حالة أو جهة إلحاق بعض الأفراد."
+  );
+}
+      // =====================================================
+// تسجيل إصدار الخطاب في سجل العمليات
+// يتم التسجيل بعد نجاح:
+// 1. إنشاء الخطاب
+// 2. ربط الأفراد
+// 3. تحديث حالات الأفراد
+// 4. التحقق من التحديث
+// =====================================================
+
+
+const { data: profile, error: profileError } =
+  await supabase
+    .from("profiles")
+    .select("username")
+    .eq("id", userId)
+    .maybeSingle();
+
+
+if (profileError) {
+  console.warn(
+    "AUDIT PROFILE WARNING:",
+    profileError.message
+  );
+}
+
+
+const auditDetails =
+  `رقم الخطاب: ${newLetter.letter_number} — ` +
+  `نوع الخطاب: ${letterTypeRow.name} — ` +
+  `عدد الأفراد: ${soldiers.length}`;
+
+
+const { error: auditError } = await supabase
+  .from("audit_logs")
+  .insert({
+    user_id: userId,
+
+
+    user_name:
+      profile?.username ??
+      "غير معروف",
+
+
+    action_type: "CREATE",
+
+
+    action: "إصدار خطاب",
+
+
+    entity: "letters",
+
+
+    details: auditDetails,
+  });
+
+
+if (auditError) {
+  // فشل تسجيل الـ Audit لا يمنع نجاح إصدار الخطاب
+  console.error(
+    "AUDIT LOG ERROR:",
+    auditError
+  );
+}
+
+
+// =====================================================
+// نجاح العملية
+// =====================================================
+
+
+setLetterNumber(
+  newLetter.letter_number
+);
+
+
+setBranchHeadName(
+  branchHead.full_name ?? ""
+);
+
+
+setBranchHeadRank(
+  branchRank?.name ?? ""
+);
+
+
+setSaving(false);
+setSuccess(true);
+
 
       // =====================================================
       // ✅ إنشاء صورة PNG من معاينة الخطاب ورفعها مؤقتًا
@@ -1376,17 +1648,20 @@ export function LetterReviewPage() {
       // ولوج مفصّل في الكونسول لتسهيل التشخيص.
       // =====================================================
 
+
       try {
         const previewResult =
           await generateAndUploadPreview(
             newLetter.id
           );
 
+
         if (!previewResult.ok) {
           console.warn(
             "[SAVE LETTER] المعاينة المؤقتة لم تُحفظ — السبب:",
             previewResult.reason
           );
+
 
           setPreviewWarning(
             "تم حفظ الخطاب بنجاح، لكن تعذّر إنشاء نسخة المعاينة المؤقتة. يمكنك رفع النسخة الموقعة مباشرة من صفحة تفاصيل الخطاب."
@@ -1398,22 +1673,27 @@ export function LetterReviewPage() {
           previewError
         );
 
+
         setPreviewWarning(
           "تم حفظ الخطاب بنجاح، لكن تعذّر إنشاء نسخة المعاينة المؤقتة. يمكنك رفع النسخة الموقعة مباشرة من صفحة تفاصيل الخطاب."
         );
       }
 
+
       setLetterNumber(
         newLetter.letter_number
       );
+
 
       setBranchHeadName(
         branchHead.full_name ?? ""
       );
 
+
       setBranchHeadRank(
         branchRank?.name ?? ""
       );
+
 
       setSaving(false);
       setSuccess(true);
@@ -1422,6 +1702,7 @@ export function LetterReviewPage() {
         "SAVE LETTER ERROR:",
         err
       );
+
 
       if (createdLetterId) {
         try {
@@ -1432,6 +1713,7 @@ export function LetterReviewPage() {
               "letter_id",
               createdLetterId
             );
+
 
           await supabase
             .from("letters")
@@ -1448,7 +1730,9 @@ export function LetterReviewPage() {
         }
       }
 
+
       setSaving(false);
+
 
       setError(
         err instanceof Error
@@ -1463,34 +1747,42 @@ export function LetterReviewPage() {
     letterData,
   ]);
 
+
   /* =======================================================
      Redirect After Success
   ======================================================= */
 
+
   useEffect(() => {
     if (!success) return;
+
 
     const timer = window.setTimeout(() => {
       navigate("/dashboard");
     }, 3000);
+
 
     return () => {
       window.clearTimeout(timer);
     };
   }, [success, navigate]);
 
+
   /* =======================================================
      Page Title
   ======================================================= */
+
 
   const pageTitle =
     letterType === "end-attachment"
       ? "اصدار خطاب إنهاء إلحاق"
       : "اصدار خطاب إلحاق";
 
+
   /* =======================================================
      PRINT ONLY LETTER
   ======================================================= */
+
 
   const handlePrintLetter = () => {
     const letterElement =
@@ -1498,16 +1790,19 @@ export function LetterReviewPage() {
         ".letter-preview"
       ) as HTMLElement | null;
 
+
     if (!letterElement) {
       alert("تعذر العثور على الخطاب.");
       return;
     }
+
 
     const printWindow = window.open(
       "",
       "_blank",
       "width=900,height=1200"
     );
+
 
     if (!printWindow) {
       alert(
@@ -1516,22 +1811,37 @@ export function LetterReviewPage() {
       return;
     }
 
+
     const letterHtml = letterElement.outerHTML;
+
 
     printWindow.document.open();
 
+const letterTypeLabel =
+  state?.letterTypeName ||
+  (letterType === "end-attachment" ? "إنهاء إلحاق" : "إلحاق");
+
+const letterNumberLabel =
+  letterNumber !== null ? toArabicDigits(letterNumber) : "";
+
+const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
+  letterData.destination || ""
+}`.trim();
     printWindow.document.write(`
       <!DOCTYPE html>
       <html lang="ar" dir="rtl">
         <head>
           <meta charset="UTF-8" />
 
+
           <meta
             name="viewport"
             content="width=device-width, initial-scale=1.0"
           />
 
-          <title>معاينة الخطاب</title>
+
+          <title>${pdfTitle}</title>
+
 
           <style>
             @page {
@@ -1539,26 +1849,33 @@ export function LetterReviewPage() {
               margin: 10mm;
             }
 
+
             * {
               box-sizing: border-box;
+
 
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
             }
+
 
             html,
             body {
               margin: 0;
               padding: 0;
 
+
               width: 100%;
               min-height: 100%;
+
 
               background: #fff;
             }
 
+
             body {
               direction: rtl;
+
 
               font-family:
                 'Times New Roman',
@@ -1566,79 +1883,102 @@ export function LetterReviewPage() {
                 serif;
             }
 
+
             .print-page {
               display: flex;
               flex-direction: column;
               justify-content: flex-start;
               gap: 6mm;
 
+
               width: 100%;
               height: 277mm;
             }
+
 
             .print-copy {
               flex: 1 1 50%;
               overflow: hidden;
 
+
               transform: scale(0.94);
               transform-origin: top center;
+
 
               page-break-inside: avoid;
             }
 
+
             .letter-preview {
               display: block !important;
+
 
               width: 100% !important;
               max-width: none !important;
 
+
               margin: 0 !important;
 
+
               padding: 10px !important;
+
 
               border: 1.5px solid #000 !important;
               border-radius: 0 !important;
 
+
               box-shadow: none !important;
+
 
               background: #fff !important;
             }
+
 
             .print-logo {
               width: 32px !important;
               height: 32px !important;
 
+
               display: flex !important;
+
 
               align-items: center !important;
               justify-content: center !important;
 
+
               flex-shrink: 0 !important;
             }
+
 
             .print-logo img {
               width: 32px !important;
               height: 32px !important;
 
+
               max-width: 32px !important;
               max-height: 32px !important;
 
+
               object-fit: contain !important;
             }
+
 
             table {
               width: 100% !important;
               border-collapse: collapse !important;
             }
 
+
             th,
             td {
               border: 1px solid #ddd;
             }
 
+
             img {
               display: block;
             }
+
 
             @media print {
               html,
@@ -1646,8 +1986,10 @@ export function LetterReviewPage() {
                 width: 100%;
                 min-height: 100%;
 
+
                 overflow: visible !important;
               }
+
 
               .print-page {
                 page-break-inside: avoid;
@@ -1655,6 +1997,7 @@ export function LetterReviewPage() {
             }
           </style>
         </head>
+
 
         <body>
           <div class="print-page">
@@ -1665,19 +2008,24 @@ export function LetterReviewPage() {
       </html>
     `);
 
+
     printWindow.document.close();
+
 
     const doPrint = () => {
       setTimeout(() => {
         printWindow.focus();
 
+
         printWindow.print();
+
 
         setTimeout(() => {
           printWindow.close();
         }, 500);
       }, 500);
     };
+
 
     if (
       printWindow.document.readyState ===
@@ -1689,9 +2037,11 @@ export function LetterReviewPage() {
     }
   };
 
+
   /* =======================================================
      Render
   ======================================================= */
+
 
   return (
     <div
@@ -1699,6 +2049,7 @@ export function LetterReviewPage() {
       dir="rtl"
     >
       {/* عنوان الصفحة */}
+
 
       <h1
         className="text-center"
@@ -1712,13 +2063,17 @@ export function LetterReviewPage() {
         {pageTitle}
       </h1>
 
+
       {/* Stepper */}
+
 
       <div className="flex justify-center">
         <Stepper />
       </div>
 
+
       {/* Error */}
+
 
       {error && (
         <div
@@ -1735,7 +2090,9 @@ export function LetterReviewPage() {
         </div>
       )}
 
+
       {/* Preview Warning (تحذير غير حاجب) */}
+
 
       {previewWarning && !error && (
         <div
@@ -1752,9 +2109,11 @@ export function LetterReviewPage() {
         </div>
       )}
 
+
       {/* =================================================
           Letter Information
       ================================================= */}
+
 
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
@@ -1769,6 +2128,7 @@ export function LetterReviewPage() {
           </span>
         </div>
 
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 px-6 py-5">
           <InfoPair
             label="نوع الخطاب"
@@ -1780,6 +2140,7 @@ export function LetterReviewPage() {
             }
           />
 
+
           <InfoPair
             label="رقم الخطاب"
             value={
@@ -1789,12 +2150,14 @@ export function LetterReviewPage() {
             }
           />
 
+
           <InfoPair
             label="جهة الخطاب"
             value={toArabicDigits(
               letterData.destination
             )}
           />
+
 
           <InfoPair
             label="تاريخ الخطاب"
@@ -1805,6 +2168,7 @@ export function LetterReviewPage() {
             )}
           />
 
+
           <InfoPair
             label="الوحدة الأساسية"
             value={toArabicDigits(
@@ -1812,12 +2176,14 @@ export function LetterReviewPage() {
             )}
           />
 
+
           <InfoPair
             label="عدد الأفراد"
             value={toArabicDigits(
               soldiers.length
             )}
           />
+
 
           <InfoPair
             label="وحدة الإلحاق"
@@ -1832,6 +2198,7 @@ export function LetterReviewPage() {
             }
           />
 
+
           <InfoPair
             label="رئيس الفرع"
             value={toArabicDigits(
@@ -1842,9 +2209,11 @@ export function LetterReviewPage() {
         </div>
       </section>
 
+
       {/* =================================================
           Personnel
       ================================================= */}
+
 
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
@@ -1858,6 +2227,7 @@ export function LetterReviewPage() {
             بيانات الأفراد
           </span>
         </div>
+
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[600px] border-collapse">
@@ -1887,6 +2257,7 @@ export function LetterReviewPage() {
               </tr>
             </thead>
 
+
             <tbody>
               {soldiers.map((soldier) => (
                 <tr key={soldier.id}>
@@ -1896,17 +2267,20 @@ export function LetterReviewPage() {
                     )}
                   </td>
 
+
                   <td className="px-4 py-3 border-b">
                     {toArabicDigits(
                       soldier.name
                     )}
                   </td>
 
+
                   <td className="px-4 py-3 border-b">
                     {toArabicDigits(
                       soldier.unit
                     )}
                   </td>
+
 
                   <td className="px-4 py-3 border-b">
                     {letterType ===
@@ -1925,9 +2299,11 @@ export function LetterReviewPage() {
         </div>
       </section>
 
+
       {/* =================================================
           Letter Preview
       ================================================= */}
+
 
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
@@ -1941,6 +2317,7 @@ export function LetterReviewPage() {
             معاينة الخطاب
           </span>
         </div>
+
 
         <div className="p-6 bg-[#f7f9fc]">
           <LetterPreview
@@ -1963,12 +2340,15 @@ export function LetterReviewPage() {
         </div>
       </section>
 
+
       {/* =================================================
           Buttons
       ================================================= */}
 
+
       <div className="flex flex-wrap items-center gap-4">
         {/* حفظ الخطاب */}
+
 
         <button
           type="button"
@@ -1991,6 +2371,7 @@ export function LetterReviewPage() {
             color="#fff"
           />
 
+
           <span
             style={{
               ...F,
@@ -2004,7 +2385,9 @@ export function LetterReviewPage() {
           </span>
         </button>
 
+
         {/* طباعة / معاينة */}
+
 
         <button
           type="button"
@@ -2015,6 +2398,7 @@ export function LetterReviewPage() {
             size={16}
             color="#2d3648"
           />
+
 
           <span
             style={{
@@ -2027,7 +2411,9 @@ export function LetterReviewPage() {
           </span>
         </button>
 
+
         {/* إلغاء */}
+
 
         <button
           type="button"
@@ -2050,11 +2436,14 @@ export function LetterReviewPage() {
         </button>
       </div>
 
+
       {/* =================================================
           Modals
       ================================================= */}
 
+
       {saving && <LoadingModal />}
+
 
       {success && (
         <SuccessModal

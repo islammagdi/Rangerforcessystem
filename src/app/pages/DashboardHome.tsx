@@ -43,6 +43,67 @@ function SectionTitle({
 
 
 // ============================================================
+// أهلية الرخصة
+// الرقم السابع والثامن في الرقم العسكري = 66
+// (نفس المنطق المستخدم في ReserveBatchesPage)
+// ============================================================
+
+function hasLicenseEligibility(
+  militaryId: string | null | undefined
+) {
+  const value = String(
+    militaryId ?? ""
+  ).trim();
+
+  return (
+    value.length >= 8 &&
+    value.substring(6, 8) === "66"
+  );
+}
+
+
+// ============================================================
+// عنصر "X من Y" بحجمي خط مختلفين
+// (رقم المُسلَّم بخط كبير، و"من الإجمالي" بخط أصغر)
+// ============================================================
+
+function DeliveredOfTotalLabel({
+  delivered,
+  total,
+  deliveredFontSize = 20,
+  totalFontSize = 13,
+}: {
+  delivered: string;
+  total: string;
+  deliveredFontSize?: number;
+  totalFontSize?: number;
+}) {
+  return (
+    <>
+      <span
+        style={{
+          fontSize: deliveredFontSize,
+          fontWeight: 700,
+        }}
+      >
+        {delivered}
+      </span>
+
+      <span
+        style={{
+          fontSize: totalFontSize,
+          fontWeight: 400,
+          color: "#717d96",
+        }}
+      >
+        {" "}من {total}
+      </span>
+    </>
+  );
+}
+
+
+// ============================================================
 // الصفحة الرئيسية
 // ============================================================
 
@@ -87,6 +148,32 @@ export function DashboardHome() {
 
 
   // ============================================================
+  // بيانات تحقيق الشخصية ورخصة القيادة (دفعة الرديف القادمة)
+  //
+  // ✅ مصدر الحقيقة: reserve_batch_documents لنفس دفعة الرديف
+  // القادمة، بنفس شرط "مستحقي التسريح" المستخدم في nextBatchCount:
+  //   - فئة الفرد = مجند
+  //   - is_active = true
+  //   - discharge_date = تاريخ الدفعة القادمة
+  //
+  // الكارنيه (KARIZA): على كل مستحقي التسريح.
+  // الرخصة (LICENSE): فقط على المؤهلين (رقم عسكري رقم 7-8 = 66)،
+  // بنفس منطق hasLicenseEligibility في ReserveBatchesPage.
+  // ============================================================
+
+  const [docStats, setDocStats] = useState({
+    karizaDelivered: 0,
+    karizaTotal: 0,
+
+    licenseDelivered: 0,
+    licenseTotal: 0,
+  });
+
+  const [loadingDocStats, setLoadingDocStats] =
+    useState(true);
+
+
+  // ============================================================
   // تحميل البيانات
   // ============================================================
 
@@ -94,6 +181,7 @@ export function DashboardHome() {
     loadCurrentUser();
     loadPersonnelStats();
     loadReserveBatchData();
+    loadDocumentsStats();
   }, []);
 
 
@@ -527,6 +615,26 @@ export function DashboardHome() {
 
 
   // ============================================================
+  // تنسيق تاريخ الدفعة بصيغة YYYY-MM-DD (لمطابقة discharge_date /
+  // batch_date في قاعدة البيانات)
+  // ============================================================
+
+  function toDbDateString(date: Date) {
+    const year = date.getFullYear();
+
+    const month = String(
+      date.getMonth() + 1
+    ).padStart(2, "0");
+
+    const day = String(
+      date.getDate()
+    ).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  }
+
+
+  // ============================================================
   // تحميل بيانات دفعة الرديف القادمة
   // ============================================================
 
@@ -551,21 +659,8 @@ export function DashboardHome() {
       // تحويل التاريخ إلى YYYY-MM-DD
       // --------------------------------------------------------
 
-      const year =
-        batchDate.getFullYear();
-
-      const month =
-        String(
-          batchDate.getMonth() + 1
-        ).padStart(2, "0");
-
-      const day =
-        String(
-          batchDate.getDate()
-        ).padStart(2, "0");
-
       const formattedBatchDate =
-        `${year}-${month}-${day}`;
+        toDbDateString(batchDate);
 
 
       // --------------------------------------------------------
@@ -665,6 +760,281 @@ export function DashboardHome() {
 
 
   // ============================================================
+  // تحميل بيانات تحقيق الشخصية ورخصة القيادة لدفعة الرديف القادمة
+  //
+  // ✅ نفس شرط مستحقي التسريح المستخدم في loadReserveBatchData
+  // (مجند + is_active=true + discharge_date = تاريخ الدفعة القادمة)،
+  // ثم نجيب حالة المستندات (KARIZA / LICENSE) بتاعتهم من
+  // reserve_batch_documents، بنفس منطق ReserveBatchesPage.
+  // ============================================================
+
+  async function loadDocumentsStats() {
+
+    try {
+
+      setLoadingDocStats(true);
+
+
+      // --------------------------------------------------------
+      // تاريخ الدفعة القادمة
+      // --------------------------------------------------------
+
+      const batchDate =
+        getNextReserveBatchDate();
+
+      const formattedBatchDate =
+        toDbDateString(batchDate);
+
+
+      // --------------------------------------------------------
+      // فئة المجندين
+      // --------------------------------------------------------
+
+      const {
+        data: conscriptCategory,
+        error: categoryError,
+      } = await supabase
+        .from("personnel_categories")
+        .select("id")
+        .eq("code", "CONSCRIPT")
+        .single();
+
+      if (categoryError || !conscriptCategory) {
+
+        console.error(
+          "خطأ في جلب فئة المجندين (مستندات):",
+          categoryError
+        );
+
+        setDocStats({
+          karizaDelivered: 0,
+          karizaTotal: 0,
+          licenseDelivered: 0,
+          licenseTotal: 0,
+        });
+
+        return;
+      }
+
+
+      // --------------------------------------------------------
+      // مستحقو التسريح في الدفعة القادمة
+      // --------------------------------------------------------
+
+      const {
+        data: personnel,
+        error: personnelError,
+      } = await supabase
+        .from("personnel")
+        .select("id, military_number")
+        .eq(
+          "personnel_category_id",
+          conscriptCategory.id
+        )
+        .eq("is_active", true)
+        .eq(
+          "discharge_date",
+          formattedBatchDate
+        );
+
+      if (personnelError) {
+
+        console.error(
+          "خطأ في جلب أفراد الدفعة القادمة:",
+          personnelError
+        );
+
+        setDocStats({
+          karizaDelivered: 0,
+          karizaTotal: 0,
+          licenseDelivered: 0,
+          licenseTotal: 0,
+        });
+
+        return;
+      }
+
+      const personnelRows =
+        personnel ?? [];
+
+      if (personnelRows.length === 0) {
+
+        setDocStats({
+          karizaDelivered: 0,
+          karizaTotal: 0,
+          licenseDelivered: 0,
+          licenseTotal: 0,
+        });
+
+        return;
+      }
+
+      const karizaTotal =
+        personnelRows.length;
+
+      const eligibleForLicense =
+        personnelRows.filter((p) =>
+          hasLicenseEligibility(
+            p.military_number
+          )
+        );
+
+      const licenseTotal =
+        eligibleForLicense.length;
+
+
+      // --------------------------------------------------------
+      // سجل دفعة الرديف الرسمي (reserve_batches) بنفس التاريخ،
+      // عشان نقدر نجيب منه reserve_batch_documents
+      // --------------------------------------------------------
+
+      const {
+        data: batchRow,
+        error: batchRowError,
+      } = await supabase
+        .from("reserve_batches")
+        .select("id")
+        .eq(
+          "batch_date",
+          formattedBatchDate
+        )
+        .maybeSingle();
+
+      if (batchRowError) {
+        console.error(
+          "خطأ في جلب سجل دفعة الرديف:",
+          batchRowError
+        );
+      }
+
+      if (!batchRow) {
+
+        // لسه مفيش سجل دفعة رسمي بالتاريخ ده، يبقى مفيش مستندات متسجلة
+        setDocStats({
+          karizaDelivered: 0,
+          karizaTotal,
+          licenseDelivered: 0,
+          licenseTotal,
+        });
+
+        return;
+      }
+
+
+      // --------------------------------------------------------
+      // حالات المستندات لمستحقي التسريح في الدفعة القادمة
+      // --------------------------------------------------------
+
+      const personnelIds =
+        personnelRows.map(
+          (p) => p.id
+        );
+
+      const {
+        data: documents,
+        error: documentsError,
+      } = await supabase
+        .from(
+          "reserve_batch_documents"
+        )
+        .select(
+          "personnel_id, document_type, status"
+        )
+        .eq(
+          "reserve_batch_id",
+          batchRow.id
+        )
+        .in(
+          "personnel_id",
+          personnelIds
+        );
+
+      if (documentsError) {
+
+        console.error(
+          "خطأ في جلب حالات المستندات:",
+          documentsError
+        );
+
+        setDocStats({
+          karizaDelivered: 0,
+          karizaTotal,
+          licenseDelivered: 0,
+          licenseTotal,
+        });
+
+        return;
+      }
+
+      const karizaDelivered =
+        (documents ?? []).filter(
+          (doc: any) =>
+            doc.document_type ===
+              "KARIZA" &&
+            doc.status ===
+              "DELIVERED"
+        ).length;
+
+      const eligibleIds = new Set(
+        eligibleForLicense.map(
+          (p) => p.id
+        )
+      );
+
+      const licenseDelivered =
+        (documents ?? []).filter(
+          (doc: any) =>
+            doc.document_type ===
+              "LICENSE" &&
+            doc.status ===
+              "DELIVERED" &&
+            eligibleIds.has(
+              doc.personnel_id
+            )
+        ).length;
+
+
+      setDocStats({
+        karizaDelivered,
+        karizaTotal,
+        licenseDelivered,
+        licenseTotal,
+      });
+
+
+      console.log(
+        "بيانات تحقيق الشخصية / الرخصة:",
+        {
+          karizaDelivered,
+          karizaTotal,
+          licenseDelivered,
+          licenseTotal,
+        }
+      );
+
+    } catch (error) {
+
+      console.error(
+        "خطأ غير متوقع أثناء حساب مستندات الدفعة:",
+        error
+      );
+
+      setDocStats({
+        karizaDelivered: 0,
+        karizaTotal: 0,
+        licenseDelivered: 0,
+        licenseTotal: 0,
+      });
+
+    } finally {
+
+      setLoadingDocStats(false);
+
+    }
+  }
+
+
+  // ============================================================
   // تنسيق الأرقام
   // ============================================================
 
@@ -701,6 +1071,29 @@ export function DashboardHome() {
 
 
   // ============================================================
+  // حساب نسب مئوية للكاردين (تحقيق شخصية / رخصة)
+  // ============================================================
+
+  const karizaPercentage =
+    docStats.karizaTotal > 0
+      ? Math.round(
+          (docStats.karizaDelivered /
+            docStats.karizaTotal) *
+            100
+        )
+      : 0;
+
+  const licensePercentage =
+    docStats.licenseTotal > 0
+      ? Math.round(
+          (docStats.licenseDelivered /
+            docStats.licenseTotal) *
+            100
+        )
+      : 0;
+
+
+  // ============================================================
   // UI
   // ============================================================
 
@@ -717,7 +1110,18 @@ export function DashboardHome() {
             className="w-full bg-white rounded-2xl p-5 shadow-sm border border-gray-100"
             dir="rtl"
           >
+    
 
+ <p
+                  className="text-gray-800 text-lg mb-1"
+                  style={{
+                    fontFamily:
+                      "'Almarai', sans-serif",
+                  }}
+                >
+                 المستخدم الحالي للمنظومه
+                </p>
+               <div className="w-full h-px bg-[#eff0f6] my-2" />
             <div className="flex flex-wrap gap-8 items-center">
 
               {/* اسم المستخدم */}
@@ -750,38 +1154,7 @@ export function DashboardHome() {
 
               {currentUser.personnel && (
                 <>
-
-                  {/* الاسم الكامل */}
-
-                  <div>
-
-                    <p
-                      className="text-gray-500 text-sm mb-1"
-                      style={{
-                        fontFamily:
-                          "'Almarai', sans-serif",
-                      }}
-                    >
-                      الاسم الكامل
-                    </p>
-
-                    <p
-                      className="font-bold text-[#344736]"
-                      style={{
-                        fontFamily:
-                          "'Almarai', sans-serif",
-                      }}
-                    >
-                      {currentUser
-                        .personnel
-                        .full_name ||
-                        "غير محدد"}
-                    </p>
-
-                  </div>
-
-
-                  {/* الرقم العسكري */}
+                   {/* الرقم العسكري */}
 
                   <div>
 
@@ -811,6 +1184,9 @@ export function DashboardHome() {
                   </div>
 
 
+                  
+               
+
                   {/* الدرجة */}
 
                   <div>
@@ -839,6 +1215,35 @@ export function DashboardHome() {
                     </p>
 
                   </div>
+{/* الاسم الكامل */}
+
+                  <div>
+
+                    <p
+                      className="text-gray-500 text-sm mb-1"
+                      style={{
+                        fontFamily:
+                          "'Almarai', sans-serif",
+                      }}
+                    >
+                      الاسم الكامل
+                    </p>
+
+                    <p
+                      className="font-bold text-[#344736]"
+                      style={{
+                        fontFamily:
+                          "'Almarai', sans-serif",
+                      }}
+                    >
+                      {currentUser
+                        .personnel
+                        .full_name ||
+                        "غير محدد"}
+                    </p>
+
+                  </div>
+
 
                 </>
               )}
@@ -1002,6 +1407,21 @@ export function DashboardHome() {
       <div className="flex gap-4 flex-wrap">
 
         {/* ------------------------------------------------------
+            تاريخ الدفعة التالية
+        ------------------------------------------------------ */}
+
+        <StatCard
+          icon={<CalendarIcon />}
+          value={
+            loadingReserveBatch
+              ? "..."
+              : formatArabicDate(
+                  nextBatchDate
+                )
+          }
+          label="تاريخ الدفعة التالية"
+        />
+        {/* ------------------------------------------------------
             عدد المستحقين للتسريح
         ------------------------------------------------------ */}
 
@@ -1018,21 +1438,6 @@ export function DashboardHome() {
         />
 
 
-        {/* ------------------------------------------------------
-            تاريخ الدفعة التالية
-        ------------------------------------------------------ */}
-
-        <StatCard
-          icon={<CalendarIcon />}
-          value={
-            loadingReserveBatch
-              ? "..."
-              : formatArabicDate(
-                  nextBatchDate
-                )
-          }
-          label="تاريخ الدفعة التالية"
-        />
 
       </div>
 
@@ -1040,29 +1445,78 @@ export function DashboardHome() {
       {/* ========================================================
           الرخصة وتحقيق الشخصية
           
-          سيتم ربطهما ببيانات دفعات الرديف لاحقًا
+          ✅ مربوطة الآن ببيانات دفعة الرديف القادمة من
+          reserve_batch_documents (KARIZA / LICENSE)
+          
+          ✅ القيمة معروضة بصيغة "X من Y" بحجمي خط مختلفين عبر
+          DeliveredOfTotalLabel — عدّل deliveredFontSize و
+          totalFontSize بالأسفل للتحكم في الحجم
       ======================================================== */}
 
       <div className="flex gap-4 flex-wrap pb-6">
-
+ <ProgressCard
+          icon={<PersonCheckIcon />}
+          value={
+            loadingDocStats ? (
+              "..."
+            ) : (
+              <DeliveredOfTotalLabel
+                delivered={formatNumber(
+                  docStats.karizaDelivered
+                )}
+                total={formatNumber(
+                  docStats.karizaTotal
+                )}
+                deliveredFontSize={20}
+                totalFontSize={16}
+              />
+            )
+          }
+          label="عدد مسلِّمي تحقيق الشخصية"
+          percentage={
+            loadingDocStats
+              ? 0
+              : karizaPercentage
+          }
+          percentLabel={
+            loadingDocStats
+              ? "0%"
+              : `${karizaPercentage}%`
+          }
+        />
         <ProgressCard
           icon={<IdCardIcon />}
-          value="--"
-          subValue="--"
+          value={
+            loadingDocStats ? (
+              "..."
+            ) : (
+              <DeliveredOfTotalLabel
+                delivered={formatNumber(
+                  docStats.licenseDelivered
+                )}
+                total={formatNumber(
+                  docStats.licenseTotal
+                )}
+                deliveredFontSize={20}
+                totalFontSize={16}
+              />
+            )
+          }
           label="عدد مسلِّمي رخصة القيادة"
-          percentage={0}
-          percentLabel="0%"
+          percentage={
+            loadingDocStats
+              ? 0
+              : licensePercentage
+          }
+          percentLabel={
+            loadingDocStats
+              ? "0%"
+              : `${licensePercentage}%`
+          }
         />
 
 
-        <ProgressCard
-          icon={<PersonCheckIcon />}
-          value="--"
-          subValue="--"
-          label="عدد مسلِّمي تحقيق الشخصية"
-          percentage={0}
-          percentLabel="0%"
-        />
+       
 
       </div>
 

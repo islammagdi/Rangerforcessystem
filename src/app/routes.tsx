@@ -24,6 +24,8 @@ import { ReserveBatchesPage } from "./pages/ReserveBatchesPage";
 import { ManageUnitsPage } from "./pages/ManageUnitsPage";
 import { UnitTreePage } from "./pages/UnitTreePage";
 import { ManageUsersPage } from "./pages/ManageUsersPage";
+import ActivityLogPage from "./pages/ActivityLogPage";
+import { DataBackupPage } from "./pages/DataBackupPage";
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -56,6 +58,8 @@ export const router = createBrowserRouter([
       { path: "manage-units", Component: ManageUnitsPage },
       { path: "manage-users", Component: ManageUsersPage },
       { path: "manage-units/:id/tree", Component: UnitTreePage },
+      { path: "activity-log", Component: ActivityLogPage },
+      { path: "data-backup", Component: DataBackupPage },
     ],
   },
 ]);

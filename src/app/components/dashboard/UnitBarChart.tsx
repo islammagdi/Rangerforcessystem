@@ -495,16 +495,37 @@ export function UnitBarChart() {
 
                   {/* Unit name */}
 
-                  <text
-                    x={cx}
-                    y={labelY}
-                    textAnchor="middle"
-                    fill="#615e83"
-                    fontSize={11}
-                    fontFamily="'Almarai', sans-serif"
-                  >
-                    {truncate(entry.name)}
-                  </text>
+                 {/* Unit name */}
+<text
+  x={cx}
+  y={labelY}
+  textAnchor="middle"
+  fill="#615e83"
+  fontSize={11}
+  fontFamily="'Almarai', sans-serif"
+>
+  {(() => {
+    const words = entry.name.split(" ");
+
+    if (words.length <= 1) {
+      return <tspan x={cx}>{entry.name}</tspan>;
+    }
+
+    const mid = Math.ceil(words.length / 2);
+
+    return (
+      <>
+        <tspan x={cx} dy="0">
+          {words.slice(0, mid).join(" ")}
+        </tspan>
+
+        <tspan x={cx} dy="15">
+          {words.slice(mid).join(" ")}
+        </tspan>
+      </>
+    );
+  })()}
+</text>
 
                 </g>
               );

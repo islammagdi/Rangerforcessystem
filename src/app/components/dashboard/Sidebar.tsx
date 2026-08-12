@@ -1,5 +1,5 @@
 import { cloneElement, useEffect, useMemo, useState } from "react";
-
+import { logActivity } from "../../../lib/logActivity";
 import {
   LayoutDashboard,
   Search,
@@ -417,6 +417,9 @@ export function Sidebar({
     ) {
       return "سجل العمليات";
     }
+    if (pathname.includes("/backup")) {
+  return "النسخ الاحتياطي للبيانات";
+}
 
     return "الموقف العام";
   }
@@ -438,36 +441,44 @@ export function Sidebar({
   // ===================================================
 
   async function handleLogout() {
-    if (loggingOut) return;
+  if (loggingOut) return;
 
-    setLoggingOut(true);
+  setLoggingOut(true);
 
-    try {
-      const { error } =
-        await supabase.auth.signOut({
-          scope: "local",
-        });
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-      if (error) {
-        console.error(
-          "Logout error:",
-          error
-        );
-
-        setLoggingOut(false);
-        return;
-      }
-
-      window.location.replace("/");
-    } catch (error) {
-      console.error(
-        "Unexpected logout error:",
-        error
-      );
-
-      setLoggingOut(false);
+    if (user) {
+      await logActivity({
+        userId: user.id,
+        userName:
+          sessionStorage.getItem("username") ??
+          "مستخدم غير معروف",
+        actionType: "LOGOUT",
+        action: "تسجيل خروج",
+        entity: "النظام",
+        details: "تم تسجيل خروج المستخدم من المنظومة",
+      });
     }
+
+    const { error } = await supabase.auth.signOut({
+      scope: "local",
+    });
+
+    if (error) {
+      console.error("Logout error:", error);
+      setLoggingOut(false);
+      return;
+    }
+
+    window.location.replace("/");
+  } catch (error) {
+    console.error("Unexpected logout error:", error);
+    setLoggingOut(false);
   }
+}
 
 
   // ===================================================

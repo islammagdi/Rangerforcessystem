@@ -515,6 +515,139 @@ function DonutChartPanel({
     </div>
   );
 }
+function PrintStyles() {
+  return (
+    <style>
+      {`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+
+          .unit-print-area,
+          .unit-print-area * {
+            visibility: visible !important;
+          }
+
+          .unit-print-area {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+          }
+
+          .no-print {
+            display: none !important;
+          }
+
+          table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+          }
+
+          th, td {
+            border: 1px solid #ccc;
+            padding: 6px !important;
+          }
+
+          @page {
+            size: A4;
+            margin: 12mm;
+          }
+        }
+      `}
+    </style>
+  );
+}
+function UnitPrintReport({
+  unit,
+  computed,
+}: {
+  unit: DbUnit;
+  computed: {
+    strengthCount: number;
+    soldiersCount: number;
+    ncosCount: number;
+    khawarijCount: number;
+    khawarijPct: number;
+    chartData: BarChartRow[];
+    inside: number;
+    outside: number;
+  };
+}) {
+  const today = new Date().toLocaleDateString("ar-EG", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  return (
+    <div className="unit-print-area hidden print:block" dir="rtl">
+      <div className="text-center mb-6">
+        <h2 style={{ ...F, fontSize: 22, fontWeight: 700 }}>
+          إحصائية الموقف العام - {unit.name}
+        </h2>
+        <p style={{ ...F, fontSize: 14, marginTop: 6 }}>
+          تاريخ الطباعة: {today}
+        </p>
+      </div>
+
+      {/* الإحصائيات الأساسية */}
+      <table className="w-full mb-6" style={F}>
+        <thead>
+          <tr>
+            <th>البيان</th>
+            <th>العدد</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>إجمالي القوة</td>
+            <td>{computed.strengthCount.toLocaleString("ar-EG")}</td>
+          </tr>
+          <tr>
+            <td>إجمالي ضباط الصف</td>
+            <td>{computed.ncosCount.toLocaleString("ar-EG")}</td>
+          </tr>
+          <tr>
+            <td>إجمالي الجنود</td>
+            <td>{computed.soldiersCount.toLocaleString("ar-EG")}</td>
+          </tr>
+          <tr>
+            <td>إجمالي الخوارج</td>
+            <td>{computed.khawarijCount.toLocaleString("ar-EG")}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* تفصيل الخوارج */}
+      <table className="w-full mb-6" style={F}>
+        <thead>
+          <tr>
+            <th>الفئة</th>
+            <th>داخل الوحدة</th>
+            <th>خارج الوحدة (خوارج)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {computed.chartData.map((row) => (
+            <tr key={row.label}>
+              <td>{row.label}</td>
+              <td>{row.remaining.toLocaleString("ar-EG")}</td>
+              <td>{row.outside.toLocaleString("ar-EG")}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* نسبة الخوارج */}
+      <p style={{ ...F, fontSize: 16, textAlign: "center", marginTop: 20 }}>
+        نسبة الخوارج: {computed.khawarijPct}% ({computed.outside} فرد من
+        إجمالي {computed.strengthCount} فرد)
+      </p>
+    </div>
+  );
+}
 
 // ─── Helpers للمطابقة مع قاعدة البيانات ────────────────────────────────────────
 
@@ -550,6 +683,7 @@ const TABLE_COLS = [
   { key: "attachment", label: "مكان الالحاق" },
   { key: "actions", label: "الاجراء" },
 ];
+
 
 export function UnitDetailPage() {
   const { id } = useParams();
@@ -743,6 +877,15 @@ export function UnitDetailPage() {
       outside: khawarijCount,
     };
   }, [unitPersonnel, categoryById, statusById, isMain]);
+  function handlePrintUnitStats() {
+    const originalTitle = document.title;
+
+  document.title = `احصائيه الموقف العام ${unit.name}`;
+
+  window.print();
+
+  document.title = originalTitle;
+}
 
   if (loading) {
     return (
@@ -778,29 +921,34 @@ export function UnitDetailPage() {
 
   const STATS = [
     {
-      label: "اجمالي الخوارج",
-      value: computed.khawarijCount.toLocaleString("ar-EG"),
-      icon: <IconKhawarij />,
-    },
-    {
-      label: "اجمالي الجنود",
-      value: computed.soldiersCount.toLocaleString("ar-EG"),
-      icon: <IconSoldiers />,
+      label: "اجمالي القوة",
+      value: computed.strengthCount.toLocaleString("ar-EG"),
+      icon: <IconGroup />,
     },
     {
       label: "اجمالي ضباط الصف",
       value: computed.ncosCount.toLocaleString("ar-EG"),
       icon: <IconNCO />,
     },
-    {
-      label: "اجمالي القوة",
-      value: computed.strengthCount.toLocaleString("ar-EG"),
-      icon: <IconGroup />,
+     {
+      label: "اجمالي الجنود",
+      value: computed.soldiersCount.toLocaleString("ar-EG"),
+      icon: <IconSoldiers />,
     },
+    {
+      label: "اجمالي الخوارج",
+      value: computed.khawarijCount.toLocaleString("ar-EG"),
+      icon: <IconKhawarij />,
+    },
+   
+    
+    
   ];
 
   return (
     <div className="flex flex-col gap-5 w-full" dir="rtl">
+      <PrintStyles />
+    <UnitPrintReport unit={unit} computed={computed} />
       {/* ── Page title ─────────────────────────────── */}
       <h1
         className="text-center w-full"
@@ -825,6 +973,7 @@ export function UnitDetailPage() {
           </h2>
           <button
             type="button"
+            onClick={handlePrintUnitStats}
             className="flex items-center gap-1.5 bg-[#DCF4DF] rounded-[8px] px-3 py-2 hover:opacity-80 transition-opacity"
           >
             <svg width="16" height="16" viewBox="0 0 13.3333 13.3333" fill="none">

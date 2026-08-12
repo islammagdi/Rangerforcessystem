@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router";
 import {
   ChevronDown,
@@ -26,6 +27,7 @@ export interface SoldierWithAttachment extends SoldierData {
 export interface LetterData {
   destination: string;
   destinationId: string;
+  issuingUnitId: string;
   attachmentPlace: string;
   attachmentPlaceId: string | null;
   reason: string;
@@ -69,12 +71,7 @@ function GreenCheckBubble({ label }: { label: string }) {
             </linearGradient>
           </defs>
 
-          <circle
-            cx="16"
-            cy="16"
-            r="15"
-            fill="url(#ld-sg1)"
-          />
+          <circle cx="16" cy="16" r="15" fill="url(#ld-sg1)" />
         </svg>
 
         <svg
@@ -170,11 +167,7 @@ function StepDots({ dark }: { dark?: boolean }) {
   );
 }
 
-function LetterStepper({
-  activeStep,
-}: {
-  activeStep: 1 | 2 | 3 | 4;
-}) {
+function LetterStepper({ activeStep }: { activeStep: 1 | 2 | 3 | 4 }) {
   const steps = [
     { num: "01", label: "تحديد نوع الخطاب" },
     { num: "02", label: "تحديد الأفراد" },
@@ -183,10 +176,7 @@ function LetterStepper({
   ];
 
   return (
-    <div
-      className="flex items-start justify-center flex-wrap gap-0"
-      dir="rtl"
-    >
+    <div className="flex items-start justify-center flex-wrap gap-0" dir="rtl">
       {steps.map((step, idx) => {
         const stepNum = idx + 1;
         const isDone = stepNum < activeStep;
@@ -215,7 +205,7 @@ function LetterStepper({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Dropdown
+// Searchable Dropdown
 // ─────────────────────────────────────────────────────────────────────────────
 
 function FormDropdown({
@@ -234,84 +224,144 @@ function FormDropdown({
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filteredOptions = options.filter((option) =>
+    option.toLowerCase().includes(search.toLowerCase())
+  );
+
+  function handleSelect(option: string) {
+    onChange(option);
+    setSearch("");
+    setOpen(false);
+  }
+
+  function handleOpen() {
+    if (disabled) return;
+
+    setOpen((prev) => !prev);
+
+    if (!open) {
+      setSearch("");
+    }
+  }
 
   return (
     <div className="flex flex-col gap-1 w-full">
       <div className="relative w-full">
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => setOpen((o) => !o)}
+        <div
           className={[
-            "w-full h-[52px] bg-white border rounded-[8px] flex items-center gap-2 px-3 transition-colors",
+            "w-full h-[52px] bg-white border rounded-[8px] flex items-center transition-colors",
             disabled
               ? "opacity-60 cursor-not-allowed"
               : "hover:border-[#a0aec0]",
             error
               ? "border-[#ef4444]"
+              : open
+              ? "border-[#1f3d97]"
               : "border-[#e2e7f0]",
           ].join(" ")}
         >
-          <ChevronDown
-            size={18}
-            className={`shrink-0 text-[#2d3648] transition-transform ${
-              open ? "rotate-180" : ""
-            }`}
-          />
+          <input
+            type="text"
+            value={open ? search : value}
+            disabled={disabled}
+            placeholder={value || placeholder}
+            onFocus={() => {
+              if (!disabled) {
+                setOpen(true);
+                setSearch("");
+              }
+            }}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setOpen(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setOpen(false);
+                setSearch("");
+              }
 
-          <span
-            className="flex-1 text-right"
+              if (e.key === "Enter" && filteredOptions.length === 1) {
+                handleSelect(filteredOptions[0]);
+              }
+            }}
+            className="flex-1 h-full bg-transparent outline-none px-3 text-right"
             style={{
               ...F,
               fontSize: 16,
-              color: value ? "#2d3648" : "#a0abc0",
+              color: "#2d3648",
             }}
+          />
+
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={handleOpen}
+            className="w-10 h-full flex items-center justify-center shrink-0"
           >
-            {value || placeholder}
-          </span>
-        </button>
+            <ChevronDown
+              size={18}
+              className={[
+                "text-[#2d3648] transition-transform",
+                open ? "rotate-180" : "",
+              ].join(" ")}
+            />
+          </button>
+        </div>
 
         {open && !disabled && (
-          <ul className="absolute z-50 top-full mt-1 w-full bg-white border border-[#e2e7f0] rounded-[8px] shadow-lg overflow-hidden max-h-60 overflow-y-auto">
-            {options.length === 0 ? (
-              <li>
-                <div
-                  className="px-4 py-3 text-right"
-                  style={{
-                    ...F,
-                    fontSize: 14,
-                    color: "#717d96",
-                  }}
-                >
-                  لا توجد بيانات
-                </div>
-              </li>
-            ) : (
-              options.map((opt) => (
-                <li key={opt}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onChange(opt);
-                      setOpen(false);
-                    }}
-                    className={[
-                      "w-full text-right px-4 py-2.5 transition-colors",
-                      opt === value
-                        ? "bg-[#f0f2fd] text-[#1f3d97]"
-                        : "hover:bg-[#f5f6fb] text-[#2d3648]",
-                    ].join(" ")}
+          <div className="absolute z-50 top-full mt-1 w-full bg-white border border-[#e2e7f0] rounded-[8px] shadow-lg overflow-hidden">
+            <div
+              className="px-3 py-2 border-b border-[#eff0f6] text-right bg-[#fafbfc]"
+              style={{
+                ...F,
+                fontSize: 12,
+                color: "#717d96",
+              }}
+            >
+              {filteredOptions.length} وحدة
+            </div>
+
+            <ul className="max-h-60 overflow-y-auto">
+              {filteredOptions.length === 0 ? (
+                <li>
+                  <div
+                    className="px-4 py-4 text-center"
                     style={{
                       ...F,
-                      fontSize: 15,
+                      fontSize: 14,
+                      color: "#717d96",
                     }}
                   >
-                    {opt}
-                  </button>
+                    لا توجد وحدة بهذا الاسم
+                  </div>
                 </li>
-              ))
-            )}
-          </ul>
+              ) : (
+                filteredOptions.map((option) => (
+                  <li key={option}>
+                    <button
+                      type="button"
+                      onClick={() => handleSelect(option)}
+                      className={[
+                        "w-full text-right px-4 py-2.5 transition-colors",
+                        option === value
+                          ? "bg-[#f0f2fd] text-[#1f3d97]"
+                          : "hover:bg-[#f5f6fb] text-[#2d3648]",
+                      ].join(" ")}
+                      style={{
+                        ...F,
+                        fontSize: 15,
+                      }}
+                    >
+                      {option}
+                    </button>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
         )}
       </div>
 
@@ -332,7 +382,7 @@ function FormDropdown({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Inline Dropdown
+// Inline Searchable Dropdown (يفتح عن طريق Portal خارج الجدول)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function InlineDropdown({
@@ -345,60 +395,177 @@ function InlineDropdown({
   onChange: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 240 });
+
+  const anchorRef = useRef<HTMLDivElement>(null);
+
+  const filteredOptions = options.filter((option) =>
+    option.toLowerCase().includes(search.toLowerCase())
+  );
+
+  function updateCoords() {
+    const rect = anchorRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const menuWidth = Math.max(rect.width, 240);
+
+    // dir="rtl" ⇒ نحاذي القائمة مع يمين الزرار
+    let left = rect.right - menuWidth;
+    if (left < 8) left = 8;
+
+    setCoords({
+      top: rect.bottom + 4,
+      left,
+      width: menuWidth,
+    });
+  }
+
+  function handleOpen() {
+    updateCoords();
+    setOpen(true);
+    setSearch("");
+  }
+
+  function handleSelect(option: string) {
+    onChange(option);
+    setSearch("");
+    setOpen(false);
+  }
+
+  // اقفل الدروب داون عند السكرول / تغيير حجم الشاشة / الضغط بره القائمة
+  useEffect(() => {
+    if (!open) return;
+
+    function handleScrollOrResize() {
+      updateCoords();
+    }
+
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Node;
+
+      if (
+        anchorRef.current?.contains(target) ||
+        document.getElementById("inline-dropdown-portal")?.contains(target)
+      ) {
+        return;
+      }
+
+      setOpen(false);
+    }
+
+    window.addEventListener("scroll", handleScrollOrResize, true);
+    window.addEventListener("resize", handleScrollOrResize);
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      window.removeEventListener("scroll", handleScrollOrResize, true);
+      window.removeEventListener("resize", handleScrollOrResize);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [open]);
 
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1 h-8 px-2 rounded-[6px] bg-[#f0f2fd] border border-[#c7cef7] transition-colors hover:bg-[#e8ecfb]"
-      >
-        <ChevronDown
-          size={14}
-          className={`shrink-0 text-[#1f3d97] transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
-        />
+    <div className="relative min-w-[180px]" ref={anchorRef}>
+      <div className="flex items-center gap-1 h-9 px-2 rounded-[6px] bg-[#f0f2fd] border border-[#c7cef7]">
+        <input
+          type="text"
+          value={open ? search : value}
+          placeholder={value || "اختر الوحدة"}
+          onFocus={handleOpen}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            if (!open) handleOpen();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setOpen(false);
+              setSearch("");
+            }
 
-        <span
+            if (e.key === "Enter" && filteredOptions.length === 1) {
+              handleSelect(filteredOptions[0]);
+            }
+          }}
+          className="flex-1 min-w-0 bg-transparent outline-none text-right"
           style={{
             ...F,
             fontSize: 13,
             color: "#1f3d97",
-            whiteSpace: "nowrap",
           }}
-        >
-          {value}
-        </span>
-      </button>
+        />
 
-      {open && (
-        <ul className="absolute z-50 top-full mt-1 left-0 min-w-[180px] bg-white border border-[#e2e7f0] rounded-[8px] shadow-lg overflow-hidden max-h-60 overflow-y-auto">
-          {options.map((opt) => (
-            <li key={opt}>
-              <button
-                type="button"
-                onClick={() => {
-                  onChange(opt);
-                  setOpen(false);
-                }}
-                className={[
-                  "w-full text-right px-3 py-2 transition-colors",
-                  opt === value
-                    ? "bg-[#f0f2fd] text-[#1f3d97]"
-                    : "hover:bg-[#f5f6fb] text-[#2d3648]",
-                ].join(" ")}
-                style={{
-                  ...F,
-                  fontSize: 13,
-                }}
-              >
-                {opt}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+        <button
+          type="button"
+          onClick={() => {
+            if (open) {
+              setOpen(false);
+            } else {
+              handleOpen();
+            }
+          }}
+          className="shrink-0"
+        >
+          <ChevronDown
+            size={14}
+            className={[
+              "text-[#1f3d97] transition-transform",
+              open ? "rotate-180" : "",
+            ].join(" ")}
+          />
+        </button>
+      </div>
+
+      {open &&
+        createPortal(
+          <ul
+            id="inline-dropdown-portal"
+            dir="rtl"
+            className="fixed z-[9999] bg-white border border-[#e2e7f0] rounded-[8px] shadow-lg overflow-hidden max-h-60 overflow-y-auto"
+            style={{
+              top: coords.top,
+              left: coords.left,
+              width: coords.width,
+            }}
+          >
+            {filteredOptions.length === 0 ? (
+              <li>
+                <div
+                  className="px-4 py-3 text-center"
+                  style={{
+                    ...F,
+                    fontSize: 13,
+                    color: "#717d96",
+                  }}
+                >
+                  لا توجد نتائج
+                </div>
+              </li>
+            ) : (
+              filteredOptions.map((option) => (
+                <li key={option}>
+                  <button
+                    type="button"
+                    onClick={() => handleSelect(option)}
+                    className={[
+                      "w-full text-right px-3 py-2 transition-colors",
+                      option === value
+                        ? "bg-[#f0f2fd] text-[#1f3d97]"
+                        : "hover:bg-[#f5f6fb] text-[#2d3648]",
+                    ].join(" ")}
+                    style={{
+                      ...F,
+                      fontSize: 13,
+                    }}
+                  >
+                    {option}
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>,
+          document.body
+        )}
     </div>
   );
 }
@@ -409,12 +576,7 @@ function InlineDropdown({
 
 function SortIcon() {
   return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-    >
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
       <path
         d="M8 3v10M8 13l-3-3M8 13l3-3"
         stroke="#A0ABC0"
@@ -444,11 +606,9 @@ export function LetterDataPage() {
       ? "end-attachment"
       : "attachment";
 
-  const incomingSoldiers: SoldierData[] =
-    state?.soldiers ?? [];
+  const incomingSoldiers: SoldierData[] = state?.soldiers ?? [];
 
-  const isEndAttachment =
-    letterType === "end-attachment";
+  const isEndAttachment = letterType === "end-attachment";
 
   const pageTitle = isEndAttachment
     ? "اصدار خطاب إنهاء إلحاق"
@@ -459,8 +619,7 @@ export function LetterDataPage() {
   // ─────────────────────────────────────────────────────────
 
   const [units, setUnits] = useState<Unit[]>([]);
-  const [letterTypes, setLetterTypes] =
-    useState<LetterType[]>([]);
+  const [letterTypes, setLetterTypes] = useState<LetterType[]>([]);
 
   const [loadingData, setLoadingData] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -477,25 +636,19 @@ export function LetterDataPage() {
         ] = await Promise.all([
           supabase
             .from("units")
-            .select(
-              "id,name,code,unit_type,is_active"
-            )
+            .select("id,name,code,unit_type,is_active")
             .eq("is_active", true)
             .order("name"),
 
           supabase
             .from("letter_types")
-            .select(
-              "id,name,code,is_active"
-            )
+            .select("id,name,code,is_active")
             .eq("is_active", true)
             .order("name"),
         ]);
 
         if (unitsError) {
-          throw new Error(
-            `خطأ في تحميل الوحدات: ${unitsError.message}`
-          );
+          throw new Error(`خطأ في تحميل الوحدات: ${unitsError.message}`);
         }
 
         if (typesError) {
@@ -523,35 +676,28 @@ export function LetterDataPage() {
   }, []);
 
   // ─────────────────────────────────────────────────────────
-  // Find letter type from DB
+  // Find Letter Type
   // ─────────────────────────────────────────────────────────
 
   const selectedLetterType = letterTypes.find(
-    (type) =>
-      type.code ===
-      (isEndAttachment ? "DEATTACH" : "ATTACH")
+    (type) => type.code === (isEndAttachment ? "DEATTACH" : "ATTACH")
   );
 
   // ─────────────────────────────────────────────────────────
   // Form State
   // ─────────────────────────────────────────────────────────
 
-  const [destination, setDestination] =
-    useState("");
+  const [destination, setDestination] = useState("");
+  const [destinationId, setDestinationId] = useState("");
 
-  const [destinationId, setDestinationId] =
-    useState("");
-
-  const [attachmentPlace, setAttachmentPlace] =
-    useState("");
-
-  const [attachmentPlaceId, setAttachmentPlaceId] =
-    useState<string | null>(null);
+  const [attachmentPlace, setAttachmentPlace] = useState("");
+  const [attachmentPlaceId, setAttachmentPlaceId] = useState<string | null>(
+    null
+  );
 
   const [reason, setReason] = useState("");
 
-  const [errors, setErrors] =
-    useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   // ─────────────────────────────────────────────────────────
   // Soldiers
@@ -560,31 +706,23 @@ export function LetterDataPage() {
   const [localSoldiers, setLocalSoldiers] =
     useState<SoldierData[]>(incomingSoldiers);
 
-  const [overrides, setOverrides] =
-    useState<Record<string, string>>({});
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const [overrideIds, setOverrideIds] = useState<Record<string, string>>({});
 
-  const [overrideIds, setOverrideIds] =
-    useState<Record<string, string>>({});
-
-  const [editingId, setEditingId] =
-    useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // ─────────────────────────────────────────────────────────
-  // Unit options
+  // Unit Options
   // ─────────────────────────────────────────────────────────
 
-  const unitOptions = units.map(
-    (unit) => unit.name
-  );
+  const unitOptions = units.map((unit) => unit.name).filter(Boolean);
 
   // ─────────────────────────────────────────────────────────
   // Destination
   // ─────────────────────────────────────────────────────────
 
   function handleDestinationChange(name: string) {
-    const unit = units.find(
-      (item) => item.name === name
-    );
+    const unit = units.find((item) => item.name === name);
 
     setDestination(name);
     setDestinationId(unit?.id ?? "");
@@ -601,17 +739,14 @@ export function LetterDataPage() {
   // Attachment Unit
   // ─────────────────────────────────────────────────────────
 
-  function handleAttachmentPlaceChange(
-    name: string
-  ) {
-    const unit = units.find(
-      (item) => item.name === name
-    );
+  function handleAttachmentPlaceChange(name: string) {
+    const unit = units.find((item) => item.name === name);
 
     setAttachmentPlace(name);
     setAttachmentPlaceId(unit?.id ?? null);
 
-    // Global change resets individual overrides
+    // تغيير وحدة الإلحاق العامة
+    // يعيد ضبط التعديلات الفردية
     setOverrides({});
     setOverrideIds({});
 
@@ -625,17 +760,9 @@ export function LetterDataPage() {
 
   // ─────────────────────────────────────────────────────────
   // Get Soldier Attachment
-  //
-  // ✅ في حالة خطاب "إنهاء إلحاق" فقط:
-  // القيمة المعروضة/المُرسلة هي قيمة attachment_unit_id الحالية
-  // الخاصة بالفرد (soldier.attachmentPlace) كما هي — بدون أي
-  // fallback على الوحدة الأساسية — وتفضل كده طالما المستخدم لم
-  // يعدلها يدويًا من جدول الأفراد (override).
   // ─────────────────────────────────────────────────────────
 
-  function getAttachmentUnit(
-    soldier: SoldierData
-  ): string {
+  function getAttachmentUnit(soldier: SoldierData): string {
     if (overrides[soldier.id]) {
       return overrides[soldier.id];
     }
@@ -645,16 +772,11 @@ export function LetterDataPage() {
     }
 
     return (
-      attachmentPlace ||
-      soldier.attachmentPlace ||
-      soldier.unit ||
-      ""
+      attachmentPlace || soldier.attachmentPlace || soldier.unit || ""
     );
   }
 
-  function getAttachmentUnitId(
-    soldier: SoldierData
-  ): string | null {
+  function getAttachmentUnitId(soldier: SoldierData): string | null {
     if (overrideIds[soldier.id]) {
       return overrideIds[soldier.id];
     }
@@ -664,9 +786,7 @@ export function LetterDataPage() {
         return null;
       }
 
-      const unit = units.find(
-        (u) => u.name === soldier.attachmentPlace
-      );
+      const unit = units.find((u) => u.name === soldier.attachmentPlace);
 
       return unit?.id ?? null;
     }
@@ -678,13 +798,8 @@ export function LetterDataPage() {
   // Row Change
   // ─────────────────────────────────────────────────────────
 
-  function handleRowAttachmentChange(
-    soldierId: string,
-    value: string
-  ) {
-    const unit = units.find(
-      (item) => item.name === value
-    );
+  function handleRowAttachmentChange(soldierId: string, value: string) {
+    const unit = units.find((item) => item.name === value);
 
     setOverrides((prev) => ({
       ...prev,
@@ -704,9 +819,7 @@ export function LetterDataPage() {
   // ─────────────────────────────────────────────────────────
 
   function handleRemoveSoldier(id: string) {
-    setLocalSoldiers((prev) =>
-      prev.filter((s) => s.id !== id)
-    );
+    setLocalSoldiers((prev) => prev.filter((s) => s.id !== id));
   }
 
   // ─────────────────────────────────────────────────────────
@@ -720,12 +833,8 @@ export function LetterDataPage() {
       e.destination = "جهة الخطاب مطلوبة";
     }
 
-    if (
-      !isEndAttachment &&
-      !attachmentPlaceId
-    ) {
-      e.attachmentPlace =
-        "مكان الالحاق مطلوب";
+    if (!isEndAttachment && !attachmentPlaceId) {
+      e.attachmentPlace = "مكان الالحاق مطلوب";
     }
 
     if (!reason.trim()) {
@@ -735,13 +844,11 @@ export function LetterDataPage() {
     }
 
     if (!selectedLetterType) {
-      e.letterType =
-        "نوع الخطاب غير موجود في قاعدة البيانات";
+      e.letterType = "نوع الخطاب غير موجود في قاعدة البيانات";
     }
 
     if (localSoldiers.length === 0) {
-      e.soldiers =
-        "يجب اختيار فرد واحد على الأقل";
+      e.soldiers = "يجب اختيار فرد واحد على الأقل";
     }
 
     return e;
@@ -761,54 +868,39 @@ export function LetterDataPage() {
 
     setErrors({});
 
-    const soldiersWithAttachment:
-      SoldierWithAttachment[] =
+    const soldiersWithAttachment: SoldierWithAttachment[] =
       localSoldiers.map((soldier) => ({
         ...soldier,
 
-        attachmentUnit:
-          getAttachmentUnit(soldier),
+        attachmentUnit: getAttachmentUnit(soldier),
 
-        attachmentUnitId:
-          getAttachmentUnitId(soldier) ??
-          undefined,
+        attachmentUnitId: getAttachmentUnitId(soldier) ?? undefined,
       }));
 
-    const letterData: LetterData = {
-      destination,
-      destinationId,
+   const letterData: LetterData = {
+  destination,
+  destinationId,
+  issuingUnitId: destinationId,
 
-      attachmentPlace:
-        isEndAttachment
-          ? ""
-          : attachmentPlace,
+  attachmentPlace: isEndAttachment ? "" : attachmentPlace,
 
-      attachmentPlaceId:
-        isEndAttachment
-          ? null
-          : attachmentPlaceId,
+  attachmentPlaceId: isEndAttachment ? null : attachmentPlaceId,
 
-      reason,
-    };
+  reason,
+};
 
-    navigate(
-      "/dashboard/issue-letter/review",
-      {
-        state: {
-          letterType,
-          letterTypeId:
-            selectedLetterType?.id,
+    navigate("/dashboard/issue-letter/review", {
+      state: {
+        letterType,
+        letterTypeId: selectedLetterType?.id,
 
-          letterTypeCode:
-            selectedLetterType?.code,
+        letterTypeCode: selectedLetterType?.code,
 
-          soldiers:
-            soldiersWithAttachment,
+        soldiers: soldiersWithAttachment,
 
-          letterData,
-        },
-      }
-    );
+        letterData,
+      },
+    });
   }
 
   // ─────────────────────────────────────────────────────────
@@ -860,8 +952,7 @@ export function LetterDataPage() {
           className="px-5 py-2 rounded-lg text-white"
           style={{
             ...F,
-            background:
-              "linear-gradient(to bottom, #00b867, #00522e)",
+            background: "linear-gradient(to bottom, #00b867, #00522e)",
           }}
         >
           إعادة المحاولة
@@ -871,20 +962,18 @@ export function LetterDataPage() {
   }
 
   // ─────────────────────────────────────────────────────────
+  // Table Classes
+  // ─────────────────────────────────────────────────────────
+
+  const thClass = "px-4 py-3 text-right border-b border-[#e2e7f0]";
+  const tdClass = "px-4 py-3 text-right border-b border-[#e2e7f0]";
+
+  // ─────────────────────────────────────────────────────────
   // Render
   // ─────────────────────────────────────────────────────────
 
-  const thClass =
-    "px-4 py-3 text-right border-b border-[#e2e7f0]";
-
-  const tdClass =
-    "px-4 py-3 text-right border-b border-[#e2e7f0]";
-
   return (
-    <div
-      className="flex flex-col gap-6 w-full pb-10"
-      dir="rtl"
-    >
+    <div className="flex flex-col gap-6 w-full pb-10" dir="rtl">
       {/* Title */}
 
       <h1
@@ -921,7 +1010,7 @@ export function LetterDataPage() {
         يرجي ادخال بيانات الخطاب
       </p>
 
-      {/* Error */}
+      {/* Letter Type Error */}
 
       {errors.letterType && (
         <div
@@ -939,7 +1028,6 @@ export function LetterDataPage() {
 
       <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full">
         <div className="flex flex-col gap-5 px-6 py-5">
-
           {/* Destination */}
 
           {isEndAttachment ? (
@@ -956,7 +1044,7 @@ export function LetterDataPage() {
               </label>
 
               <FormDropdown
-                placeholder="اختر الجهة"
+                placeholder="ابحث عن جهة الخطاب"
                 options={unitOptions}
                 value={destination}
                 onChange={handleDestinationChange}
@@ -965,7 +1053,6 @@ export function LetterDataPage() {
             </div>
           ) : (
             <div className="flex flex-col sm:flex-row gap-4 w-full">
-
               {/* Destination */}
 
               <div className="flex flex-col gap-1.5 flex-1 min-w-0">
@@ -981,7 +1068,7 @@ export function LetterDataPage() {
                 </label>
 
                 <FormDropdown
-                  placeholder="اختر الجهة"
+                  placeholder="ابحث عن جهة الخطاب"
                   options={unitOptions}
                   value={destination}
                   onChange={handleDestinationChange}
@@ -1004,7 +1091,7 @@ export function LetterDataPage() {
                 </label>
 
                 <FormDropdown
-                  placeholder="اختر مكان الالحاق"
+                  placeholder="ابحث عن مكان الالحاق"
                   options={unitOptions}
                   value={attachmentPlace}
                   onChange={handleAttachmentPlaceChange}
@@ -1019,9 +1106,8 @@ export function LetterDataPage() {
                     lineHeight: 1.5,
                   }}
                 >
-                  سيتم تطبيق وحدة الالحاق على جميع
-                  الافراد ولكن يمكنك تعديل كل فرد
-                  من خلال جدول الافراد
+                  سيتم تطبيق وحدة الالحاق على جميع الافراد ولكن يمكنك تعديل
+                  كل فرد من خلال جدول الافراد
                 </p>
               </div>
             </div>
@@ -1040,9 +1126,7 @@ export function LetterDataPage() {
                 color: "#2d3648",
               }}
             >
-              {isEndAttachment
-                ? "سبب انهاء الالحاق"
-                : "سبب الالحاق"}
+              {isEndAttachment ? "سبب انهاء الالحاق" : "سبب الالحاق"}
             </label>
 
             <textarea
@@ -1062,9 +1146,7 @@ export function LetterDataPage() {
               dir="rtl"
               className={[
                 "w-full bg-white border rounded-[8px] px-3 py-3 text-right outline-none resize-none focus:border-[#1f3d97] transition-colors",
-                errors.reason
-                  ? "border-[#ef4444]"
-                  : "border-[#e2e7f0]",
+                errors.reason ? "border-[#ef4444]" : "border-[#e2e7f0]",
               ].join(" ")}
               style={{
                 ...F,
@@ -1090,12 +1172,9 @@ export function LetterDataPage() {
 
           {localSoldiers.length > 0 && (
             <div className="w-full overflow-x-auto rounded-[12px] border border-[#e2e7f0]">
-
               <table className="w-full min-w-[580px] border-collapse">
-
                 <thead>
                   <tr className="bg-[#f7f9fc]">
-
                     {[
                       "درجة",
                       "اسم",
@@ -1103,10 +1182,7 @@ export function LetterDataPage() {
                       "وحدة الالحاق",
                       "الاجراء",
                     ].map((h) => (
-                      <th
-                        key={h}
-                        className={thClass}
-                      >
+                      <th key={h} className={thClass}>
                         <div className="flex items-center gap-1 justify-start">
                           <span
                             style={{
@@ -1122,19 +1198,66 @@ export function LetterDataPage() {
                         </div>
                       </th>
                     ))}
-
                   </tr>
                 </thead>
 
                 <tbody>
+                  {localSoldiers.map((soldier) => (
+                    <tr key={soldier.id}>
+                      {/* Rank */}
 
-                  {localSoldiers.map(
-                    (soldier) => (
-                      <tr key={soldier.id}>
+                      <td className={tdClass}>
+                        <span
+                          style={{
+                            ...F,
+                            fontSize: 14,
+                            color: "#2d3648",
+                          }}
+                        >
+                          {soldier.rank}
+                        </span>
+                      </td>
 
-                        {/* Rank */}
+                      {/* Name */}
 
-                        <td className={tdClass}>
+                      <td className={tdClass}>
+                        <span
+                          style={{
+                            ...F,
+                            fontSize: 14,
+                            color: "#2d3648",
+                          }}
+                        >
+                          {soldier.name}
+                        </span>
+                      </td>
+
+                      {/* Unit */}
+
+                      <td className={tdClass}>
+                        <span
+                          style={{
+                            ...F,
+                            fontSize: 14,
+                            color: "#2d3648",
+                          }}
+                        >
+                          {soldier.unit}
+                        </span>
+                      </td>
+
+                      {/* Attachment Unit */}
+
+                      <td className={tdClass}>
+                        {editingId === soldier.id ? (
+                          <InlineDropdown
+                            value={getAttachmentUnit(soldier)}
+                            options={unitOptions}
+                            onChange={(v) =>
+                              handleRowAttachmentChange(soldier.id, v)
+                            }
+                          />
+                        ) : (
                           <span
                             style={{
                               ...F,
@@ -1142,157 +1265,72 @@ export function LetterDataPage() {
                               color: "#2d3648",
                             }}
                           >
-                            {soldier.rank}
+                            {getAttachmentUnit(soldier) || "-"}
                           </span>
-                        </td>
+                        )}
+                      </td>
 
-                        {/* Name */}
+                      {/* Actions */}
 
-                        <td className={tdClass}>
-                          <span
+                      <td className={tdClass}>
+                        <div className="flex items-start gap-2">
+                          {/* Delete */}
+
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSoldier(soldier.id)}
+                            className="w-7 h-7 rounded-[6px] flex items-center justify-center transition-colors hover:opacity-80"
                             style={{
-                              ...F,
-                              fontSize: 14,
-                              color: "#2d3648",
+                              backgroundColor: "#fce8f1",
                             }}
                           >
-                            {soldier.name}
-                          </span>
-                        </td>
-
-                        {/* Unit */}
-
-                        <td className={tdClass}>
-                          <span
-                            style={{
-                              ...F,
-                              fontSize: 14,
-                              color: "#2d3648",
-                            }}
-                          >
-                            {soldier.unit}
-                          </span>
-                        </td>
-
-                        {/* Attachment Unit */}
-
-                        <td className={tdClass}>
-
-                          {editingId ===
-                          soldier.id ? (
-                            <InlineDropdown
-                              value={getAttachmentUnit(
-                                soldier
-                              )}
-                              options={unitOptions}
-                              onChange={(v) =>
-                                handleRowAttachmentChange(
-                                  soldier.id,
-                                  v
-                                )
-                              }
-                            />
-                          ) : (
-                            <span
+                            <Trash2
+                              size={13}
                               style={{
-                                ...F,
-                                fontSize: 14,
-                                color: "#2d3648",
+                                color: "#e3282c",
                               }}
-                            >
-                              {getAttachmentUnit(
-                                soldier
-                              ) || "-"}
-                            </span>
-                          )}
+                            />
+                          </button>
 
-                        </td>
+                          {/* Edit / Check */}
 
-                        {/* Actions */}
-
-                        <td className={tdClass}>
-
-                          <div className="flex items-start gap-2">
-
-                            {/* Delete */}
-
+                          {editingId === soldier.id ? (
                             <button
                               type="button"
-                              onClick={() =>
-                                handleRemoveSoldier(
-                                  soldier.id
-                                )
-                              }
+                              onClick={() => setEditingId(null)}
                               className="w-7 h-7 rounded-[6px] flex items-center justify-center transition-colors hover:opacity-80"
                               style={{
-                                backgroundColor:
-                                  "#fce8f1",
+                                backgroundColor: "#ebfaea",
                               }}
                             >
-                              <Trash2
+                              <Check
                                 size={13}
                                 style={{
-                                  color:
-                                    "#e3282c",
+                                  color: "#00b867",
                                 }}
                               />
                             </button>
-
-                            {/* Edit / Check */}
-
-                            {editingId ===
-                            soldier.id ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setEditingId(null)
-                                }
-                                className="w-7 h-7 rounded-[6px] flex items-center justify-center transition-colors hover:opacity-80"
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setEditingId(soldier.id)}
+                              className="w-7 h-7 rounded-[6px] flex items-center justify-center transition-colors hover:opacity-80"
+                              style={{
+                                backgroundColor: "#ebedfd",
+                              }}
+                            >
+                              <Pencil
+                                size={13}
                                 style={{
-                                  backgroundColor:
-                                    "#ebfaea",
+                                  color: "#1f3d97",
                                 }}
-                              >
-                                <Check
-                                  size={13}
-                                  style={{
-                                    color:
-                                      "#00b867",
-                                  }}
-                                />
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setEditingId(
-                                    soldier.id
-                                  )
-                                }
-                                className="w-7 h-7 rounded-[6px] flex items-center justify-center transition-colors hover:opacity-80"
-                                style={{
-                                  backgroundColor:
-                                    "#ebedfd",
-                                }}
-                              >
-                                <Pencil
-                                  size={13}
-                                  style={{
-                                    color:
-                                      "#1f3d97",
-                                  }}
-                                />
-                              </button>
-                            )}
-
-                          </div>
-
-                        </td>
-
-                      </tr>
-                    )
-                  )}
-
+                              />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -1330,14 +1368,12 @@ export function LetterDataPage() {
           {/* Submit */}
 
           <div className="w-full flex items-start pt-1">
-
             <button
               type="button"
               onClick={handleSubmit}
               className="min-h-[48px] px-6 rounded-[8px] flex items-center justify-center transition-opacity hover:opacity-90 active:opacity-80"
               style={{
-                background:
-                  "linear-gradient(to bottom, #00b867, #00522e)",
+                background: "linear-gradient(to bottom, #00b867, #00522e)",
                 minWidth: 180,
               }}
             >
@@ -1351,9 +1387,7 @@ export function LetterDataPage() {
                 المعاينه والحفظ النهائي
               </span>
             </button>
-
           </div>
-
         </div>
       </div>
     </div>

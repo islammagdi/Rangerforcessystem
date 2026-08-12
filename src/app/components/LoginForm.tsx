@@ -8,7 +8,7 @@ import { EgyptEmblem } from "./EgyptEmblem";
 import { LoginInput } from "./LoginInput";
 import { LoginButton } from "./LoginButton";
 import { supabase } from "../../lib/supabase";
-
+import { logActivity } from "../../lib/logActivity";
 interface FormErrors {
   username?: string;
   password?: string;
@@ -357,6 +357,19 @@ export function LoginForm() {
         "username",
         profile.username
       );
+      // ============================================
+// 8. تسجيل عملية الدخول في سجل العمليات
+// ============================================
+
+await logActivity({
+  userId: data.user.id,
+  userName: profile.username,
+  actionType: "LOGIN",
+  action: "تسجيل دخول",
+  entity: "النظام",
+  details: "تم تسجيل الدخول إلى المنظومة",
+});
+
 
       // ============================================
       // 8. Login Success
@@ -509,7 +522,9 @@ export function LoginForm() {
         </form>
       )}
     </div>
+    
   );
+  
 }
 
 // =====================================================

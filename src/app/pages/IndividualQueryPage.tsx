@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import {
   ChevronDown,
@@ -8,7 +8,7 @@ import {
   ArrowLeftRight,
   Minus,
 } from "lucide-react";
-
+import { logActivity } from "../../lib/logActivity";
 import { DeleteConfirmDialog } from "../components/dashboard/DeleteConfirmDialog";
 import { supabase } from "../../lib/supabase";
 
@@ -537,7 +537,7 @@ function ResultsTable({
                 key={title}
                 className={headerClass}
               >
-                <div className="flex items-center gap-1 justify-end">
+                <div className="flex items-center gap-1 justify-start">
                   <span style={headerStyle}>
                     {title}
                   </span>
@@ -632,7 +632,11 @@ function ResultsTable({
 // ═════════════════════════════════════════════════════════════════════════════
 
 export function IndividualQueryPage() {
-  const navigate = useNavigate();
+   const navigate = useNavigate();
+
+  // المستخدم الحالي
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserName, setCurrentUserName] = useState("غير معروف");
 
   const [selectedCategory, setSelectedCategory] =
     useState("جميع الفئات");
@@ -663,6 +667,46 @@ export function IndividualQueryPage() {
 
   const [deleteTargetId, setDeleteTargetId] =
     useState<string | null>(null);
+
+  // تحميل بيانات المستخدم الحالي مرة واحدة
+  useEffect(() => {
+    async function loadCurrentUser() {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        console.error("Get current user error:", userError);
+        return;
+      }
+
+      if (!user) {
+        return;
+      }
+
+      setCurrentUserId(user.id);
+
+      const {
+        data: profile,
+        error: profileError,
+      } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError) {
+        console.error("Profile error:", profileError);
+      }
+
+      setCurrentUserName(
+        profile?.username ?? "غير معروف"
+      );
+    }
+
+    loadCurrentUser();
+  }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Search
@@ -698,7 +742,25 @@ export function IndividualQueryPage() {
        * + attachment unit
        * + service status
        */
+const {
+  data: { user },
+} = await supabase.auth.getUser();
 
+let userName = "غير معروف";
+
+if (user) {
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("username")
+    .eq("id", user.id)
+    .single();
+
+  if (profileError) {
+    console.error("Profile error:", profileError);
+  }
+
+  userName = profile?.username ?? "غير معروف";
+}
       let query = supabase
         .from("personnel")
         .select(`
@@ -863,7 +925,23 @@ export function IndividualQueryPage() {
           .map(mapPersonnelToRecord);
 
       setResults(records);
-
+// تسجيل نجاح الاستعلام في audit_logs
+if (records.length > 0) {
+  await logActivity({
+    userId: user?.id ?? null,
+    userName,
+    actionType: "QUERY",
+    action: "الاستعلام عن بيانات فرد",
+    entity: "personnel",
+    details: JSON.stringify({
+      queryBasis,
+      queryValue: value,
+      category: selectedCategory,
+      resultsCount: records.length,
+      personnelIds: records.map((record) => record.id),
+    }),
+  });
+}
       setSelectedIds(
         new Set(records.map((record) => record.id))
       );
@@ -884,7 +962,9 @@ export function IndividualQueryPage() {
     } finally {
       setLoading(false);
     }
+    
   }
+  
 
   // ─────────────────────────────────────────────────────────────────────────
   // Selection
@@ -926,42 +1006,57 @@ export function IndividualQueryPage() {
   }
 
   async function confirmDelete() {
-    if (!deleteTargetId) return;
+  if (!deleteTargetId) return;
 
-    try {
-      const { error } = await supabase
-        .from("personnel")
-        .delete()
-        .eq("id", deleteTargetId);
+  try {
+    // نجيب بيانات الفرد قبل الحذف عشان نسجلها في الـ audit
+    const deletedRecord = results.find(
+      (record) => record.id === deleteTargetId
+    );
 
-      if (error) {
-        throw error;
-      }
+    const { error } = await supabase
+      .from("personnel")
+      .delete()
+      .eq("id", deleteTargetId);
 
-      setResults((previous) =>
-        previous.filter(
-          (record) =>
-            record.id !== deleteTargetId
-        )
-      );
-
-      setSelectedIds((previous) => {
-        const next = new Set(previous);
-        next.delete(deleteTargetId);
-        return next;
-      });
-    } catch (error) {
-      console.error(
-        "Delete personnel error:",
-        error
-      );
-
-      alert("حدث خطأ أثناء حذف الفرد");
+    if (error) {
+      throw error;
     }
 
-    setDeleteTargetId(null);
+    // تسجيل عملية الحذف
+    await logActivity({
+      userId: currentUserId,
+      userName: currentUserName,
+      actionType: "DELETE",
+      action: "حذف فرد",
+      entity: "personnel",
+      details: JSON.stringify({
+        personnelId: deleteTargetId,
+        militaryNumber: deletedRecord?.militaryId ?? null,
+        fullName: deletedRecord?.name ?? null,
+      }),
+    });
+
+    // تحديث الجدول
+    setResults((previous) =>
+      previous.filter(
+        (record) => record.id !== deleteTargetId
+      )
+    );
+
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      next.delete(deleteTargetId);
+      return next;
+    });
+
+  } catch (error) {
+    console.error("Delete personnel error:", error);
+    alert("حدث خطأ أثناء حذف الفرد");
   }
 
+  setDeleteTargetId(null);
+}
   function cancelDelete() {
     setDeleteTargetId(null);
   }

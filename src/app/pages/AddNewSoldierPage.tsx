@@ -76,7 +76,6 @@ interface GroupPersonnelRow {
   row_number: number;
 }
 
-// النوع الناتج بعد مطابقة كل صف مع قاعدة البيانات
 type RowClassification = "new" | "update" | "error";
 
 interface ClassifiedPersonnelRow extends GroupPersonnelRow {
@@ -107,7 +106,6 @@ const REQUIRED_EXCEL_COLUMNS = [
   "جهه الالحاق",
 ];
 
-// ⚠️ عدّل اسم الجدول هذا ليطابق الجدول الفعلي الذي يخزن الأفراد المسجلين بالفعل
 const PERSONNEL_TABLE_NAME = "personnel";
 
 function normalizeExcelHeader(value: unknown): string {
@@ -120,28 +118,6 @@ function normalizeExcelHeader(value: unknown): string {
     .replace(/آ/g, "ا");
 }
 
-// -----------------------------------------------------------
-// FIX (نهائي): بنتجنب التعامل مع JS `Date` objects خالص لتواريخ
-// الإكسيل. أي تحويل عبر Date (سواء toISOString أو حتى القراءة
-// المحلية بـ getFullYear/getDate) بيفضل عرضة لفرق يوم لأن طريقة
-// بناء الـ Date object جوه مكتبة XLSX نفسها (لما بنمرر cellDates:
-// true) مش موحّدة، وبتختلف حسب نسخة المكتبة والتوقيت.
-//
-// عشان كده شِلنا cellDates: true تمامًا من XLSX.read (شوف
-// handleGroupSubmit تحت)، فالتاريخ بييجي من الإكسيل كـ **رقم
-// تسلسلي خام (serial number)** زي 46266 مثلاً، وبنحوّله بـ
-// XLSX.SSF.parse_date_code() اللي هي دالة حسابية تقويمية بحتة
-// (سنة/شهر/يوم) من غير أي Date object ومن غير أي تعامل مع
-// التوقيت المحلي أو UTC خالص. النتيجة: التاريخ اللي بيتقرأ هو
-// بالظبط نفس التاريخ المكتوب في خلية الإكسيل، مهما كان توقيت
-// المتصفح.
-//
-// لو القيمة لسبب ما لسه راجعة كـ Date object (حالة نادرة، مثلاً
-// لو خلية فيها صيغة تاريخ خاصة عرّفتها XLSX كـ Date تلقائيًا رغم
-// إزالة cellDates)، بنقرأ أجزاءها بـ UTC (get*UTC*) مش المحلية،
-// لأن أي Date object جاي من رقم تسلسلي بيتفسّر داخليًا كفرق أيام
-// عن 1899-12-30 بتوقيت UTC.
-// -----------------------------------------------------------
 function normalizeExcelValue(value: unknown): string {
   if (value === null || value === undefined) {
     return "";
@@ -166,7 +142,10 @@ function normalizeExcelValue(value: unknown): string {
   return String(value).trim();
 }
 
-function excelDateToISO(value: unknown, date1904 = false): string | null {
+function excelDateToISO(
+  value: unknown,
+  date1904 = false
+): string | null {
   if (value === null || value === undefined || value === "") {
     return null;
   }
@@ -183,8 +162,6 @@ function excelDateToISO(value: unknown, date1904 = false): string | null {
     return `${year}-${month}-${day}`;
   }
 
-  // الحالة الأساسية والمتوقعة: رقم تسلسلي خام من الإكسيل.
-  // تحويل حسابي تقويمي بحت، بدون Date object وبدون توقيت خالص.
   if (typeof value === "number") {
     const date = XLSX.SSF.parse_date_code(value, { date1904 });
 
@@ -204,21 +181,18 @@ function excelDateToISO(value: unknown, date1904 = false): string | null {
     return null;
   }
 
-  // YYYY-MM-DD
   if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(text)) {
     const [y, m, d] = text.split("-");
 
     return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
   }
 
-  // DD/MM/YYYY
   if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(text)) {
     const [d, m, y] = text.split("/");
 
     return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
   }
 
-  // DD-MM-YYYY
   if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(text)) {
     const [d, m, y] = text.split("-");
 
@@ -406,7 +380,7 @@ function CategoryToggle({
 }
 
 // ============================================================
-// Dropdown
+// Normal Dropdown
 // ============================================================
 
 function FormDropdown({
@@ -473,6 +447,166 @@ function FormDropdown({
 }
 
 // ============================================================
+// Searchable Dropdown
+// ============================================================
+
+function SearchableDropdown({
+  placeholder,
+  options,
+  value,
+  onChange,
+  error,
+  disabled = false,
+}: {
+  placeholder: string;
+  options: Option[];
+  value: string;
+  onChange: (value: string) => void;
+  error?: string;
+  disabled?: boolean;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const selectedOption = useMemo(() => {
+    return options.find((option) => option.value === value);
+  }, [options, value]);
+
+  useEffect(() => {
+    if (selectedOption) {
+      setQuery(selectedOption.label);
+    } else if (!value) {
+      setQuery("");
+    }
+  }, [selectedOption, value]);
+
+  const filteredOptions = useMemo(() => {
+    const normalizedQuery = normalizeExcelHeader(query);
+
+    if (!normalizedQuery) {
+      return options;
+    }
+
+    return options.filter((option) =>
+      normalizeExcelHeader(option.label).includes(normalizedQuery)
+    );
+  }, [options, query]);
+
+  return (
+    <div className="flex flex-col gap-1 w-full">
+      <div className="relative">
+        <input
+          type="text"
+          value={query}
+          disabled={disabled}
+          placeholder={placeholder}
+          dir="rtl"
+          onFocus={() => {
+            if (!disabled) {
+              setOpen(true);
+            }
+          }}
+          onChange={(e) => {
+            const newQuery = e.target.value;
+
+            setQuery(newQuery);
+            setOpen(true);
+
+            if (value) {
+              onChange("");
+            }
+          }}
+          onBlur={() => {
+            setTimeout(() => {
+              setOpen(false);
+            }, 150);
+          }}
+          className={[
+            "w-full h-[54px] bg-white border rounded-[8px]",
+            "px-3 pl-10 outline-none transition-colors",
+            disabled
+              ? "bg-[#f3f4f6] cursor-not-allowed opacity-60"
+              : "focus:border-[#344736]",
+            error ? "border-[#ef4444]" : "border-[#e2e7f0]",
+          ].join(" ")}
+          style={{
+            ...F,
+            fontSize: 16,
+            color: "#4a5468",
+          }}
+        />
+
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#344736]">
+          ▼
+        </span>
+
+        {open && !disabled && (
+          <div
+            className="absolute z-50 top-[58px] right-0 w-full bg-white border border-[#e2e7f0] rounded-[8px] shadow-lg overflow-hidden"
+            dir="rtl"
+          >
+            <div className="max-h-[260px] overflow-y-auto">
+              {filteredOptions.length > 0 ? (
+                filteredOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                    }}
+                    onClick={() => {
+                      onChange(option.value);
+                      setQuery(option.label);
+                      setOpen(false);
+                    }}
+                    className={[
+                      "w-full text-right px-4 py-3 transition-colors",
+                      option.value === value
+                        ? "bg-[#f0f6f1] text-[#344736]"
+                        : "hover:bg-[#f7f9fc] text-[#4a5468]",
+                    ].join(" ")}
+                    style={{
+                      ...F,
+                      fontSize: 15,
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))
+              ) : (
+                <div
+                  className="px-4 py-3 text-right"
+                  style={{
+                    ...F,
+                    fontSize: 14,
+                    color: "#a0abc0",
+                  }}
+                >
+                  لا توجد وحدات مطابقة
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <p
+          className="text-right px-1"
+          style={{
+            ...F,
+            fontSize: 13,
+            color: "#ef4444",
+          }}
+        >
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
 // Input
 // ============================================================
 
@@ -500,13 +634,21 @@ function FormInput({
           "text-right outline-none focus:border-[#344736]",
           error ? "border-[#ef4444]" : "border-[#e2e7f0]",
         ].join(" ")}
-        style={{ ...F, fontSize: 18, color: "#4a5468" }}
+        style={{
+          ...F,
+          fontSize: 18,
+          color: "#4a5468",
+        }}
       />
 
       {error && (
         <p
           className="text-right px-1"
-          style={{ ...F, fontSize: 13, color: "#ef4444" }}
+          style={{
+            ...F,
+            fontSize: 13,
+            color: "#ef4444",
+          }}
         >
           {error}
         </p>
@@ -558,7 +700,11 @@ function DateInput({
       {error && (
         <p
           className="text-right px-1"
-          style={{ ...F, fontSize: 13, color: "#ef4444" }}
+          style={{
+            ...F,
+            fontSize: 13,
+            color: "#ef4444",
+          }}
         >
           {error}
         </p>
@@ -584,7 +730,12 @@ function FieldGroup({
     <div className="flex flex-col gap-1.5 flex-1 min-w-0">
       <label
         className="block text-right px-1"
-        style={{ ...F, fontWeight: 700, fontSize: 16, color: labelColor }}
+        style={{
+          ...F,
+          fontWeight: 700,
+          fontSize: 16,
+          color: labelColor,
+        }}
       >
         {label}
       </label>
@@ -598,7 +749,12 @@ function SubHeader({ children }: { children: React.ReactNode }) {
   return (
     <p
       className="text-right w-full"
-      style={{ ...F, fontWeight: 700, fontSize: 18, color: "#2d3648" }}
+      style={{
+        ...F,
+        fontWeight: 700,
+        fontSize: 18,
+        color: "#2d3648",
+      }}
     >
       {children}
     </p>
@@ -644,7 +800,9 @@ function GroupUploadSection({
   onSubmit: () => void;
   loading: boolean;
   uploadedFile: UploadedFile | null;
-  setUploadedFile: React.Dispatch<React.SetStateAction<UploadedFile | null>>;
+  setUploadedFile: React.Dispatch<
+    React.SetStateAction<UploadedFile | null>
+  >;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -667,7 +825,9 @@ function GroupUploadSection({
       const ext = file.name.split(".").pop()?.toLowerCase();
 
       if (!["xls", "xlsx"].includes(ext ?? "")) {
-        alert("الملفات المدعومة فقط هي ملفات الاكسيل (.xls, .xlsx)");
+        alert(
+          "الملفات المدعومة فقط هي ملفات الاكسيل (.xls, .xlsx)"
+        );
         return;
       }
 
@@ -680,7 +840,9 @@ function GroupUploadSection({
     [setUploadedFile]
   );
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = e.target.files?.[0];
 
     if (file) {
@@ -704,7 +866,6 @@ function GroupUploadSection({
   return (
     <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full">
       <div className="flex flex-col gap-5 px-6 py-5">
-        {/* Header */}
         <div className="flex flex-wrap items-start justify-between gap-4 w-full">
           <div className="flex flex-col gap-1 items-start flex-1 min-w-0">
             <p
@@ -733,7 +894,6 @@ function GroupUploadSection({
             </p>
           </div>
 
-          {/* Download template */}
           <a
             href={EXCEL_TEMPLATE_URL}
             download="Data.xlsx"
@@ -748,7 +908,8 @@ function GroupUploadSection({
               style={{
                 ...F,
                 fontSize: 16,
-                background: "linear-gradient(to bottom, #00b867, #00522e)",
+                background:
+                  "linear-gradient(to bottom, #00b867, #00522e)",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
               }}
@@ -760,7 +921,6 @@ function GroupUploadSection({
 
         <div className="w-full h-px bg-[#efefef]" />
 
-        {/* Drop Zone */}
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -776,17 +936,35 @@ function GroupUploadSection({
               : "border-[#cbd2e0] bg-transparent",
           ].join(" ")}
         >
-          <Upload size={42} strokeWidth={1.5} className="text-[#415844]" />
+          <Upload
+            size={42}
+            strokeWidth={1.5}
+            className="text-[#415844]"
+          />
 
           <div className="flex flex-col items-center gap-3 w-full">
-            <p style={{ ...F, fontSize: 14, color: "#5B795F" }}>
+            <p
+              style={{
+                ...F,
+                fontSize: 14,
+                color: "#5B795F",
+              }}
+            >
               اسحب ملف Excel هنا أو تصفح
             </p>
 
             <div className="flex items-center gap-3 w-[200px]">
               <div className="flex-1 h-px bg-[#e7e7e7]" />
 
-              <span style={{ ...F, fontSize: 12, color: "#717d96" }}>أو</span>
+              <span
+                style={{
+                  ...F,
+                  fontSize: 12,
+                  color: "#717d96",
+                }}
+              >
+                أو
+              </span>
 
               <div className="flex-1 h-px bg-[#e7e7e7]" />
             </div>
@@ -797,7 +975,12 @@ function GroupUploadSection({
               className="bg-[#f7f9fc] border border-[#415844] rounded-[8px] px-3 py-1.5 transition-colors hover:bg-[#eef1fd] active:opacity-80"
             >
               <span
-                style={{ ...F, fontWeight: 700, fontSize: 12, color: "#415844" }}
+                style={{
+                  ...F,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  color: "#415844",
+                }}
               >
                 تصفح الملفات
               </span>
@@ -813,11 +996,17 @@ function GroupUploadSection({
           </div>
         </div>
 
-        <p className="text-right" style={{ ...F, fontSize: 12, color: "#717d96" }}>
+        <p
+          className="text-right"
+          style={{
+            ...F,
+            fontSize: 12,
+            color: "#717d96",
+          }}
+        >
           الملفات المدعومة فقط هي ملفات الاكسيل (.xls, .xlsx)
         </p>
 
-        {/* Uploaded File */}
         {uploadedFile && (
           <div className="flex items-center gap-3 bg-white border border-[#e7e7e7] rounded-[12px] px-4 py-3 w-full">
             <div className="shrink-0">
@@ -827,14 +1016,23 @@ function GroupUploadSection({
             <div className="flex flex-col items-end flex-1 min-w-0 gap-0.5">
               <p
                 className="w-full text-right truncate"
-                style={{ ...F, fontWeight: 700, fontSize: 12, color: "#2d3648" }}
+                style={{
+                  ...F,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  color: "#2d3648",
+                }}
               >
                 {uploadedFile.name}
               </p>
 
               <p
                 className="w-full text-right"
-                style={{ ...F, fontSize: 12, color: "#a0abc0" }}
+                style={{
+                  ...F,
+                  fontSize: 12,
+                  color: "#a0abc0",
+                }}
               >
                 {uploadedFile.size}
               </p>
@@ -850,17 +1048,27 @@ function GroupUploadSection({
           </div>
         )}
 
-        {/* Submit */}
         <div className="flex justify-end pt-1">
           <button
             type="button"
             onClick={onSubmit}
             disabled={!uploadedFile || loading}
             className="h-[44px] px-6 rounded-[8px] flex items-center justify-center gap-2 transition-opacity hover:opacity-90 active:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ background: "linear-gradient(to bottom, #00b867, #00522e)" }}
+            style={{
+              background:
+                "linear-gradient(to bottom, #00b867, #00522e)",
+            }}
           >
-            <span style={{ ...F, fontSize: 16, color: "#f5f5f5" }}>
-              {loading ? "جاري قراءة الكشف..." : "مراجعة الكشف"}
+            <span
+              style={{
+                ...F,
+                fontSize: 16,
+                color: "#f5f5f5",
+              }}
+            >
+              {loading
+                ? "جاري قراءة الكشف..."
+                : "مراجعة الكشف"}
             </span>
           </button>
         </div>
@@ -880,9 +1088,11 @@ export function AddNewSoldierPage() {
   // Basic state
   // ----------------------------------------------------------
 
-  const [method, setMethod] = useState<RegistrationMethod>("فرد واحد");
+  const [method, setMethod] =
+    useState<RegistrationMethod>("فرد واحد");
 
-  const [category, setCategory] = useState<SoldierCategory>("مجند");
+  const [category, setCategory] =
+    useState<SoldierCategory>("مجند");
 
   const [milId, setMilId] = useState("");
   const [rank, setRank] = useState("");
@@ -908,12 +1118,14 @@ export function AddNewSoldierPage() {
   const [ranks, setRanks] = useState<Rank[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [statuses, setStatuses] = useState<ServiceStatus[]>([]);
-  const [categories, setCategories] = useState<PersonnelCategory[]>([]);
+  const [categories, setCategories] =
+    useState<PersonnelCategory[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] =
+    useState<Record<string, string>>({});
 
   // ==========================================================
   // Load database data
@@ -927,32 +1139,38 @@ export function AddNewSoldierPage() {
     try {
       setLoading(true);
 
-      const [ranksResult, unitsResult, statusesResult, categoriesResult] =
-        await Promise.all([
-          supabase
-            .from("ranks")
-            .select("id,name,code,sort_order,is_active")
-            .eq("is_active", true)
-            .order("sort_order", { ascending: true }),
+      const [
+        ranksResult,
+        unitsResult,
+        statusesResult,
+        categoriesResult,
+      ] = await Promise.all([
+        supabase
+          .from("ranks")
+          .select("id,name,code,sort_order,is_active")
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true }),
 
-          supabase
-            .from("units")
-            .select("id,name,code,unit_type,parent_unit_id,is_active")
-            .eq("is_active", true)
-            .order("name", { ascending: true }),
+        supabase
+          .from("units")
+          .select(
+            "id,name,code,unit_type,parent_unit_id,is_active"
+          )
+          .eq("is_active", true)
+          .order("name", { ascending: true }),
 
-          supabase
-            .from("service_statuses")
-            .select("id,name,code,is_active")
-            .eq("is_active", true)
-            .order("name", { ascending: true }),
+        supabase
+          .from("service_statuses")
+          .select("id,name,code,is_active")
+          .eq("is_active", true)
+          .order("name", { ascending: true }),
 
-          supabase
-            .from("personnel_categories")
-            .select("id,name,code,is_active")
-            .eq("is_active", true)
-            .order("name", { ascending: true }),
-        ]);
+        supabase
+          .from("personnel_categories")
+          .select("id,name,code,is_active")
+          .eq("is_active", true)
+          .order("name", { ascending: true }),
+      ]);
 
       if (ranksResult.error) {
         throw ranksResult.error;
@@ -975,18 +1193,26 @@ export function AddNewSoldierPage() {
       setStatuses(statusesResult.data ?? []);
       setCategories(categoriesResult.data ?? []);
 
-      const attachedStatus = (statusesResult.data ?? []).find(
+      const attachedStatus = (
+        statusesResult.data ?? []
+      ).find(
         (s) =>
-          s.code?.toUpperCase() === "ATTACHED" || s.name === "ملحق علي القوة"
+          s.code?.toUpperCase() === "ATTACHED" ||
+          s.name === "ملحق علي القوة"
       );
 
       if (attachedStatus) {
         setStatus(attachedStatus.id);
       }
     } catch (error) {
-      console.error("Error loading form data:", error);
+      console.error(
+        "Error loading form data:",
+        error
+      );
 
-      alert("حدث خطأ أثناء تحميل البيانات من قاعدة البيانات");
+      alert(
+        "حدث خطأ أثناء تحميل البيانات من قاعدة البيانات"
+      );
     } finally {
       setLoading(false);
     }
@@ -1002,11 +1228,16 @@ export function AddNewSoldierPage() {
 
       if (category === "مجند") {
         return (
-          c.name === "مجند" || code === "CONSCRIPT" || code === "SOLDIER"
+          c.name === "مجند" ||
+          code === "CONSCRIPT" ||
+          code === "SOLDIER"
         );
       }
 
-      return c.name === "متطوع" || code === "VOLUNTEER";
+      return (
+        c.name === "متطوع" ||
+        code === "VOLUNTEER"
+      );
     });
   }, [categories, category]);
 
@@ -1020,7 +1251,10 @@ export function AddNewSoldierPage() {
         const rankName = r.name.trim();
         const code = r.code?.trim().toUpperCase();
 
-        return rankName === "جندي" || code === "SOLDIER";
+        return (
+          rankName === "جندي" ||
+          code === "SOLDIER"
+        );
       });
     }
 
@@ -1028,7 +1262,10 @@ export function AddNewSoldierPage() {
       const rankName = r.name.trim();
       const code = r.code?.trim().toUpperCase();
 
-      return rankName !== "جندي" && code !== "SOLDIER";
+      return (
+        rankName !== "جندي" &&
+        code !== "SOLDIER"
+      );
     });
   }, [ranks, category]);
 
@@ -1038,12 +1275,21 @@ export function AddNewSoldierPage() {
 
   const mainUnitOptions = useMemo(() => {
     return units
-      .filter((u) => u.unit_type?.toUpperCase() === "MAIN")
-      .map((u) => ({ value: u.id, label: u.name }));
+      .filter(
+        (u) =>
+          u.unit_type?.toUpperCase() === "MAIN"
+      )
+      .map((u) => ({
+        value: u.id,
+        label: u.name,
+      }));
   }, [units]);
 
   const attachmentUnitOptions = useMemo(() => {
-    return units.map((u) => ({ value: u.id, label: u.name }));
+    return units.map((u) => ({
+      value: u.id,
+      label: u.name,
+    }));
   }, [units]);
 
   // ==========================================================
@@ -1051,32 +1297,44 @@ export function AddNewSoldierPage() {
   // ==========================================================
 
   const rankOptions = useMemo(() => {
-    return filteredRanks.map((r) => ({ value: r.id, label: r.name }));
+    return filteredRanks.map((r) => ({
+      value: r.id,
+      label: r.name,
+    }));
   }, [filteredRanks]);
 
   const statusOptions = useMemo(() => {
-    return statuses.map((s) => ({ value: s.id, label: s.name }));
+    return statuses.map((s) => ({
+      value: s.id,
+      label: s.name,
+    }));
   }, [statuses]);
 
-  const selectedStatus = statuses.find((s) => s.id === status);
+  const selectedStatus = statuses.find(
+    (s) => s.id === status
+  );
 
   // ==========================================================
   // Attachment
   // ==========================================================
 
   const isAttachmentEnabled =
-    selectedStatus?.code?.toUpperCase() === "ATTACHED" ||
+    selectedStatus?.code?.toUpperCase() ===
+      "ATTACHED" ||
     selectedStatus?.name === "ملحق علي القوة";
 
   // ==========================================================
-  // Lookup maps للمطابقة بين ملف الإكسيل وجداول قاعدة البيانات
+  // Lookup maps
   // ==========================================================
 
   const rankLookup = useMemo(() => {
     const map = new Map<string, Rank>();
 
     ranks.forEach((r) => {
-      map.set(normalizeExcelHeader(r.name), r);
+      map.set(
+        normalizeExcelHeader(r.name),
+        r
+      );
     });
 
     return map;
@@ -1086,34 +1344,49 @@ export function AddNewSoldierPage() {
     const map = new Map<string, Unit>();
 
     units.forEach((u) => {
-      map.set(normalizeExcelHeader(u.name), u);
+      map.set(
+        normalizeExcelHeader(u.name),
+        u
+      );
     });
 
     return map;
   }, [units]);
 
   const statusLookup = useMemo(() => {
-    const map = new Map<string, ServiceStatus>();
+    const map = new Map<
+      string,
+      ServiceStatus
+    >();
 
     statuses.forEach((s) => {
-      map.set(normalizeExcelHeader(s.name), s);
+      map.set(
+        normalizeExcelHeader(s.name),
+        s
+      );
     });
 
     return map;
   }, [statuses]);
 
   const categoryLookup = useMemo(() => {
-    const map = new Map<string, PersonnelCategory>();
+    const map = new Map<
+      string,
+      PersonnelCategory
+    >();
 
     categories.forEach((c) => {
-      map.set(normalizeExcelHeader(c.name), c);
+      map.set(
+        normalizeExcelHeader(c.name),
+        c
+      );
     });
 
     return map;
   }, [categories]);
 
   // ==========================================================
-  // مطابقة صف واحد من الإكسيل مع قاعدة البيانات وتصنيفه
+  // Classify Excel row
   // ==========================================================
 
   const classifyRow = useCallback(
@@ -1123,10 +1396,6 @@ export function AddNewSoldierPage() {
       duplicateMilitaryNumbers: Set<string>
     ): ClassifiedPersonnelRow => {
       const errors: string[] = [];
-
-      // --------------------------------------------------
-      // حقول أساسية مفقودة
-      // --------------------------------------------------
 
       if (!row.military_number) {
         errors.push("الرقم العسكري مفقود");
@@ -1154,72 +1423,106 @@ export function AddNewSoldierPage() {
 
       if (
         row.military_number &&
-        duplicateMilitaryNumbers.has(row.military_number)
+        duplicateMilitaryNumbers.has(
+          row.military_number
+        )
       ) {
-        errors.push("الرقم العسكري مكرر داخل نفس الملف");
+        errors.push(
+          "الرقم العسكري مكرر داخل نفس الملف"
+        );
       }
-
-      // --------------------------------------------------
-      // مطابقة القيم النصية بجداول قاعدة البيانات
-      // --------------------------------------------------
 
       const matchedRank = row.rank_name
-        ? rankLookup.get(normalizeExcelHeader(row.rank_name))
+        ? rankLookup.get(
+            normalizeExcelHeader(
+              row.rank_name
+            )
+          )
         : undefined;
 
-      const matchedCategory = row.personnel_category_name
-        ? categoryLookup.get(normalizeExcelHeader(row.personnel_category_name))
-        : undefined;
+      const matchedCategory =
+        row.personnel_category_name
+          ? categoryLookup.get(
+              normalizeExcelHeader(
+                row.personnel_category_name
+              )
+            )
+          : undefined;
 
       const matchedUnit = row.primary_unit_name
-        ? unitLookup.get(normalizeExcelHeader(row.primary_unit_name))
+        ? unitLookup.get(
+            normalizeExcelHeader(
+              row.primary_unit_name
+            )
+          )
         : undefined;
 
-      const matchedStatus = row.service_status_name
-        ? statusLookup.get(normalizeExcelHeader(row.service_status_name))
-        : undefined;
+      const matchedStatus =
+        row.service_status_name
+          ? statusLookup.get(
+              normalizeExcelHeader(
+                row.service_status_name
+              )
+            )
+          : undefined;
 
-      const matchedAttachmentUnit = row.attachment_unit_name
-        ? unitLookup.get(normalizeExcelHeader(row.attachment_unit_name))
-        : undefined;
+      const matchedAttachmentUnit =
+        row.attachment_unit_name
+          ? unitLookup.get(
+              normalizeExcelHeader(
+                row.attachment_unit_name
+              )
+            )
+          : undefined;
 
       if (row.rank_name && !matchedRank) {
-        errors.push(`الدرجة "${row.rank_name}" غير موجودة في قاعدة البيانات`);
+        errors.push(
+          `الدرجة "${row.rank_name}" غير موجودة في قاعدة البيانات`
+        );
       }
 
-      if (row.personnel_category_name && !matchedCategory) {
+      if (
+        row.personnel_category_name &&
+        !matchedCategory
+      ) {
         errors.push(
           `فئة الفرد "${row.personnel_category_name}" غير موجودة في قاعدة البيانات`
         );
       }
 
-      if (row.primary_unit_name && !matchedUnit) {
+      if (
+        row.primary_unit_name &&
+        !matchedUnit
+      ) {
         errors.push(
           `الوحدة الأساسية "${row.primary_unit_name}" غير موجودة في قاعدة البيانات`
         );
       }
 
-      if (row.service_status_name && !matchedStatus) {
+      if (
+        row.service_status_name &&
+        !matchedStatus
+      ) {
         errors.push(
           `الموقف الخدمي "${row.service_status_name}" غير موجود في قاعدة البيانات`
         );
       }
 
-      if (row.attachment_unit_name && !matchedAttachmentUnit) {
+      if (
+        row.attachment_unit_name &&
+        !matchedAttachmentUnit
+      ) {
         errors.push(
           `جهة الإلحاق "${row.attachment_unit_name}" غير موجودة في قاعدة البيانات`
         );
       }
 
-      // --------------------------------------------------
-      // تطابق الدرجة مع الفئة (نفس منطق القيد الفردي:
-      // فئة "مجند" تقبل درجة "جندي" فقط والعكس صحيح)
-      // --------------------------------------------------
-
       let isConscriptCategory = false;
 
       if (matchedCategory) {
-        const code = matchedCategory.code?.toUpperCase() ?? "";
+        const code =
+          matchedCategory.code?.toUpperCase() ??
+          "";
 
         isConscriptCategory =
           matchedCategory.name === "مجند" ||
@@ -1227,64 +1530,102 @@ export function AddNewSoldierPage() {
           code === "SOLDIER";
       }
 
-      if (matchedRank && matchedCategory) {
-        const rankCode = matchedRank.code?.trim().toUpperCase();
+      if (
+        matchedRank &&
+        matchedCategory
+      ) {
+        const rankCode =
+          matchedRank.code
+            ?.trim()
+            .toUpperCase();
+
         const isSoldierRank =
-          matchedRank.name.trim() === "جندي" || rankCode === "SOLDIER";
+          matchedRank.name.trim() === "جندي" ||
+          rankCode === "SOLDIER";
 
-        if (isConscriptCategory && !isSoldierRank) {
-          errors.push('فئة (مجند) يجب أن تكون الدرجة فيها "جندي" فقط');
+        if (
+          isConscriptCategory &&
+          !isSoldierRank
+        ) {
+          errors.push(
+            'فئة (مجند) يجب أن تكون الدرجة فيها "جندي" فقط'
+          );
         }
 
-        if (!isConscriptCategory && isSoldierRank) {
-          errors.push('فئة (متطوع) لا يمكن أن تكون الدرجة فيها "جندي"');
+        if (
+          !isConscriptCategory &&
+          isSoldierRank
+        ) {
+          errors.push(
+            'فئة (متطوع) لا يمكن أن تكون الدرجة فيها "جندي"'
+          );
         }
       }
 
-      // تاريخ التسريح مطلوب للمجندين
-      if (isConscriptCategory && !row.discharge_date) {
-        errors.push('تاريخ التسريح مطلوب لفئة "مجند"');
+      if (
+        isConscriptCategory &&
+        !row.discharge_date
+      ) {
+        errors.push(
+          'تاريخ التسريح مطلوب لفئة "مجند"'
+        );
       }
 
-      // جهة الإلحاق مطلوبة لو الموقف الخدمي "ملحق علي القوة"
       const requiresAttachment =
-        matchedStatus?.code?.toUpperCase() === "ATTACHED" ||
-        matchedStatus?.name === "ملحق علي القوة";
+        matchedStatus?.code?.toUpperCase() ===
+          "ATTACHED" ||
+        matchedStatus?.name ===
+          "ملحق علي القوة";
 
-      if (requiresAttachment && !matchedAttachmentUnit) {
-        errors.push("جهة الإلحاق مطلوبة لهذا الموقف الخدمي");
+      if (
+        requiresAttachment &&
+        !matchedAttachmentUnit
+      ) {
+        errors.push(
+          "جهة الإلحاق مطلوبة لهذا الموقف الخدمي"
+        );
       }
-
-      // --------------------------------------------------
-      // التصنيف النهائي
-      // --------------------------------------------------
 
       const classification: RowClassification =
         errors.length > 0
           ? "error"
-          : existingMilitaryNumbers.has(row.military_number)
-          ? "update"
-          : "new";
+          : existingMilitaryNumbers.has(
+                row.military_number
+              )
+            ? "update"
+            : "new";
 
       return {
         ...row,
         classification,
         errors,
-        rank_id: matchedRank?.id ?? null,
-        personnel_category_id: matchedCategory?.id ?? null,
-        primary_unit_id: matchedUnit?.id ?? null,
-        service_status_id: matchedStatus?.id ?? null,
-        attachment_unit_id: matchedAttachmentUnit?.id ?? null,
+        rank_id:
+          matchedRank?.id ?? null,
+        personnel_category_id:
+          matchedCategory?.id ?? null,
+        primary_unit_id:
+          matchedUnit?.id ?? null,
+        service_status_id:
+          matchedStatus?.id ?? null,
+        attachment_unit_id:
+          matchedAttachmentUnit?.id ?? null,
       };
     },
-    [rankLookup, categoryLookup, unitLookup, statusLookup]
+    [
+      rankLookup,
+      categoryLookup,
+      unitLookup,
+      statusLookup,
+    ]
   );
 
   // ==========================================================
   // Category changed
   // ==========================================================
 
-  function handleCategoryChange(value: SoldierCategory) {
+  function handleCategoryChange(
+    value: SoldierCategory
+  ) {
     setCategory(value);
     setRank("");
 
@@ -1309,10 +1650,13 @@ export function AddNewSoldierPage() {
   function handleStatusChange(value: string) {
     setStatus(value);
 
-    const newStatus = statuses.find((s) => s.id === value);
+    const newStatus = statuses.find(
+      (s) => s.id === value
+    );
 
     const enabled =
-      newStatus?.code?.toUpperCase() === "ATTACHED" ||
+      newStatus?.code?.toUpperCase() ===
+        "ATTACHED" ||
       newStatus?.name === "ملحق علي القوة";
 
     if (!enabled) {
@@ -1320,7 +1664,9 @@ export function AddNewSoldierPage() {
 
       setErrors((prev) => {
         const next = { ...prev };
+
         delete next.attachment;
+
         return next;
       });
     }
@@ -1354,15 +1700,23 @@ export function AddNewSoldierPage() {
     }
 
     if (!selectedCategory) {
-      e.category = "لم يتم العثور على فئة الفرد في قاعدة البيانات";
+      e.category =
+        "لم يتم العثور على فئة الفرد في قاعدة البيانات";
     }
 
-    if (category === "مجند" && !discharge) {
+    if (
+      category === "مجند" &&
+      !discharge
+    ) {
       e.discharge = "تاريخ التسريح مطلوب";
     }
 
-    if (isAttachmentEnabled && !attachment) {
-      e.attachment = "جهة الإلحاق مطلوبة";
+    if (
+      isAttachmentEnabled &&
+      !attachment
+    ) {
+      e.attachment =
+        "جهة الإلحاق مطلوبة";
     }
 
     return e;
@@ -1372,12 +1726,18 @@ export function AddNewSoldierPage() {
   // Individual Submit
   // ==========================================================
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(
+    e: React.FormEvent
+  ) {
     e.preventDefault();
 
-    const validationErrors = validate();
+    const validationErrors =
+      validate();
 
-    if (Object.keys(validationErrors).length > 0) {
+    if (
+      Object.keys(validationErrors)
+        .length > 0
+    ) {
       setErrors(validationErrors);
       return;
     }
@@ -1390,36 +1750,68 @@ export function AddNewSoldierPage() {
         military_number: milId.trim(),
         full_name: name.trim(),
         rank_id: rank,
-        personnel_category_id: selectedCategory!.id,
+        personnel_category_id:
+          selectedCategory!.id,
         service_status_id: status,
         primary_unit_id: unit,
-        attachment_unit_id: isAttachmentEnabled ? attachment : null,
-        discharge_date: category === "متطوع" ? null : discharge || null,
+        attachment_unit_id:
+          isAttachmentEnabled
+            ? attachment
+            : null,
+        discharge_date:
+          category === "متطوع"
+            ? null
+            : discharge || null,
         is_active: true,
       };
 
-      const selectedRank = ranks.find((r) => r.id === rank);
-      const selectedUnit = units.find((u) => u.id === unit);
-      const selectedAttachmentUnit = units.find((u) => u.id === attachment);
+      const selectedRank = ranks.find(
+        (r) => r.id === rank
+      );
 
-      navigate("/dashboard/add-soldier/review", {
-        state: {
-          ...payload,
-          personnel_category: category,
-          personnel_category_id: payload.personnel_category_id,
-          personnel_category_name: selectedCategory?.name ?? "",
-          rank_name: selectedRank?.name ?? "",
-          status_name: selectedStatus?.name ?? "",
-          primary_unit_name: selectedUnit?.name ?? "",
-          attachment_unit_name: isAttachmentEnabled
-            ? selectedAttachmentUnit?.name ?? ""
-            : "",
-        },
-      });
+      const selectedUnit = units.find(
+        (u) => u.id === unit
+      );
+
+      const selectedAttachmentUnit =
+        units.find(
+          (u) => u.id === attachment
+        );
+
+      navigate(
+        "/dashboard/add-soldier/review",
+        {
+          state: {
+            ...payload,
+            personnel_category:
+              category,
+            personnel_category_id:
+              payload.personnel_category_id,
+            personnel_category_name:
+              selectedCategory?.name ?? "",
+            rank_name:
+              selectedRank?.name ?? "",
+            status_name:
+              selectedStatus?.name ?? "",
+            primary_unit_name:
+              selectedUnit?.name ?? "",
+            attachment_unit_name:
+              isAttachmentEnabled
+                ? selectedAttachmentUnit?.name ??
+                  ""
+                : "",
+          },
+        }
+      );
     } catch (error) {
-      console.error("Submit error:", error);
+      console.error(
+        "Submit error:",
+        error
+      );
 
-      alert("حدث خطأ أثناء تجهيز البيانات");
+      alert(
+        "حدث خطأ أثناء تجهيز البيانات"
+      );
     } finally {
       setSaving(false);
     }
@@ -1431,63 +1823,82 @@ export function AddNewSoldierPage() {
 
   async function handleGroupSubmit() {
     if (!uploadedGroupFile) {
-      alert("من فضلك اختر ملف Excel أولاً");
+      alert(
+        "من فضلك اختر ملف Excel أولاً"
+      );
       return;
     }
 
     try {
       setGroupLoading(true);
 
-      const arrayBuffer = await uploadedGroupFile.raw.arrayBuffer();
+      const arrayBuffer =
+        await uploadedGroupFile.raw.arrayBuffer();
 
-      // ⚠️ عمدًا من غير cellDates: true — التواريخ بترجع كأرقام
-      // تسلسلية خام، وبنحوّلها يدويًا بـ XLSX.SSF.parse_date_code()
-      // (حساب تقويمي بحت، بدون Date object وبدون أي علاقة بالتوقيت)
-      // عشان نضمن إن التاريخ المقروء مطابق تمامًا للمكتوب في الخلية.
-      const workbook = XLSX.read(arrayBuffer, {
-        type: "array",
-      });
-
-      if (!workbook.SheetNames.length) {
-        throw new Error("ملف Excel لا يحتوي على أي ورقة");
-      }
-
-      // بعض ملفات الإكسيل (خصوصًا القديمة من Mac) بتستخدم نظام
-      // تاريخ 1904 بدل 1900. بنكتشفه من خصائص الملف عشان نحسب
-      // التاريخ الصحيح.
-      const isDate1904 = Boolean(
-        (workbook.Workbook as { WBProps?: { date1904?: boolean } })
-          ?.WBProps?.date1904
-      );
-
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
-        firstSheet,
+      const workbook = XLSX.read(
+        arrayBuffer,
         {
-          defval: "",
-          raw: true,
+          type: "array",
         }
       );
 
+      if (!workbook.SheetNames.length) {
+        throw new Error(
+          "ملف Excel لا يحتوي على أي ورقة"
+        );
+      }
+
+      const isDate1904 = Boolean(
+        (
+          workbook.Workbook as {
+            WBProps?: {
+              date1904?: boolean;
+            };
+          }
+        )?.WBProps?.date1904
+      );
+
+      const firstSheet =
+        workbook.Sheets[
+          workbook.SheetNames[0]
+        ];
+
+      const rows =
+        XLSX.utils.sheet_to_json<
+          Record<string, unknown>
+        >(firstSheet, {
+          defval: "",
+          raw: true,
+        });
+
       if (!rows.length) {
-        alert("ملف Excel فارغ ولا يحتوي على بيانات");
+        alert(
+          "ملف Excel فارغ ولا يحتوي على بيانات"
+        );
         return;
       }
 
-      // ------------------------------------------------------
-      // Check headers (خطأ حرج يوقف العملية لأن الملف غير مطابق للنموذج)
-      // ------------------------------------------------------
+      const originalHeaders =
+        Object.keys(rows[0]);
 
-      const originalHeaders = Object.keys(rows[0]);
+      const normalizedHeaders =
+        originalHeaders.map(
+          normalizeExcelHeader
+        );
 
-      const normalizedHeaders = originalHeaders.map(normalizeExcelHeader);
+      const missingColumns =
+        REQUIRED_EXCEL_COLUMNS.filter(
+          (required) => {
+            const normalizedRequired =
+              normalizeExcelHeader(
+                required
+              );
 
-      const missingColumns = REQUIRED_EXCEL_COLUMNS.filter((required) => {
-        const normalizedRequired = normalizeExcelHeader(required);
-
-        return !normalizedHeaders.includes(normalizedRequired);
-      });
+            return !normalizedHeaders.includes(
+              normalizedRequired
+            );
+          }
+        );
 
       if (missingColumns.length > 0) {
         alert(
@@ -1499,64 +1910,104 @@ export function AddNewSoldierPage() {
         return;
       }
 
-      // ------------------------------------------------------
-      // Create header mapping
-      // ------------------------------------------------------
+      const headerMap: Record<
+        string,
+        string
+      > = {};
 
-      const headerMap: Record<string, string> = {};
-
-      originalHeaders.forEach((header) => {
-        headerMap[normalizeExcelHeader(header)] = header;
-      });
+      originalHeaders.forEach(
+        (header) => {
+          headerMap[
+            normalizeExcelHeader(header)
+          ] = header;
+        }
+      );
 
       const getValue = (
         row: Record<string, unknown>,
         arabicHeader: string
       ) => {
-        const actualHeader = headerMap[normalizeExcelHeader(arabicHeader)];
+        const actualHeader =
+          headerMap[
+            normalizeExcelHeader(
+              arabicHeader
+            )
+          ];
 
-        return actualHeader ? row[actualHeader] : "";
+        return actualHeader
+          ? row[actualHeader]
+          : "";
       };
 
-      // ------------------------------------------------------
-      // Parse rows
-      // ------------------------------------------------------
+      const parsedRows: GroupPersonnelRow[] =
+        [];
 
-      const parsedRows: GroupPersonnelRow[] = [];
-
-      for (let index = 0; index < rows.length; index++) {
+      for (
+        let index = 0;
+        index < rows.length;
+        index++
+      ) {
         const row = rows[index];
 
-        const militaryNumber = normalizeExcelValue(
-          getValue(row, "الرقم العسكري")
-        );
+        const militaryNumber =
+          normalizeExcelValue(
+            getValue(
+              row,
+              "الرقم العسكري"
+            )
+          );
 
-        const rankName = normalizeExcelValue(getValue(row, "الدرجة"));
+        const rankName =
+          normalizeExcelValue(
+            getValue(row, "الدرجة")
+          );
 
-        const fullName = normalizeExcelValue(getValue(row, "الاسم"));
+        const fullName =
+          normalizeExcelValue(
+            getValue(row, "الاسم")
+          );
 
-        const categoryName = normalizeExcelValue(
-          getValue(row, "فئه الفرد")
-        );
+        const categoryName =
+          normalizeExcelValue(
+            getValue(
+              row,
+              "فئه الفرد"
+            )
+          );
 
-        const primaryUnitName = normalizeExcelValue(
-          getValue(row, "الوحده الاساسيه")
-        );
+        const primaryUnitName =
+          normalizeExcelValue(
+            getValue(
+              row,
+              "الوحده الاساسيه"
+            )
+          );
 
-        const serviceStatusName = normalizeExcelValue(
-          getValue(row, "الموقف الخدمي")
-        );
+        const serviceStatusName =
+          normalizeExcelValue(
+            getValue(
+              row,
+              "الموقف الخدمي"
+            )
+          );
 
-        const dischargeDate = excelDateToISO(
-          getValue(row, "تاريخ التسريح"),
-          isDate1904
-        );
+        const dischargeDate =
+          excelDateToISO(
+            getValue(
+              row,
+              "تاريخ التسريح"
+            ),
+            isDate1904
+          );
 
-        const attachmentUnitName = normalizeExcelValue(
-          getValue(row, "جهه الالحاق")
-        );
+        const attachmentUnitName =
+          normalizeExcelValue(
+            getValue(
+              row,
+              "جهه الالحاق"
+            )
+          );
 
-        // تجاهل الصف الفارغ بالكامل
         const isEmptyRow =
           !militaryNumber &&
           !rankName &&
@@ -1572,29 +2023,33 @@ export function AddNewSoldierPage() {
         }
 
         parsedRows.push({
-          military_number: militaryNumber,
+          military_number:
+            militaryNumber,
           rank_name: rankName,
           full_name: fullName,
-          personnel_category_name: categoryName,
-          primary_unit_name: primaryUnitName,
-          service_status_name: serviceStatusName,
-          discharge_date: dischargeDate,
-          attachment_unit_name: attachmentUnitName,
+          personnel_category_name:
+            categoryName,
+          primary_unit_name:
+            primaryUnitName,
+          service_status_name:
+            serviceStatusName,
+          discharge_date:
+            dischargeDate,
+          attachment_unit_name:
+            attachmentUnitName,
           row_number: index + 2,
         });
       }
 
       if (!parsedRows.length) {
-        alert("لم يتم العثور على أفراد صالحين داخل الملف");
+        alert(
+          "لم يتم العثور على أفراد صالحين داخل الملف"
+        );
         return;
       }
 
-      // ------------------------------------------------------
-      // تحديد الأرقام العسكرية المكررة داخل نفس الملف
-      // (لا توقف العملية، فقط تُصنَّف كأخطاء لهذه الصفوف)
-      // ------------------------------------------------------
-
-      const numberCounts = new Map<string, number>();
+      const numberCounts =
+        new Map<string, number>();
 
       parsedRows.forEach((row) => {
         if (!row.military_number) {
@@ -1603,78 +2058,133 @@ export function AddNewSoldierPage() {
 
         numberCounts.set(
           row.military_number,
-          (numberCounts.get(row.military_number) ?? 0) + 1
+          (numberCounts.get(
+            row.military_number
+          ) ?? 0) + 1
         );
       });
 
-      const duplicateMilitaryNumbers = new Set(
-        Array.from(numberCounts.entries())
-          .filter(([, count]) => count > 1)
-          .map(([number]) => number)
-      );
+      const duplicateMilitaryNumbers =
+        new Set(
+          Array.from(
+            numberCounts.entries()
+          )
+            .filter(
+              ([, count]) => count > 1
+            )
+            .map(([number]) => number)
+        );
 
-      // ------------------------------------------------------
-      // البحث عن الأرقام العسكرية الموجودة بالفعل في قاعدة
-      // البيانات لتحديد من سيُضاف جديدًا ومن سيتم تحديث بياناته
-      // ------------------------------------------------------
+      const uniqueMilitaryNumbers =
+        Array.from(
+          new Set(
+            parsedRows
+              .map(
+                (r) =>
+                  r.military_number
+              )
+              .filter(Boolean)
+          )
+        );
 
-      const uniqueMilitaryNumbers = Array.from(
-        new Set(parsedRows.map((r) => r.military_number).filter(Boolean))
-      );
+      let existingMilitaryNumbers =
+        new Set<string>();
 
-      let existingMilitaryNumbers = new Set<string>();
-
-      if (uniqueMilitaryNumbers.length > 0) {
-        const { data: existingData, error: existingError } = await supabase
-          .from(PERSONNEL_TABLE_NAME)
-          .select("military_number")
-          .in("military_number", uniqueMilitaryNumbers);
+      if (
+        uniqueMilitaryNumbers.length >
+        0
+      ) {
+        const {
+          data: existingData,
+          error: existingError,
+        } = await supabase
+          .from(
+            PERSONNEL_TABLE_NAME
+          )
+          .select(
+            "military_number"
+          )
+          .in(
+            "military_number",
+            uniqueMilitaryNumbers
+          );
 
         if (existingError) {
           throw existingError;
         }
 
-        existingMilitaryNumbers = new Set(
-          (existingData ?? []).map((item: { military_number: unknown }) =>
-            String(item.military_number)
-          )
-        );
+        existingMilitaryNumbers =
+          new Set(
+            (
+              existingData ?? []
+            ).map(
+              (item: {
+                military_number: unknown;
+              }) =>
+                String(
+                  item.military_number
+                )
+            )
+          );
       }
 
-      // ------------------------------------------------------
-      // تصنيف كل صف: جديد / تحديث / خطأ
-      // ------------------------------------------------------
-
-      const classifiedRows: ClassifiedPersonnelRow[] = parsedRows.map((row) =>
-        classifyRow(row, existingMilitaryNumbers, duplicateMilitaryNumbers)
-      );
+      const classifiedRows =
+        parsedRows.map((row) =>
+          classifyRow(
+            row,
+            existingMilitaryNumbers,
+            duplicateMilitaryNumbers
+          )
+        );
 
       const stats = {
-        total: classifiedRows.length,
-        newCount: classifiedRows.filter((r) => r.classification === "new")
-          .length,
-        updated: classifiedRows.filter((r) => r.classification === "update")
-          .length,
-        issues: classifiedRows.filter((r) => r.classification === "error")
-          .length,
+        total:
+          classifiedRows.length,
+
+        newCount:
+          classifiedRows.filter(
+            (r) =>
+              r.classification ===
+              "new"
+          ).length,
+
+        updated:
+          classifiedRows.filter(
+            (r) =>
+              r.classification ===
+              "update"
+          ).length,
+
+        issues:
+          classifiedRows.filter(
+            (r) =>
+              r.classification ===
+              "error"
+          ).length,
       };
 
-      // ------------------------------------------------------
-      // Navigate to group review
-      // ------------------------------------------------------
-
-      navigate("/dashboard/add-soldier/group-review", {
-        state: {
-          rows: classifiedRows,
-          stats,
-          file_name: uploadedGroupFile.name,
-          file_size: uploadedGroupFile.size,
-          // رابط مؤقت للملف نفسه عشان يفضل متاح للتحميل في صفحة النجاح بعد الاعتماد
-          file_url: URL.createObjectURL(uploadedGroupFile.raw),
-        },
-      });
+      navigate(
+        "/dashboard/add-soldier/group-review",
+        {
+          state: {
+            rows: classifiedRows,
+            stats,
+            file_name:
+              uploadedGroupFile.name,
+            file_size:
+              uploadedGroupFile.size,
+            file_url:
+              URL.createObjectURL(
+                uploadedGroupFile.raw
+              ),
+          },
+        }
+      );
     } catch (error) {
-      console.error("Excel parsing error:", error);
+      console.error(
+        "Excel parsing error:",
+        error
+      );
 
       alert(
         "حدث خطأ أثناء قراءة ملف Excel. تأكد أن الملف بصيغة xls أو xlsx وأنه مطابق للنموذج."
@@ -1690,8 +2200,17 @@ export function AddNewSoldierPage() {
 
   if (loading) {
     return (
-      <div dir="rtl" className="w-full flex items-center justify-center py-20">
-        <p style={{ ...F, fontSize: 18, color: "#415844" }}>
+      <div
+        dir="rtl"
+        className="w-full flex items-center justify-center py-20"
+      >
+        <p
+          style={{
+            ...F,
+            fontSize: 18,
+            color: "#415844",
+          }}
+        >
           جاري تحميل البيانات...
         </p>
       </div>
@@ -1703,7 +2222,10 @@ export function AddNewSoldierPage() {
   // ==========================================================
 
   return (
-    <div className="flex flex-col gap-6 w-full" dir="rtl">
+    <div
+      className="flex flex-col gap-6 w-full"
+      dir="rtl"
+    >
       {/* Title */}
 
       <h1
@@ -1727,16 +2249,30 @@ export function AddNewSoldierPage() {
       {/* Registration Method */}
 
       <div className="flex flex-col gap-4 items-start">
-        <p style={{ ...F, fontWeight: 700, fontSize: 18, color: "#2d3648" }}>
+        <p
+          style={{
+            ...F,
+            fontWeight: 700,
+            fontSize: 18,
+            color: "#2d3648",
+          }}
+        >
           طريقة القيد
         </p>
 
         <div className="flex flex-wrap gap-4">
-          {(["فرد واحد", "مجموعة افراد"] as RegistrationMethod[]).map((m) => (
+          {(
+            [
+              "فرد واحد",
+              "مجموعة افراد",
+            ] as RegistrationMethod[]
+          ).map((m) => (
             <button
               key={m}
               type="button"
-              onClick={() => setMethod(m)}
+              onClick={() =>
+                setMethod(m)
+              }
               className={[
                 "flex items-center gap-3 px-4 py-4 rounded-[12px]",
                 "border transition-colors w-[200px]",
@@ -1753,7 +2289,11 @@ export function AddNewSoldierPage() {
 
               <span
                 className="flex-1 text-right"
-                style={{ ...F, fontSize: 18, color: "#2d3648" }}
+                style={{
+                  ...F,
+                  fontSize: 18,
+                  color: "#2d3648",
+                }}
               >
                 {m}
               </span>
@@ -1767,31 +2307,52 @@ export function AddNewSoldierPage() {
       ==================================================== */}
 
       {method === "فرد واحد" && (
-        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col gap-6"
+        >
           <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full">
             <div className="flex flex-col gap-6 px-6 py-5">
               <div className="flex items-center justify-start gap-3 pb-3 border-b border-[#cbd2e0]">
-                <span style={{ ...F, fontSize: 18, color: "#4a5468" }}>
+                <span
+                  style={{
+                    ...F,
+                    fontSize: 18,
+                    color: "#4a5468",
+                  }}
+                >
                   البيانات الأساسية
                 </span>
               </div>
 
               <div className="flex flex-col gap-3 items-start">
-                <SubHeader>فئة الفرد</SubHeader>
+                <SubHeader>
+                  فئة الفرد
+                </SubHeader>
 
                 <CategoryToggle
                   value={category}
-                  onChange={handleCategoryChange}
+                  onChange={
+                    handleCategoryChange
+                  }
                 />
 
                 {errors.category && (
-                  <p style={{ ...F, fontSize: 13, color: "#ef4444" }}>
+                  <p
+                    style={{
+                      ...F,
+                      fontSize: 13,
+                      color: "#ef4444",
+                    }}
+                  >
                     {errors.category}
                   </p>
                 )}
               </div>
 
-              <SubHeader>البيانات التعريفية</SubHeader>
+              <SubHeader>
+                البيانات التعريفية
+              </SubHeader>
 
               <div className="flex flex-col sm:flex-row gap-4">
                 <FieldGroup label="الرقم العسكري">
@@ -1801,7 +2362,12 @@ export function AddNewSoldierPage() {
                     onChange={(v) => {
                       setMilId(v);
 
-                      setErrors((prev) => ({ ...prev, milId: "" }));
+                      setErrors(
+                        (prev) => ({
+                          ...prev,
+                          milId: "",
+                        })
+                      );
                     }}
                     error={errors.milId}
                   />
@@ -1810,23 +2376,38 @@ export function AddNewSoldierPage() {
                 <FieldGroup label="الدرجة">
                   <FormDropdown
                     placeholder={
-                      category === "مجند" ? "اختر الدرجه" : "اختيار الدرجة"
+                      category === "مجند"
+                        ? "اختر الدرجه"
+                        : "اختيار الدرجة"
                     }
                     options={rankOptions}
                     value={rank}
                     onChange={(v) => {
                       setRank(v);
 
-                      setErrors((prev) => ({ ...prev, rank: "" }));
+                      setErrors(
+                        (prev) => ({
+                          ...prev,
+                          rank: "",
+                        })
+                      );
                     }}
                     error={errors.rank}
                   />
 
-                  {category === "مجند" && rankOptions.length === 0 && (
-                    <p style={{ ...F, fontSize: 13, color: "#ef4444" }}>
-                      لا توجد درجة جندي نشطة في جدول ranks
-                    </p>
-                  )}
+                  {category === "مجند" &&
+                    rankOptions.length ===
+                      0 && (
+                      <p
+                        style={{
+                          ...F,
+                          fontSize: 13,
+                          color: "#ef4444",
+                        }}
+                      >
+                        لا توجد درجة جندي نشطة في جدول ranks
+                      </p>
+                    )}
                 </FieldGroup>
 
                 <FieldGroup label="الاسم">
@@ -1836,7 +2417,12 @@ export function AddNewSoldierPage() {
                     onChange={(v) => {
                       setName(v);
 
-                      setErrors((prev) => ({ ...prev, name: "" }));
+                      setErrors(
+                        (prev) => ({
+                          ...prev,
+                          name: "",
+                        })
+                      );
                     }}
                     error={errors.name}
                   />
@@ -1845,15 +2431,25 @@ export function AddNewSoldierPage() {
 
               {category === "مجند" && (
                 <div className="flex flex-col sm:flex-row gap-4">
-                  <FieldGroup label="تاريخ التسريح" labelColor="#415844">
+                  <FieldGroup
+                    label="تاريخ التسريح"
+                    labelColor="#415844"
+                  >
                     <DateInput
                       value={discharge}
                       onChange={(v) => {
                         setDischarge(v);
 
-                        setErrors((prev) => ({ ...prev, discharge: "" }));
+                        setErrors(
+                          (prev) => ({
+                            ...prev,
+                            discharge: "",
+                          })
+                        );
                       }}
-                      error={errors.discharge}
+                      error={
+                        errors.discharge
+                      }
                     />
                   </FieldGroup>
 
@@ -1862,18 +2458,29 @@ export function AddNewSoldierPage() {
                 </div>
               )}
 
-              <SubHeader>بيانات الوحدة والموقف</SubHeader>
+              <SubHeader>
+                بيانات الوحدة والموقف
+              </SubHeader>
 
               <div className="flex flex-col sm:flex-row gap-4">
+                {/* الوحدة الأساسية - أصبحت قابلة للبحث */}
+
                 <FieldGroup label="الوحدة الأساسية">
-                  <FormDropdown
-                    placeholder="اختار الوحدة"
-                    options={mainUnitOptions}
+                  <SearchableDropdown
+                    placeholder="اكتب جزء من الوحدة..."
+                    options={
+                      mainUnitOptions
+                    }
                     value={unit}
                     onChange={(v) => {
                       setUnit(v);
 
-                      setErrors((prev) => ({ ...prev, unit: "" }));
+                      setErrors(
+                        (prev) => ({
+                          ...prev,
+                          unit: "",
+                        })
+                      );
                     }}
                     error={errors.unit}
                   />
@@ -1882,43 +2489,81 @@ export function AddNewSoldierPage() {
                 <FieldGroup label="موقف الفرد">
                   <FormDropdown
                     placeholder="اختر الموقف"
-                    options={statusOptions}
+                    options={
+                      statusOptions
+                    }
                     value={status}
-                    onChange={handleStatusChange}
+                    onChange={
+                      handleStatusChange
+                    }
                     error={errors.status}
                   />
                 </FieldGroup>
 
+                {/* جهة الإلحاق - أصبحت قابلة للبحث */}
+
                 <FieldGroup label="جهة الإلحاق">
-                  <FormDropdown
+                  <SearchableDropdown
                     placeholder={
-                      isAttachmentEnabled ? "اختر الوحدة" : "غير متاح"
+                      isAttachmentEnabled
+                        ? "اكتب جزء من جهة الإلحاق..."
+                        : "غير متاح"
                     }
-                    options={attachmentUnitOptions}
-                    value={isAttachmentEnabled ? attachment : ""}
-                    disabled={!isAttachmentEnabled}
+                    options={
+                      attachmentUnitOptions
+                    }
+                    value={
+                      isAttachmentEnabled
+                        ? attachment
+                        : ""
+                    }
+                    disabled={
+                      !isAttachmentEnabled
+                    }
                     onChange={(v) => {
                       setAttachment(v);
 
-                      setErrors((prev) => ({ ...prev, attachment: "" }));
+                      setErrors(
+                        (prev) => ({
+                          ...prev,
+                          attachment: "",
+                        })
+                      );
                     }}
-                    error={isAttachmentEnabled ? errors.attachment : undefined}
+                    error={
+                      isAttachmentEnabled
+                        ? errors.attachment
+                        : undefined
+                    }
                   />
                 </FieldGroup>
               </div>
 
-              {!isAttachmentEnabled && status && (
-                <div className="bg-[#f5f8f5] border border-[#dce8dd] rounded-[10px] px-4 py-3">
-                  <p style={{ ...F, fontSize: 13, color: "#415844" }}>
-                    جهة الإلحاق غير متاحة لهذا الموقف، وسيتم حفظ
-                    وحده الالحاق بقيمة فارغه.
-                  </p>
-                </div>
-              )}
+              {!isAttachmentEnabled &&
+                status && (
+                  <div className="bg-[#f5f8f5] border border-[#dce8dd] rounded-[10px] px-4 py-3">
+                    <p
+                      style={{
+                        ...F,
+                        fontSize: 13,
+                        color: "#415844",
+                      }}
+                    >
+                      جهة الإلحاق غير متاحة لهذا الموقف، وسيتم حفظ
+                      وحده الالحاق بقيمة فارغه.
+                    </p>
+                  </div>
+                )}
 
               {category === "متطوع" && (
                 <div className="bg-[#f5f8f5] border border-[#dce8dd] rounded-[10px] px-4 py-3">
-                  <p style={{ ...F, fontSize: 13, color: "#415844" }}>
+                  <p
+                    style={{
+                      ...F,
+                      fontSize: 13,
+                      color: "#415844",
+                    }}
+                  >
                     الافراد من فئة متطوع ليس لهم تاريخ تسريح.
                   </p>
                 </div>
@@ -1932,14 +2577,25 @@ export function AddNewSoldierPage() {
                     "h-[44px] px-6 rounded-[8px]",
                     "flex items-center justify-center",
                     "transition-opacity",
-                    saving ? "opacity-50 cursor-not-allowed" : "hover:opacity-90",
+                    saving
+                      ? "opacity-50 cursor-not-allowed"
+                      : "hover:opacity-90",
                   ].join(" ")}
                   style={{
-                    background: "linear-gradient(to bottom, #00b867, #00522e)",
+                    background:
+                      "linear-gradient(to bottom, #00b867, #00522e)",
                   }}
                 >
-                  <span style={{ ...F, fontSize: 16, color: "white" }}>
-                    {saving ? "جاري التجهيز..." : "المراجعة والضم"}
+                  <span
+                    style={{
+                      ...F,
+                      fontSize: 16,
+                      color: "white",
+                    }}
+                  >
+                    {saving
+                      ? "جاري التجهيز..."
+                      : "المراجعة والضم"}
                   </span>
                 </button>
               </div>
@@ -1954,10 +2610,16 @@ export function AddNewSoldierPage() {
 
       {method === "مجموعة افراد" && (
         <GroupUploadSection
-          uploadedFile={uploadedGroupFile}
-          setUploadedFile={setUploadedGroupFile}
+          uploadedFile={
+            uploadedGroupFile
+          }
+          setUploadedFile={
+            setUploadedGroupFile
+          }
           loading={groupLoading}
-          onSubmit={handleGroupSubmit}
+          onSubmit={
+            handleGroupSubmit
+          }
         />
       )}
     </div>

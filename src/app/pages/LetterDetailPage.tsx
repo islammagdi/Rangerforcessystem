@@ -14,6 +14,9 @@ import { supabase } from "../../lib/supabase";
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
+const toArabicDigits = (value: string | number): string => {
+  return String(value).replace(/\d/g, (digit) => "٠١٢٣٤٥٦٧٨٩"[Number(digit)]);
+};
 
 /* =========================================================
    TYPES
@@ -22,6 +25,7 @@ const F: React.CSSProperties = {
 type LetterStatus = "موثق" | "غير موثق";
 
 type Soldier = {
+  militaryId: string;
   rank: string;
   name: string;
   unit: string;
@@ -275,7 +279,8 @@ function UploadArea({
       }
 
       /* =====================================================
-         2. VERIFY LETTER
+         2. GET LETTER
+         مهم: نجيب letter_number لاستخدامه في Audit Log
       ===================================================== */
 
       const {
@@ -283,7 +288,7 @@ function UploadArea({
         error: existingLetterError,
       } = await supabase
         .from("letters")
-        .select("id,status")
+        .select("id,status,letter_number")
         .eq("id", letterId)
         .maybeSingle();
 
@@ -344,6 +349,7 @@ function UploadArea({
           });
 
       if (attachmentError) {
+        // حذف الملف من Storage إذا فشل حفظ بيانات المرفق
         await supabase.storage
           .from("letter-attachments")
           .remove([filePath]);
@@ -355,6 +361,7 @@ function UploadArea({
 
       /* =====================================================
          6. UPDATE LETTER STATUS
+         تحويل حالة الخطاب إلى موثق
       ===================================================== */
 
       const { error: updateError } =
@@ -373,7 +380,52 @@ function UploadArea({
       }
 
       /* =====================================================
-         7. CREATE SIGNED URL
+         7. AUDIT LOG
+         تسجيل عملية توثيق الخطاب
+      ===================================================== */
+
+      const auditUserName =
+        user.user_metadata?.full_name ||
+        user.user_metadata?.name ||
+        user.email ||
+        "مستخدم غير معروف";
+
+      const letterNumber =
+        existingLetter.letter_number != null
+          ? String(existingLetter.letter_number)
+          : letterId;
+
+      const auditDetails =
+        `تم رفع النسخة الموثقة للخطاب رقم ${letterNumber} ` +
+        `وتحويل حالة الخطاب إلى موثق. ` +
+        `اسم الملف: ${file.name}`;
+
+      const { error: auditError } =
+        await supabase
+          .from("audit_logs")
+          .insert({
+            user_id: user.id,
+            user_name: auditUserName,
+            action_type: "UPDATE",
+            action: "توثيق خطاب",
+            entity: "letters",
+            details: auditDetails,
+          });
+
+      /*
+       * مهم:
+       * فشل الـ Audit لا يلغي عملية التوثيق،
+       * لأن الخطاب بالفعل تم رفعه وتحويل حالته إلى موثق.
+       */
+      if (auditError) {
+        console.error(
+          "AUDIT LOG ERROR:",
+          auditError
+        );
+      }
+
+      /* =====================================================
+         8. CREATE SIGNED URL
       ===================================================== */
 
       const {
@@ -399,7 +451,7 @@ function UploadArea({
       }
 
       /* =====================================================
-         8. SUCCESS
+         9. SUCCESS
       ===================================================== */
 
       onSave(
@@ -420,6 +472,7 @@ function UploadArea({
           ? err.message
           : "حدث خطأ غير متوقع أثناء حفظ الخطاب."
       );
+
     } finally {
       setSaving(false);
     }
@@ -427,6 +480,10 @@ function UploadArea({
 
   return (
     <div className="flex flex-col gap-4 w-full">
+
+      {/* =====================================================
+          MESSAGE
+      ===================================================== */}
 
       <div
         className="text-center"
@@ -456,6 +513,10 @@ function UploadArea({
         </p>
       </div>
 
+      {/* =====================================================
+          UPLOAD AREA
+      ===================================================== */}
+
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -480,6 +541,7 @@ function UploadArea({
             : "#fff",
         }}
       >
+
         <input
           ref={inputRef}
           type="file"
@@ -584,6 +646,10 @@ function UploadArea({
         )}
       </div>
 
+      {/* =====================================================
+          ERROR
+      ===================================================== */}
+
       {error && (
         <div
           dir="rtl"
@@ -599,6 +665,10 @@ function UploadArea({
           {error}
         </div>
       )}
+
+      {/* =====================================================
+          SAVE BUTTON
+      ===================================================== */}
 
       <button
         type="button"
@@ -638,6 +708,7 @@ function UploadArea({
             : "حفظ التعديلات"}
         </span>
       </button>
+
     </div>
   );
 }
@@ -926,33 +997,36 @@ export function LetterDetailPage() {
            9. BUILD SOLDIERS
         ================================================= */
 
-        const soldiers: Soldier[] =
-          personnelIds
-            .map((personnelId) => {
-              const person =
-                personnelMap.get(personnelId);
+      const soldiers: Soldier[] =
+  personnelIds
+    .map((personnelId) => {
+      const person =
+        personnelMap.get(personnelId);
 
-              if (!person) return null;
+      if (!person) return null;
 
-              return {
-                rank:
-                  rankMap.get(person.rank_id) || "-",
+      return {
+        militaryId:
+          person.military_number || "-",
 
-                name:
-                  person.full_name || "-",
+        rank:
+          rankMap.get(person.rank_id) || "-",
 
-                unit:
-                  unitMap.get(
-                    person.primary_unit_id
-                  ) || "-",
+        name:
+          person.full_name || "-",
 
-                attachmentUnit:
-                  unitMap.get(
-                    person.attachment_unit_id
-                  ) || "-",
-              };
-            })
-            .filter(Boolean) as Soldier[];
+        unit:
+          unitMap.get(
+            person.primary_unit_id
+          ) || "-",
+
+        attachmentUnit:
+          unitMap.get(
+            person.attachment_unit_id
+          ) || "-",
+      };
+    })
+    .filter(Boolean) as Soldier[];
 
         /* =================================================
            10. LATEST ATTACHMENT
@@ -1230,12 +1304,19 @@ export function LetterDetailPage() {
   ======================================================= */
 
   function handleTopPrint() {
+    
     const printUrl = isVerified
       ? signedFileUrl
       : previewImageUrl;
+        const pdfTitle = `خطاب ${letter.type} ${toArabicDigits(
+    letter.letterNumber
+  )} ${letter.destination}`.trim();
 
     if (!printUrl) {
-      window.print();
+       const originalTitle = document.title;
+  document.title = pdfTitle;
+  window.print();
+  document.title = originalTitle;
       return;
     }
 
@@ -1270,7 +1351,7 @@ export function LetterDetailPage() {
             content="width=device-width, initial-scale=1.0"
           />
 
-          <title>طباعة الخطاب</title>
+          <title>${pdfTitle}</title>
 
           <style>
             @page {
@@ -1507,7 +1588,9 @@ export function LetterDetailPage() {
               <tr>
 
                 {[
+                  "م",
                   "درجة",
+                    "رقم عسكري",
                   "اسم",
                   "الوحدة",
                   "وحدة الإلحاق",
@@ -1539,25 +1622,49 @@ export function LetterDetailPage() {
 
             <tbody>
 
-              {letter.soldiers.length > 0 ? (
-                letter.soldiers.map(
-                  (soldier, idx) => (
-                    <tr
-                      key={idx}
-                      className="hover:bg-[#fafbff]"
-                    >
+             {letter.soldiers.length > 0 ? (
+  letter.soldiers.map(
+    (soldier, idx) => (
+      <tr
+        key={idx}
+        className="hover:bg-[#fafbff]"
+      >
 
-                      <td className={tdClass}>
-                        <span
-                          style={{
-                            ...F,
-                            fontSize: 14,
-                            color: "#2d3648",
-                          }}
-                        >
-                          {soldier.rank}
-                        </span>
-                      </td>
+        <td className={tdClass}>
+          <span
+            style={{
+              ...F,
+              fontSize: 14,
+              color: "#2d3648",
+            }}
+          >
+            {toArabicDigits(idx + 1)}
+          </span>
+        </td>
+
+        <td className={tdClass}>
+          <span
+            style={{
+              ...F,
+              fontSize: 14,
+              color: "#2d3648",
+            }}
+          >
+            {toArabicDigits(soldier.militaryId)}
+          </span>
+        </td>
+
+        <td className={tdClass}>
+          <span
+            style={{
+              ...F,
+              fontSize: 14,
+              color: "#2d3648",
+            }}
+          >
+            {soldier.rank}
+          </span>
+        </td>
 
                       <td className={tdClass}>
                         <span
@@ -1601,7 +1708,7 @@ export function LetterDetailPage() {
               ) : (
                 <tr>
                   <td
-                    colSpan={4}
+                    colSpan={6}
                     className="px-4 py-8 text-center"
                   >
                     <span

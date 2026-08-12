@@ -60,7 +60,6 @@ function StatusBadge({
           background: isVerified ? "#16a34a" : "#E37032",
         }}
       />
-
       {status}
     </span>
   );
@@ -503,7 +502,15 @@ function GeneralArchiveTab({
             personnel_count,
             status,
             letter_type_id,
+            issuing_unit_id,
+
             letter_types (
+              id,
+              name,
+              code
+            ),
+
+            issuing_unit:units!issuing_unit_id (
               id,
               name,
               code
@@ -526,17 +533,25 @@ function GeneralArchiveTab({
                 ? row.letter_types[0]
                 : row.letter_types;
 
+            const issuingUnit =
+              Array.isArray(row.issuing_unit)
+                ? row.issuing_unit[0]
+                : row.issuing_unit;
+
             return {
               id: row.id,
+
               letterNumber:
                 row.letter_number != null
                   ? String(row.letter_number)
                   : "-",
+
               date: row.letter_date
                 ? new Date(
                     `${row.letter_date}T00:00:00`
                   ).toLocaleDateString("en-GB")
                 : "-",
+
               type:
                 letterType?.name ??
                 (letterType?.code === "DEATTACH"
@@ -544,9 +559,13 @@ function GeneralArchiveTab({
                   : letterType?.code === "ATTACH"
                   ? "إلحاق"
                   : "-"),
-              destination: row.reason || "-",
+
+              destination:
+                issuingUnit?.name ?? "-",
+
               soldiersCount:
                 Number(row.personnel_count) || 0,
+
               status:
                 row.status === "DOCUMENTED"
                   ? "موثق"
@@ -799,7 +818,7 @@ function SoldierCard({
             fontWeight: 700,
           }}
         >
-         {soldier.name}
+          {soldier.name}
         </span>
 
         <span
@@ -959,18 +978,6 @@ function IndividualTab({
     setLetters([]);
 
     try {
-      /*
-       * =====================================================
-       * 1) البحث عن الفرد + الرتبة + الوحدة الأساسية
-       *    + وحدة الإلحاق في نفس الاستعلام
-       * =====================================================
-       *
-       * مهم:
-       * primary_unit_id -> units.id
-       * attachment_unit_id -> units.id
-       * rank_id -> ranks.id
-       */
-
       const {
         data: personnel,
         error: personnelError,
@@ -1012,15 +1019,11 @@ function IndividualTab({
         setNotFound(true);
         return;
       }
-console.log("FOUND PERSONNEL:", {
-  id: personnel.id,
-  military_number: personnel.military_number,
-});
-      /*
-       * =====================================================
-       * 2) استخراج بيانات الرتبة والوحدات
-       * =====================================================
-       */
+
+      console.log("FOUND PERSONNEL:", {
+        id: personnel.id,
+        military_number: personnel.military_number,
+      });
 
       const rank = Array.isArray(personnel.rank)
         ? personnel.rank[0]
@@ -1063,109 +1066,140 @@ console.log("FOUND PERSONNEL:", {
 
       setFoundSoldier(soldier);
 
+      const {
+        data: links,
+        error: linksError,
+      } = await supabase
+        .from("letter_personnel")
+        .select("letter_id")
+        .eq("personnel_id", personnel.id);
+
+      console.log(
+        "PERSONNEL ID USED:",
+        personnel.id
+      );
+
+      console.log("LINKS RESULT:", links);
+      console.log("LINKS ERROR:", linksError);
+
+      if (linksError) {
+        throw linksError;
+      }
+
+      const letterIds = (links ?? [])
+        .map((row) => row.letter_id)
+        .filter(Boolean);
+
+      if (letterIds.length === 0) {
+        setLetters([]);
+        return;
+      }
+
       /*
-       * =====================================================
-       * 3) جلب كل الخطابات المرتبطة بالفرد
+       * ============================================================
+       * هنا تم التعديل:
+       * نجيب issuing_unit من جدول الوحدات عن طريق
+       * letters.issuing_unit_id
        *
-       * الربط:
-       *
-       * personnel.id
-       *       ↓
-       * letter_personnel.personnel_id
-       *       ↓
-       * letter_personnel.letter_id
-       *       ↓
-       * letters.id
-       * =====================================================
+       * وبالتالي destination لن تكون reason.
+       * ============================================================
        */
+      const {
+        data: lettersData,
+        error: lettersError,
+      } = await supabase
+        .from("letters")
+        .select(`
+          id,
+          letter_number,
+          letter_date,
+          reason,
+          personnel_count,
+          status,
+          letter_type_id,
+          issuing_unit_id,
 
-      const { data: links, error: linksError } =
-  await supabase
-    .from("letter_personnel")
-    .select("letter_id")
-    .eq("personnel_id", personnel.id);
-console.log("PERSONNEL ID USED:", personnel.id);
-console.log("LINKS RESULT:", links);
-console.log("LINKS ERROR:", linksError);
-if (linksError) {
-  throw linksError;
-}
+          letter_types (
+            id,
+            name,
+            code
+          ),
 
-const letterIds = (links ?? [])
-  .map((row) => row.letter_id)
-  .filter(Boolean);
+          issuing_unit:units!issuing_unit_id (
+            id,
+            name,
+            code
+          )
+        `)
+        .in("id", letterIds)
+        .order("letter_date", {
+          ascending: false,
+        });
 
-if (letterIds.length === 0) {
-  setLetters([]);
-  return;
-}
+      if (lettersError) {
+        throw lettersError;
+      }
 
-const { data: lettersData, error: lettersError } =
-  await supabase
-    .from("letters")
-    .select(`
-      id,
-      letter_number,
-      letter_date,
-      reason,
-      personnel_count,
-      status,
-      letter_type_id,
-      letter_types (
-        id,
-        name,
-        code
-      )
-    `)
-    .in("id", letterIds)
-    .order("letter_date", {
-      ascending: false,
-    });
+      const mapped: LetterArchiveRecord[] =
+        (lettersData ?? []).map((letter: any) => {
+          const letterType =
+            Array.isArray(letter.letter_types)
+              ? letter.letter_types[0]
+              : letter.letter_types;
 
-if (lettersError) {
-  throw lettersError;
-}
+          const issuingUnit =
+            Array.isArray(letter.issuing_unit)
+              ? letter.issuing_unit[0]
+              : letter.issuing_unit;
 
-const mapped: LetterArchiveRecord[] =
-  (lettersData ?? []).map((letter: any) => {
-    const letterType = Array.isArray(letter.letter_types)
-      ? letter.letter_types[0]
-      : letter.letter_types;
+          return {
+            id: letter.id,
 
-    return {
-      id: letter.id,
-      letterNumber:
-        letter.letter_number != null
-          ? String(letter.letter_number)
-          : "-",
+            letterNumber:
+              letter.letter_number != null
+                ? String(letter.letter_number)
+                : "-",
 
-      date: letter.letter_date
-        ? new Date(
-            `${letter.letter_date}T00:00:00`
-          ).toLocaleDateString("en-GB")
-        : "-",
+            date: letter.letter_date
+              ? new Date(
+                  `${letter.letter_date}T00:00:00`
+                ).toLocaleDateString("en-GB")
+              : "-",
 
-      type:
-        letterType?.name ??
-        (letterType?.code === "DEATTACH"
-          ? "إنهاء إلحاق"
-          : letterType?.code === "ATTACH"
-            ? "إلحاق"
-            : "-"),
+            type:
+              letterType?.name ??
+              (letterType?.code === "DEATTACH"
+                ? "إنهاء إلحاق"
+                : letterType?.code === "ATTACH"
+                ? "إلحاق"
+                : "-"),
 
-      destination: letter.reason || "-",
+            /*
+             * ======================================================
+             * جهة الخطاب الصحيحة
+             *
+             * قبل التعديل كان:
+             * destination: letter.reason || "-"
+             *
+             * وده كان يعرض سبب الخطاب.
+             *
+             * الآن:
+             * destination = اسم الوحدة المصدرة للخطاب
+             * ======================================================
+             */
+            destination:
+              issuingUnit?.name ??
+              "-",
 
-      soldiersCount:
-        Number(letter.personnel_count) || 0,
+            soldiersCount:
+              Number(letter.personnel_count) || 0,
 
-      status:
-        letter.status === "DOCUMENTED"
-          ? "موثق"
-          : "غير موثق",
-    };
-  });
-
-setLetters(mapped);
+            status:
+              letter.status === "DOCUMENTED"
+                ? "موثق"
+                : "غير موثق",
+          };
+        });
 
       setLetters(mapped);
     } catch (err: any) {

@@ -36,6 +36,8 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/manage-units": "ادارة الوحدات",
 
   "/dashboard/manage-users": "ادارة المستخدمين",
+  "/dashboard/activity-log": "سجل العمليات",
+  "/dashboard/data-backup": "النسخ الاحتياطي للبيانات",
 };
 
 // ============================================================
@@ -105,6 +107,12 @@ function resolvePageTitle(pathname: string): string {
   if (pathname.includes("/manage-users")) {
     return "ادارة المستخدمين";
   }
+  if (pathname.includes("/activity-log")) {
+  return "سجل العمليات";
+}
+if (pathname.includes("/data-backup")) {
+  return "النسخ الاحتياطي للبيانات";
+}
 
   // القيمة الافتراضية
   return "الموقف العام";
@@ -159,7 +167,12 @@ export function DashboardLayout() {
 
     } else if (label === "ادارة المستخدمين") {
       navigate("/dashboard/manage-users");
+    } else if (label === "سجل العمليات") {
+      navigate("/dashboard/activity-log");
     }
+    else if (label === "النسخ الاحتياطي للبيانات") {
+  navigate("/dashboard/data-backup");
+}
   }
 
   // ==========================================================

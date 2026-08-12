@@ -27,6 +27,7 @@ type Letter = {
   letterType: string;
   destination: string;
   reason: string;
+  previewImagePath: string | null;
 };
 
 type Soldier = {
@@ -142,6 +143,67 @@ function SectionTitle({
 }
 
 /* =========================================================
+   Download Letter
+========================================================= */
+
+async function downloadLetter(letter: Letter) {
+  if (!letter.previewImagePath) {
+    alert("لا توجد نسخة محفوظة لهذا الخطاب");
+    return;
+  }
+
+  try {
+    const { data, error } = await supabase.storage
+      .from("letter-attachments")
+      .download(letter.previewImagePath);
+
+    if (error) {
+      console.error("Error downloading letter:", error);
+
+      alert(
+        "حدث خطأ أثناء تحميل الخطاب: " +
+          error.message,
+      );
+
+      return;
+    }
+
+    if (!data) {
+      alert("تعذر العثور على نسخة الخطاب");
+      return;
+    }
+
+    const blobUrl = URL.createObjectURL(data);
+
+    const link = document.createElement("a");
+
+    link.href = blobUrl;
+
+    const pathParts = letter.previewImagePath.split("/");
+    const originalFileName =
+      pathParts[pathParts.length - 1] ||
+      `letter-${letter.letterNumber}`;
+
+    link.download = originalFileName;
+
+    document.body.appendChild(link);
+
+    link.click();
+
+    document.body.removeChild(link);
+
+    URL.revokeObjectURL(blobUrl);
+  } catch (error) {
+    console.error(
+      "Unexpected error downloading letter:",
+      error,
+    );
+
+    alert("حدث خطأ غير متوقع أثناء تحميل الخطاب");
+  }
+}
+
+/* =========================================================
    Letters Table
 ========================================================= */
 
@@ -176,7 +238,7 @@ function LettersTable({
                 key={h}
                 className={thClass}
               >
-                <div className="flex items-center gap-1 justify-end">
+                <div className="flex items-center gap-1 justify-start">
                   <span
                     style={{
                       ...FONT,
@@ -290,12 +352,9 @@ function LettersTable({
                     style={{
                       backgroundColor: "#ebedfd",
                     }}
-                    onClick={() => {
-                      console.log(
-                        "تحميل الخطاب:",
-                        letter.id,
-                      );
-                    }}
+                    onClick={() =>
+                      downloadLetter(letter)
+                    }
                   >
                     <span
                       style={{
@@ -681,7 +740,7 @@ export function SoldierDetailPage() {
 
       /* ---------------------------------------------------
          2. تحميل خطابات الفرد من جدول الربط
-         
+
          letter_personnel
          ├── personnel_id
          └── letter_id
@@ -703,6 +762,7 @@ export function SoldierDetailPage() {
             letter_type_id,
             issuing_unit_id,
             attachment_unit_id,
+            preview_image_path,
 
             letter_types (
               id,
@@ -766,6 +826,10 @@ export function SoldierDetailPage() {
             reason:
               letter.reason ??
               "-",
+
+            previewImagePath:
+              letter.preview_image_path ??
+              null,
           };
         });
 
