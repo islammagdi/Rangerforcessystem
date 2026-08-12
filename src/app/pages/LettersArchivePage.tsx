@@ -871,7 +871,7 @@ function SoldierCard({
               color: "#717d96",
             }}
           >
-            الرتبة
+            الدرجه
           </span>
 
           <span>:</span>
