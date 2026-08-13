@@ -11,7 +11,20 @@ import {
 import { logActivity } from "../../lib/logActivity";
 import { DeleteConfirmDialog } from "../components/dashboard/DeleteConfirmDialog";
 import { supabase } from "../../lib/supabase";
+function normalizeDigits(value: string): string {
+  const arabicIndicDigits = "٠١٢٣٤٥٦٧٨٩";
+  const persianDigits = "۰۱۲۳۴۵۶۷۸۹";
 
+  return value.replace(/[٠-٩۰-۹]/g, (digit) => {
+    const arabicIndex = arabicIndicDigits.indexOf(digit);
+    if (arabicIndex !== -1) return String(arabicIndex);
+
+    const persianIndex = persianDigits.indexOf(digit);
+    if (persianIndex !== -1) return String(persianIndex);
+
+    return digit;
+  });
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -840,14 +853,14 @@ if (user) {
       // أساس الاستعلام
       // ─────────────────────────────────────────────────────────────────────
 
-      const value = queryText.trim();
+  const value = normalizeDigits(queryText.trim());
 
-      if (queryBasis === "رقم عسكري") {
-        query = query.eq(
-          "military_number",
-          value
-        );
-      }
+if (queryBasis === "رقم عسكري") {
+  query = query.eq(
+    "military_number",
+    value
+  );
+}
 
       else if (queryBasis === "الاسم") {
         query = query.ilike(

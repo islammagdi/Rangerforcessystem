@@ -5,7 +5,7 @@ import {
   RefreshCw,
   AlertCircle,
 } from "lucide-react";
-
+import { useNavigate } from "react-router";
 interface ActivityLog {
   id: string;
   user_id: string | null;
@@ -18,6 +18,7 @@ interface ActivityLog {
 }
 
 function ActivityLogPage() {
+   const navigate = useNavigate();
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -116,12 +117,25 @@ function ActivityLogPage() {
     {parsed.militaryNumbers.join("، ")}
   </div>
 )}
-        {parsed.personnelIds?.length > 0 && (
-          <div>
-            <span className="font-bold">عدد الأفراد:</span>{" "}
-            {parsed.personnelIds.length}
-          </div>
-        )}
+        {parsed.personnel?.length > 0 && (
+  <div>
+    <span className="font-bold">الأرقام العسكرية:</span>{" "}
+    <div className="flex flex-wrap gap-2 mt-1">
+      {parsed.personnel.map((p: { id: string; militaryNumber: string }) => (
+        <button
+          key={p.id}
+          type="button"
+          onClick={() =>
+            navigate(`/dashboard/individual-query/soldier/${p.id}`)
+          }
+          className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors text-xs font-medium"
+        >
+          {p.militaryNumber}
+        </button>
+      ))}
+    </div>
+  </div>
+)}
 
         {parsed.personnelId && (
           <div>
@@ -143,6 +157,26 @@ function ActivityLogPage() {
             {parsed.fullName}
           </div>
         )}
+        {parsed.newCount !== undefined && (
+  <div>
+    <span className="font-bold">أفراد جدد:</span>{" "}
+    {parsed.newCount}
+  </div>
+)}
+
+{parsed.updatedCount !== undefined && (
+  <div>
+    <span className="font-bold">بيانات محدّثة:</span>{" "}
+    {parsed.updatedCount}
+  </div>
+)}
+
+{parsed.fileName && (
+  <div>
+    <span className="font-bold">اسم الملف:</span>{" "}
+    {parsed.fileName}
+  </div>
+)}
       </div>
     );
   } catch {

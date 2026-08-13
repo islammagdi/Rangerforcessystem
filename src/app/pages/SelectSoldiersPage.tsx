@@ -3,7 +3,20 @@ import { useNavigate, useLocation } from "react-router";
 import { Trash2, AlertCircle } from "lucide-react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import { supabase } from "../../lib/supabase";
+function normalizeDigits(value: string): string {
+  const arabicIndicDigits = "٠١٢٣٤٥٦٧٨٩";
+  const persianDigits = "۰۱۲۳۴۵۶۷۸۹";
 
+  return value.replace(/[٠-٩۰-۹]/g, (digit) => {
+    const arabicIndex = arabicIndicDigits.indexOf(digit);
+    if (arabicIndex !== -1) return String(arabicIndex);
+
+    const persianIndex = persianDigits.indexOf(digit);
+    if (persianIndex !== -1) return String(persianIndex);
+
+    return digit;
+  });
+}
 const F: CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
@@ -300,14 +313,14 @@ export function SelectSoldiersPage() {
 
   const inputRef = useRef<HTMLInputElement>(null);
 
-  async function handleAdd() {
-    const trimmed = militaryNumber.trim();
+async function handleAdd() {
+  const trimmed = normalizeDigits(militaryNumber.trim());
 
-    if (!trimmed) {
-      setErrorType("empty");
-      inputRef.current?.focus();
-      return;
-    }
+  if (!trimmed) {
+    setErrorType("empty");
+    inputRef.current?.focus();
+    return;
+  }
 
     if (
       soldiers.some(

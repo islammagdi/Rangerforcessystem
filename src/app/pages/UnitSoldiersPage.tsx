@@ -28,6 +28,7 @@ interface SoldierRow {
 interface UnitMeta {
   id: string;
   name: string;
+  isMain: boolean;
   total: number;
   soldiers: number;
   nco: number;
@@ -38,10 +39,7 @@ interface UnitMeta {
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
-const STATUS_CFG: Record<
-  string,
-  { bg: string; dot: string; text: string }
-> = {
+const STATUS_CFG: Record<string, { bg: string; dot: string; text: string }> = {
   "داخل الوحده": {
     bg: "#ebfaea",
     dot: "#35C128",
@@ -262,16 +260,30 @@ function formatDischargeDate(row: SoldierRow, rawDate: string | null): string {
   const [year, month, day] = rawDate.split("-");
   return `${day}/${month}/${year}`;
 }
-const TABLE_COLS = [
-  { key: "milId", label: "رقم عسكري" },
-  { key: "rank", label: "درجة" },
-  { key: "name", label: "اسم" },
-  { key: "serviceType", label: "نوع الخدمه" },
-  { key: "status", label: "حالة التوزيع" },
-  { key: "attachment", label: "مكان الالحاق" },
-  { key: "dischargeDate", label: "تاريخ التسريح" },
-  { key: "actions", label: "الاجراء" },
-];
+
+function isMainUnitType(unitType: string | null | undefined): boolean {
+  return unitType?.trim().toUpperCase() === "MAIN";
+}
+
+// أعمدة الجدول تختلف حسب نوع الوحدة:
+// - الوحدة الأساسية: تعرض "حالة التوزيع" وتسمي العمود "مكان الالحاق"
+// - الوحدة الإدارية: تخفي "حالة التوزيع" وتسمي نفس العمود "الوحدة الأساسية"
+function getTableCols(isMain: boolean) {
+  return [
+    { key: "milId", label: "رقم عسكري" },
+    { key: "rank", label: "درجة" },
+    { key: "name", label: "اسم" },
+    { key: "serviceType", label: "نوع الخدمه" },
+    ...(isMain ? [{ key: "status", label: "حالة التوزيع" }] : []),
+    {
+      key: "attachment",
+      label: isMain ? "مكان الالحاق" : "الوحدة الأساسية",
+    },
+    { key: "dischargeDate", label: "تاريخ التسريح" },
+    { key: "actions", label: "الاجراء" },
+  ];
+}
+
 function PrintStyles() {
   return (
     <style>
@@ -317,6 +329,7 @@ function PrintStyles() {
     </style>
   );
 }
+
 function UnitSoldiersPrintReport({
   unit,
   rows,
@@ -325,6 +338,7 @@ function UnitSoldiersPrintReport({
   rows: SoldierRow[];
 }) {
   const today = new Date().toLocaleString("ar-EG");
+  const printCols = getTableCols(unit.isMain);
 
   return (
     <div className="soldiers-print-area hidden print:block" dir="rtl">
@@ -344,9 +358,11 @@ function UnitSoldiersPrintReport({
           <span style={{ ...F, fontSize: 14 }}>
             الجنود: {unit.soldiers} جندي
           </span>
-          <span style={{ ...F, fontSize: 14 }}>
-            خوارج: {unit.khawarij} فرد
-          </span>
+          {unit.isMain && (
+            <span style={{ ...F, fontSize: 14 }}>
+              خوارج: {unit.khawarij} فرد
+            </span>
+          )}
           <span style={{ ...F, fontSize: 14 }}>
             المتبقي: {unit.remaining} فرد
           </span>
@@ -357,9 +373,11 @@ function UnitSoldiersPrintReport({
       <table className="w-full" style={F}>
         <thead>
           <tr>
-            {TABLE_COLS.filter((c) => c.key !== "actions").map((c) => (
-              <th key={c.key}>{c.label}</th>
-            ))}
+            {printCols
+              .filter((c) => c.key !== "actions")
+              .map((c) => (
+                <th key={c.key}>{c.label}</th>
+              ))}
           </tr>
         </thead>
 
@@ -370,7 +388,7 @@ function UnitSoldiersPrintReport({
               <td>{row.rank}</td>
               <td>{row.name}</td>
               <td>{row.serviceType}</td>
-              <td>{row.status}</td>
+              {unit.isMain && <td>{row.status}</td>}
               <td>{row.attachment}</td>
               <td>{row.dischargeDate}</td>
             </tr>
@@ -384,6 +402,7 @@ function UnitSoldiersPrintReport({
     </div>
   );
 }
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function UnitSoldiersPage() {
@@ -438,7 +457,8 @@ export function UnitSoldiersPage() {
         .from("units")
         .select(`
           id,
-          name
+          name,
+          unit_type
         `)
         .eq("id", unitId)
         .single();
@@ -452,25 +472,34 @@ export function UnitSoldiersPage() {
       //
       // primary_unit_id = الوحدة الأساسية
       // attachment_unit_id = الوحدة الملحق بها
+      //
+      // مهم جدًا: الفرد يظهر في صفحة الوحدة سواء كانت هذه الوحدة هي
+      // وحدته الأساسية (primary_unit_id) أو الوحدة الملحق بها حاليًا
+      // (attachment_unit_id). قبل التعديل كان الاستعلام يعتمد على
+      // primary_unit_id فقط، لذلك الوحدات الفرعية (التي تستقبل أفرادًا
+      // عن طريق الإلحاق فقط) كانت تظهر فارغة دائمًا.
       // ───────────────────────────────────────────────────────────────────────
 
       const { data: personnelData, error: personnelError } =
-  await supabase
-    .from("personnel")
-    .select(`
-      id,
-      military_number,
-      full_name,
-      rank_id,
-      personnel_category_id,
-      service_status_id,
-      primary_unit_id,
-      attachment_unit_id,
-      is_active,
-      discharge_date
-    `)
-    .eq("primary_unit_id", unitId)
-    .order("full_name", { ascending: true });
+        await supabase
+          .from("personnel")
+          .select(`
+            id,
+            military_number,
+            full_name,
+            rank_id,
+            personnel_category_id,
+            service_status_id,
+            primary_unit_id,
+            attachment_unit_id,
+            is_active,
+            discharge_date
+          `)
+          .or(
+            `primary_unit_id.eq.${unitId},attachment_unit_id.eq.${unitId}`
+          )
+          .order("full_name", { ascending: true });
+
       if (personnelError) {
         throw personnelError;
       }
@@ -532,7 +561,8 @@ export function UnitSoldiersPage() {
       }
 
       // ───────────────────────────────────────────────────────────────────────
-      // 5) Get attachment units
+      // 5) Get attachment units + primary units (لعرض اسم الوحدة الأخرى
+      //    في عمود "مكان الالحاق" في الحالتين)
       // ───────────────────────────────────────────────────────────────────────
 
       const attachmentUnitIds = [
@@ -543,19 +573,32 @@ export function UnitSoldiersPage() {
         ),
       ];
 
-      let attachmentUnits: any[] = [];
+      const primaryUnitIds = [
+        ...new Set(
+          personnel
+            .map((p) => p.primary_unit_id)
+            .filter(Boolean)
+        ),
+      ];
 
-      if (attachmentUnitIds.length > 0) {
+      // اجمع كل الوحدات المطلوبة في استعلام واحد (بدون تكرار)
+      const otherUnitIds = [
+        ...new Set([...attachmentUnitIds, ...primaryUnitIds]),
+      ];
+
+      let otherUnits: any[] = [];
+
+      if (otherUnitIds.length > 0) {
         const { data, error } = await supabase
           .from("units")
           .select("id, name")
-          .in("id", attachmentUnitIds);
+          .in("id", otherUnitIds);
 
         if (error) {
           throw error;
         }
 
-        attachmentUnits = data ?? [];
+        otherUnits = data ?? [];
       }
 
       // ───────────────────────────────────────────────────────────────────────
@@ -570,57 +613,90 @@ export function UnitSoldiersPage() {
         categories.map((category) => [category.id, category.name])
       );
 
-      const attachmentUnitMap = new Map(
-        attachmentUnits.map((u) => [u.id, u.name])
+      const unitNameMap = new Map(
+        otherUnits.map((u) => [u.id, u.name])
       );
 
       // ───────────────────────────────────────────────────────────────────────
       // 6) Convert Supabase data -> table rows
+      //
+      // منطق "داخل / خارج الوحدة" و"مكان الالحاق" الآن يعتمد على مكانين
+      // ممكن يكون الفرد ظاهر فيهم:
+      //
+      // - لو primary_unit_id بتاعه = الوحدة المفتوحة، وملهوش attachment_unit_id
+      //   (أو attachment_unit_id بتاعه = نفس الوحدة) => هو "داخل الوحده"
+      //   ومفيش مكان الحاق.
+      //
+      // - لو primary_unit_id بتاعه = الوحدة المفتوحة لكنه اتنقل فعليًا
+      //   لوحدة تانية (attachment_unit_id مختلف) => هو "خارج الوحده"
+      //   ومكان الالحاق = اسم الوحدة التانية.
+      //
+      // - لو الفرد مش من أصل الوحدة (primary_unit_id مختلف) لكنه ملحق
+      //   بيها حاليًا (attachment_unit_id = الوحدة المفتوحة) => هو
+      //   "داخل الوحده" من منظور الوحدة دي (موجود فعليًا فيها)،
+      //   ومكان الالحاق يوضح وحدته الأصلية.
       // ───────────────────────────────────────────────────────────────────────
 
       const rows: SoldierRow[] = personnel.map((person) => {
-  const isInside =
-    !person.attachment_unit_id ||
-    person.attachment_unit_id === unitId;
+        const isOwnUnit = person.primary_unit_id === unitId;
+        const isAttachedHere = person.attachment_unit_id === unitId;
 
-  const attachment =
-    person.attachment_unit_id &&
-    person.attachment_unit_id !== unitId
-      ? attachmentUnitMap.get(person.attachment_unit_id) ??
-        "غير محدد"
-      : "لا يوجد";
+        // الفرد يُعتبر "داخل الوحده" لو موجود فعليًا فيها الآن:
+        // إما لأنها وحدته الأصلية وملوش إلحاق مكان تاني،
+        // أو لأنه ملحق بيها فعليًا حاليًا.
+        const isInside =
+          (isOwnUnit &&
+            (!person.attachment_unit_id ||
+              person.attachment_unit_id === unitId)) ||
+          isAttachedHere;
 
-  const baseRow: SoldierRow = {
-    id: person.id,
+        let attachment = "لا يوجد";
 
-    milId: person.military_number ?? "",
+        if (
+          isOwnUnit &&
+          person.attachment_unit_id &&
+          person.attachment_unit_id !== unitId
+        ) {
+          // أصله من هنا لكنه اتحول لوحدة تانية
+          attachment =
+            unitNameMap.get(person.attachment_unit_id) ?? "غير محدد";
+        } else if (isAttachedHere && !isOwnUnit) {
+          // ملحق هنا لكن أصله في وحدة تانية
+          attachment =
+            unitNameMap.get(person.primary_unit_id) ?? "غير محدد";
+        }
 
-    rank:
-      rankMap.get(person.rank_id) ??
-      "غير محدد",
+        const baseRow: SoldierRow = {
+          id: person.id,
 
-    name:
-      person.full_name ??
-      "",
+          milId: person.military_number ?? "",
 
-    serviceType:
-      categoryMap.get(person.personnel_category_id) ??
-      "غير محدد",
+          rank:
+            rankMap.get(person.rank_id) ??
+            "غير محدد",
 
-    status: isInside
-      ? "داخل الوحده"
-      : "خارج الوحده",
+          name:
+            person.full_name ??
+            "",
 
-    attachment,
+          serviceType:
+            categoryMap.get(person.personnel_category_id) ??
+            "غير محدد",
 
-    dischargeDate: "",
-  };
+          status: isInside
+            ? "داخل الوحده"
+            : "خارج الوحده",
 
-  return {
-    ...baseRow,
-    dischargeDate: formatDischargeDate(baseRow, person.discharge_date),
-  };
-});
+          attachment,
+
+          dischargeDate: "",
+        };
+
+        return {
+          ...baseRow,
+          dischargeDate: formatDischargeDate(baseRow, person.discharge_date),
+        };
+      });
 
       // ───────────────────────────────────────────────────────────────────────
       // 7) Calculate statistics
@@ -643,15 +719,16 @@ export function UnitSoldiersPage() {
       ).length;
 
       setUnit({
-  id: unitData.id,
-  name: unitData.name,
-  total: rows.length,
-  soldiers,
-  nco,
-  khawarij,
-  remaining,
-  rows: sortSoldierRows(rows),
-});
+        id: unitData.id,
+        name: unitData.name,
+        isMain: isMainUnitType(unitData.unit_type),
+        total: rows.length,
+        soldiers,
+        nco,
+        khawarij,
+        remaining,
+        rows: sortSoldierRows(rows),
+      });
     } catch (err: any) {
       console.error("Error loading unit personnel:", err);
 
@@ -721,15 +798,19 @@ export function UnitSoldiersPage() {
     { value: "soldiers", label: "جنود" },
     { value: "nco", label: "ضباط صف" },
   ];
-function handlePrintSoldiersList() {
-   const originalTitle = document.title;
 
-  document.title = `كشف اسماء ${unit.name}`;
+  function handlePrintSoldiersList() {
+    if (!unit) return;
 
-  window.print();
+    const originalTitle = document.title;
 
-  document.title = originalTitle;
-}
+    document.title = `كشف اسماء ${unit.name}`;
+
+    window.print();
+
+    document.title = originalTitle;
+  }
+
   // ───────────────────────────────────────────────────────────────────────────
   // Loading
   // ───────────────────────────────────────────────────────────────────────────
@@ -790,6 +871,12 @@ function handlePrintSoldiersList() {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
+  // Table columns (تختلف حسب نوع الوحدة)
+  // ───────────────────────────────────────────────────────────────────────────
+
+  const tableCols = getTableCols(unit.isMain);
+
+  // ───────────────────────────────────────────────────────────────────────────
   // UI
   // ───────────────────────────────────────────────────────────────────────────
 
@@ -799,7 +886,7 @@ function handlePrintSoldiersList() {
       dir="rtl"
     >
       <PrintStyles />
-    <UnitSoldiersPrintReport unit={unit} rows={filtered} />
+      <UnitSoldiersPrintReport unit={unit} rows={filtered} />
       {/* Page title */}
 
       <h1
@@ -841,22 +928,24 @@ function handlePrintSoldiersList() {
                 label: "ضباط صف:",
                 value: `${unit.nco} ضابط صف`,
               },
-              
+
               {
                 label: "الجنود:",
                 value: `${unit.soldiers} جندي`,
               },
-              {
-                label: "خوارج:",
-                value: `${unit.khawarij} فرد`,
-              },
-              
+              ...(unit.isMain
+                ? [
+                    {
+                      label: "خوارج:",
+                      value: `${unit.khawarij} فرد`,
+                    },
+                  ]
+                : []),
+
               {
                 label: "المتبقي:",
                 value: `${unit.remaining} فرد`,
               },
-              
-              
             ].map((s, i, arr) => (
               <div
                 key={s.label}
@@ -1046,7 +1135,7 @@ function handlePrintSoldiersList() {
                   />
                 </th>
 
-                {TABLE_COLS.map((c) => (
+                {tableCols.map((c) => (
                   <th
                     key={c.key}
                     className="px-4 py-3 text-right whitespace-nowrap"
@@ -1088,7 +1177,7 @@ function handlePrintSoldiersList() {
               {filtered.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={TABLE_COLS.length + 1}
+                    colSpan={tableCols.length + 1}
                     className="text-center py-10"
                   >
                     <span
@@ -1176,9 +1265,11 @@ function handlePrintSoldiersList() {
                       </span>
                     </td>
 
-                    <td className="px-4 py-3">
-                      <StatusBadge status={row.status} />
-                    </td>
+                    {unit.isMain && (
+                      <td className="px-4 py-3">
+                        <StatusBadge status={row.status} />
+                      </td>
+                    )}
 
                     <td className="px-4 py-3">
                       <span
@@ -1192,18 +1283,18 @@ function handlePrintSoldiersList() {
                         {row.attachment}
                       </span>
                     </td>
-<td className="px-4 py-3">
-  <span
-    style={{
-      ...F,
-      fontSize: 14,
-      color: "#2d3648",
-      whiteSpace: "nowrap",
-    }}
-  >
-    {row.dischargeDate}
-  </span>
-</td>
+                    <td className="px-4 py-3">
+                      <span
+                        style={{
+                          ...F,
+                          fontSize: 14,
+                          color: "#2d3648",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {row.dischargeDate}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       <ActionBtns
                         onView={() =>
@@ -1223,8 +1314,6 @@ function handlePrintSoldiersList() {
         {/* Footer */}
 
         <div className="flex items-center justify-between px-5 py-3 bg-[#fafbff] border-t border-[#eff0f6] flex-wrap gap-2">
-         
-
           <div>
             <span
               style={{

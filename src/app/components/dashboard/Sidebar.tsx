@@ -17,7 +17,7 @@ import {
   ChevronRight,
   LogOut,
 } from "lucide-react";
-
+import { Link } from "react-router";
 import { supabase } from "../../../lib/supabase";
 
 
@@ -420,6 +420,9 @@ export function Sidebar({
     if (pathname.includes("/backup")) {
   return "النسخ الاحتياطي للبيانات";
 }
+if (pathname.includes("/manage-branch-heads")) {
+  return "رؤساء فرع التنظيم";
+}
 
     return "الموقف العام";
   }
@@ -680,6 +683,12 @@ async function handleLogout() {
             "ADMIN",
           ],
         },
+        {
+  icon: <UserCog size={18} />,
+  label: "رؤساء فرع التنظيم",
+  section: "ادارة المنظومة",
+  roles: ["ADMIN"],
+},
       ],
       []
     );
@@ -819,25 +828,27 @@ async function handleLogout() {
 
 
         {!collapsed && (
-          <div className="flex items-center gap-2 overflow-hidden flex-1">
+  <div className="flex items-center gap-2 overflow-hidden flex-1">
 
-            <span
-              className="whitespace-nowrap"
-              style={{
-                color: "#081021",
-                fontFamily:
-                  "'Almarai', sans-serif",
-                fontWeight: 700,
-                fontSize: "22px",
-              }}
-            >
-              منظومة الخوارج
-            </span>
+    <Link
+      to="/dashboard"
+      className="whitespace-nowrap hover:opacity-80 transition-opacity"
+      style={{
+        color: "#081021",
+        fontFamily:
+          "'Almarai', sans-serif",
+        fontWeight: 700,
+        fontSize: "22px",
+        textDecoration: "none",
+      }}
+    >
+      منظومة الخوارج
+    </Link>
 
-            <LogoIcon />
+    <LogoIcon />
 
-          </div>
-        )}
+  </div>
+)}
 
 
         {collapsed && (

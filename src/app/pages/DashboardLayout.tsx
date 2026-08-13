@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router";
 
 import { Sidebar } from "../components/dashboard/Sidebar";
 import { DashboardHeader } from "../components/dashboard/DashboardHeader";
 import { SessionManager } from "../components/auth/SessionManager";
-
+import { supabase } from "../../lib/supabase";
+import { UnauthorizedPage } from "./UnauthorizedPage";
 // ============================================================
 // عناوين الصفحات
 // ============================================================
@@ -39,7 +40,57 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/activity-log": "سجل العمليات",
   "/dashboard/data-backup": "النسخ الاحتياطي للبيانات",
 };
+// ============================================================
+// صلاحيات الوصول لكل مسار — نفس الأدوار المستخدمة في Sidebar
+// ============================================================
 
+type RoleCode =
+  | "ADMIN"
+  | "PERSONNEL_OFFICER"
+  | "ARCHIVE_OFFICER"
+  | "USER"
+  | null;
+
+const ALL_ROLES: RoleCode[] = [
+  "ADMIN",
+  "PERSONNEL_OFFICER",
+  "ARCHIVE_OFFICER",
+  "USER",
+];
+
+const PATH_ROLE_MAP: { prefix: string; roles: RoleCode[] }[] = [
+  { prefix: "/dashboard/individual-query", roles: ALL_ROLES },
+  { prefix: "/dashboard/units-report", roles: ALL_ROLES },
+  { prefix: "/dashboard/daily-reports", roles: ALL_ROLES },
+
+  { prefix: "/dashboard/add-soldier", roles: ["ADMIN", "PERSONNEL_OFFICER"] },
+  { prefix: "/dashboard/issue-letter", roles: ["ADMIN", "PERSONNEL_OFFICER"] },
+
+  { prefix: "/dashboard/letters-archive", roles: ["ADMIN", "ARCHIVE_OFFICER"] },
+  { prefix: "/dashboard/reserve-batches", roles: ["ADMIN", "ARCHIVE_OFFICER"] },
+
+  { prefix: "/dashboard/manage-units", roles: ["ADMIN"] },
+  { prefix: "/dashboard/manage-users", roles: ["ADMIN"] },
+  { prefix: "/dashboard/data-backup", roles: ["ADMIN"] },
+  { prefix: "/dashboard/activity-log", roles: ["ADMIN"] },
+  { prefix: "/dashboard/manage-branch-heads", roles: ["ADMIN"] },
+];
+
+function isPathAllowed(pathname: string, role: RoleCode): boolean {
+  // الصفحة الرئيسية /dashboard متاحة للجميع
+  if (pathname === "/dashboard") {
+    return true;
+  }
+
+  const rule = PATH_ROLE_MAP.find((r) => pathname.startsWith(r.prefix));
+
+  // لو المسار مش موجود في الخريطة، نمنعه افتراضيًا (Fail closed) بدل ما نسمح بيه بالغلط
+  if (!rule) {
+    return false;
+  }
+
+  return role !== null && rule.roles.includes(role);
+}
 // ============================================================
 // تحديد عنوان الصفحة الحالية
 // ============================================================
@@ -126,12 +177,76 @@ export function DashboardLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] =
     useState(false);
 
+  const [roleCode, setRoleCode] = useState<RoleCode>(null);
+  const [roleLoading, setRoleLoading] = useState(true);
+
   const navigate = useNavigate();
   const location = useLocation();
 
   const pageTitle = resolvePageTitle(
     location.pathname
   );
+
+  // ==========================================================
+  // جلب دور المستخدم الحالي — مطلوب لحماية المسارات فعليًا
+  // ==========================================================
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadRole() {
+      setRoleLoading(true);
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        if (mounted) {
+          setRoleCode(null);
+          setRoleLoading(false);
+        }
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("user_roles")
+        .select(`
+          role_id,
+          roles (
+            id,
+            name,
+            code
+          )
+        `)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("LOAD ROLE ERROR (guard):", error);
+      }
+
+      const role = Array.isArray(data?.roles)
+        ? data?.roles[0]
+        : data?.roles;
+
+      if (mounted) {
+        setRoleCode((role?.code as RoleCode) ?? null);
+        setRoleLoading(false);
+      }
+    }
+
+    loadRole();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // ==========================================================
+  // التحقق من صلاحية الوصول للمسار الحالي
+  // ==========================================================
+
 
   // ==========================================================
   // التنقل من الـ Sidebar
@@ -172,6 +287,9 @@ export function DashboardLayout() {
     }
     else if (label === "النسخ الاحتياطي للبيانات") {
   navigate("/dashboard/data-backup");
+}
+  else if (label === "رؤساء فرع التنظيم") {
+  navigate("/dashboard/manage-branch-heads");
 }
   }
 
@@ -227,9 +345,19 @@ export function DashboardLayout() {
             Page Content
             ==================================================== */}
 
-        <main className="flex-1 overflow-y-auto">
+<main className="flex-1 overflow-y-auto">
           <div className="flex flex-col gap-6 p-6">
-            <Outlet />
+            {roleLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <span style={{ fontFamily: "'Almarai', sans-serif", fontSize: 16, color: "#717d96" }}>
+                  جاري التحقق من الصلاحيات...
+                </span>
+              </div>
+            ) : isPathAllowed(location.pathname, roleCode) ? (
+              <Outlet />
+            ) : (
+              <UnauthorizedPage />
+            )}
           </div>
         </main>
       </div>

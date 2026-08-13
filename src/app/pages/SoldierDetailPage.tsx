@@ -266,13 +266,14 @@ function LettersTable({
             <tr>
               <td
                 colSpan={6}
-                className={`${tdClass} text-center py-8`}
+                className={`${tdClass} text-center w-full py-8`}
               >
                 <span
                   style={{
                     ...FONT,
                     fontSize: 16,
                     color: "#717d96",
+                   
                   }}
                 >
                   لا توجد خطابات مسجلة لهذا الفرد

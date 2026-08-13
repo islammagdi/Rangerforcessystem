@@ -697,97 +697,176 @@ function GeneralArchiveTab({
       )}
 
       <div
-        className="flex flex-wrap gap-3 items-stretch w-full"
+  className="flex flex-wrap gap-3 items-end w-full"
+  dir="rtl"
+>
+  {/* البحث */}
+  <div className="flex flex-col gap-1 flex-[2] min-w-[200px]">
+    <label
+      htmlFor="searchText"
+      style={{
+        ...F,
+        fontSize: 13,
+        color: "#717d96",
+      }}
+    >
+      البحث
+    </label>
+
+    <div
+      className="flex items-center gap-2 bg-white border border-[#e2e7f0] rounded-[8px] px-3 h-[52px]"
+      dir="rtl"
+    >
+      <input
+        id="searchText"
+        type="text"
+        placeholder="ابحث برقم الخطاب او جهة الخطاب"
+        value={searchText}
+        onChange={(e) => setSearchText(e.target.value)}
+        className="w-full bg-transparent outline-none text-right"
+        style={{
+          ...F,
+          fontSize: 15,
+          color: "#2d3648",
+        }}
         dir="rtl"
-      >
-        <div
-          className="flex items-center gap-2 bg-white border border-[#e2e7f0] rounded-[8px] px-3 h-[52px] flex-[2] min-w-[200px]"
-          dir="rtl"
-        >
-          <input
-            type="text"
-            placeholder="ابحث برقم الخطاب او جهة الخطاب"
-            value={searchText}
-            onChange={(e) =>
-              setSearchText(e.target.value)
-            }
-            className="w-full bg-transparent outline-none text-right"
-            style={{
-              ...F,
-              fontSize: 15,
-              color: "#2d3648",
-            }}
-            dir="rtl"
-          />
+      />
 
-          <Search
-            size={18}
-            className="shrink-0 text-[#2d3648]"
-          />
-        </div>
+      <Search
+        size={18}
+        className="shrink-0 text-[#2d3648]"
+      />
+    </div>
+  </div>
 
-        <div
-          className="flex items-center gap-2 bg-white border border-[#e2e7f0] rounded-[8px] px-3 h-[52px] min-w-[170px]"
-          dir="rtl"
-        >
-          <Calendar
-            size={16}
-            className="shrink-0 text-[#2d3648]"
-          />
+  {/* من تاريخ */}
+  <div className="flex flex-col gap-1 min-w-[170px]">
+    <label
+      htmlFor="dateFrom"
+      style={{
+        ...F,
+        fontSize: 13,
+        color: "#717d96",
+      }}
+    >
+      من تاريخ
+    </label>
 
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) =>
-              setDateFrom(e.target.value)
-            }
-            className="flex-1 text-right bg-transparent outline-none"
-            style={{
-              ...F,
-              fontSize: 14,
-              color: "#4a5468",
-            }}
-          />
-        </div>
+    <div
+      className="flex items-center gap-2 bg-white border border-[#e2e7f0] rounded-[8px] px-3 h-[52px]"
+      dir="rtl"
+    >
+    
+      <input
+        id="dateFrom"
+        type="date"
+        value={dateFrom}
+        onChange={(e) => setDateFrom(e.target.value)}
+        className="flex-1 text-right bg-transparent outline-none"
+        style={{
+          ...F,
+          fontSize: 14,
+          color: "#4a5468",
+        }}
+      />
+    </div>
+  </div>
 
-        <div
-          className="flex items-center gap-2 bg-white border border-[#e2e7f0] rounded-[8px] px-3 h-[52px] min-w-[170px]"
-          dir="rtl"
-        >
-          <Calendar
-            size={16}
-            className="shrink-0 text-[#2d3648]"
-          />
+  {/* إلى تاريخ */}
+  <div className="flex flex-col gap-1 min-w-[170px]">
+    <label
+      htmlFor="dateTo"
+      style={{
+        ...F,
+        fontSize: 13,
+        color: "#717d96",
+      }}
+    >
+      إلى تاريخ
+    </label>
 
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) =>
-              setDateTo(e.target.value)
-            }
-            className="flex-1 text-right bg-transparent outline-none"
-            style={{
-              ...F,
-              fontSize: 14,
-              color: "#4a5468",
-            }}
-          />
-        </div>
+    <div
+      className="flex items-center gap-2 bg-white border border-[#e2e7f0] rounded-[8px] px-3 h-[52px]"
+      dir="rtl"
+    >
+    
 
-        <FilterDropdown
-          placeholder="عرض حسب الحالة"
-          options={["موثق", "غير موثق"]}
-          value={filterStatus}
-          onChange={setFilterStatus}
-        />
+      <input
+        id="dateTo"
+        type="date"
+        value={dateTo}
+        onChange={(e) => setDateTo(e.target.value)}
+        className="flex-1 text-right bg-transparent outline-none"
+        style={{
+          ...F,
+          fontSize: 14,
+          color: "#4a5468",
+        }}
+      />
+    </div>
+  </div>
 
-        <FilterDropdown
-          placeholder="عرض حسب النوع"
-          options={["الحاق", "إنهاء الحاق"]}
-          value={filterType}
-          onChange={setFilterType}
-        />
-      </div>
+  {/* الحالة */}
+  <div className="flex flex-col gap-1 min-w-[170px]">
+    <label
+      style={{
+        ...F,
+        fontSize: 13,
+        color: "#717d96",
+      }}
+    >
+      الحالة
+    </label>
+
+    <FilterDropdown
+      placeholder="عرض حسب الحالة"
+      options={["موثق", "غير موثق"]}
+      value={filterStatus}
+      onChange={setFilterStatus}
+    />
+  </div>
+
+  {/* النوع */}
+  <div className="flex flex-col gap-1 min-w-[170px]">
+    <label
+      style={{
+        ...F,
+        fontSize: 13,
+        color: "#717d96",
+      }}
+    >
+      نوع الخطاب
+    </label>
+
+    <FilterDropdown
+      placeholder="عرض حسب النوع"
+      options={["الحاق", "إنهاء الحاق"]}
+      value={filterType}
+      onChange={setFilterType}
+    />
+  </div>
+
+  {/* إعادة تعيين الفلاتر */}
+  <button
+    type="button"
+    onClick={() => {
+      setSearchText("");
+      setFilterStatus("");
+      setFilterType("");
+      setDateFrom("");
+      setDateTo("");
+    }}
+    className="h-[52px] px-5 rounded-[8px] border border-[#e2e7f0] bg-white hover:bg-[#f5f6fb] transition-colors"
+    style={{
+      ...F,
+      fontSize: 14,
+      color: "#2d3648",
+      whiteSpace: "nowrap",
+    }}
+  >
+    إعادة تعيين الفلاتر
+  </button>
+</div>
 
       <LettersTable
         records={filtered}

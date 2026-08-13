@@ -10,24 +10,24 @@ import {
   PieChart,
   Pie,
 } from "recharts";
-import {
-  Printer,
-  Eye,
-  ArrowDownUp,
-  ArrowDown,
-} from "lucide-react";
+import { ArrowDownUp, Building2 } from "lucide-react";
+
 import svgPaths from "../../imports/بيانالوحداتالموقفالعامبيانوحده-1/svg-bswzreobyg";
 import { supabase } from "../../lib/supabase";
 
-// ─── Shared style ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Shared style
+// ─────────────────────────────────────────────────────────────
+
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
+
 const GRAD_ID = "statGrad";
 
-// ============================================================
+// ─────────────────────────────────────────────────────────────
 // Database rows
-// ============================================================
+// ─────────────────────────────────────────────────────────────
 
 interface DbUnit {
   id: string;
@@ -48,6 +48,7 @@ interface DbPersonnelRow {
   primary_unit_id: string | null;
   attachment_unit_id: string | null;
   is_active: boolean;
+  discharge_date: string | null;
 }
 
 interface DbRank {
@@ -68,7 +69,10 @@ interface DbServiceStatus {
   code: string | null;
 }
 
-// ─── Gradient green icon def ──────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Gradient definitions
+// ─────────────────────────────────────────────────────────────
+
 function GradDefs() {
   return (
     <defs>
@@ -87,11 +91,15 @@ function GradDefs() {
   );
 }
 
-// ─── Stat card icons ──────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Stat icons
+// ─────────────────────────────────────────────────────────────
+
 function IconKhawarij() {
   return (
     <svg width="24" height="24" viewBox="0 0 18.75 18.75" fill="none">
       <GradDefs />
+
       <path
         clipRule="evenodd"
         d={svgPaths.p8cec1f0}
@@ -117,6 +125,7 @@ function IconSoldiers() {
           <stop stopColor="#00B867" />
           <stop offset="1" stopColor="#00522E" />
         </linearGradient>
+
         <linearGradient
           id="soldierGrad2"
           x1="10.5369"
@@ -129,12 +138,14 @@ function IconSoldiers() {
           <stop offset="1" stopColor="#00522E" />
         </linearGradient>
       </defs>
+
       <path
         clipRule="evenodd"
         d={svgPaths.p1528f680}
         fill="url(#soldierGrad1)"
         fillRule="evenodd"
       />
+
       <path
         clipRule="evenodd"
         d={svgPaths.p1681e00}
@@ -160,6 +171,7 @@ function IconNCO() {
           <stop stopColor="#00B867" />
           <stop offset="1" stopColor="#00522E" />
         </linearGradient>
+
         <linearGradient
           id="ncoGrad2"
           x1="9.81"
@@ -172,6 +184,7 @@ function IconNCO() {
           <stop offset="1" stopColor="#00522E" />
         </linearGradient>
       </defs>
+
       <path d={svgPaths.p8118600} fill="url(#ncoGrad1)" />
       <path d={svgPaths.p14328e00} fill="url(#ncoGrad2)" />
     </svg>
@@ -193,6 +206,7 @@ function IconGroup() {
           <stop stopColor="#00B867" />
           <stop offset="1" stopColor="#00522E" />
         </linearGradient>
+
         <linearGradient
           id="grp1"
           x1="4.55625"
@@ -204,6 +218,7 @@ function IconGroup() {
           <stop stopColor="#00B867" />
           <stop offset="1" stopColor="#00522E" />
         </linearGradient>
+
         <linearGradient
           id="grp2"
           x1="25"
@@ -215,6 +230,7 @@ function IconGroup() {
           <stop stopColor="#00B867" />
           <stop offset="1" stopColor="#00522E" />
         </linearGradient>
+
         <linearGradient
           id="grp3"
           x1="25.4437"
@@ -226,6 +242,7 @@ function IconGroup() {
           <stop stopColor="#00B867" />
           <stop offset="1" stopColor="#00522E" />
         </linearGradient>
+
         <linearGradient
           id="grp4"
           x1="15"
@@ -237,6 +254,7 @@ function IconGroup() {
           <stop stopColor="#00B867" />
           <stop offset="1" stopColor="#00522E" />
         </linearGradient>
+
         <linearGradient
           id="grp5"
           x1="15"
@@ -249,6 +267,7 @@ function IconGroup() {
           <stop offset="1" stopColor="#00522E" />
         </linearGradient>
       </defs>
+
       <path d={svgPaths.p24391d00} fill="url(#grp0)" />
       <path d={svgPaths.p2f932980} fill="url(#grp1)" />
       <path d={svgPaths.p3a06cf00} fill="url(#grp2)" />
@@ -259,25 +278,50 @@ function IconGroup() {
   );
 }
 
-// ─── Status badge ─────────────────────────────────────────────────────────────
-// ألوان عامة حسب طبيعة الحالة (مش أسماء ثابتة) عشان تتماشى مع أي أسماء حالات فعلية في القاعدة
-function getStatusBadgeStyle(status: DbServiceStatus | undefined) {
+// ─────────────────────────────────────────────────────────────
+// Status badge
+// ─────────────────────────────────────────────────────────────
+
+function getStatusBadgeStyle(
+  status: DbServiceStatus | undefined
+) {
   const code = status?.code?.toUpperCase() ?? "";
   const name = status?.name ?? "";
 
-  if (code === "ATTACHED" || name === "ملحق علي القوة") {
-    return { bg: "#e9f9ff", dot: "#29BBD4", text: "#146d7c" };
+  if (
+    code === "ATTACHED" ||
+    name === "ملحق علي القوة"
+  ) {
+    return {
+      bg: "#e9f9ff",
+      dot: "#29BBD4",
+      text: "#146d7c",
+    };
   }
 
-  if (code === "LEAVE" || name.includes("اجاز")) {
-    return { bg: "#fff7f0", dot: "#e37032", text: "#9a4a10" };
+  if (
+    code === "LEAVE" ||
+    name.includes("اجاز")
+  ) {
+    return {
+      bg: "#fff7f0",
+      dot: "#e37032",
+      text: "#9a4a10",
+    };
   }
 
-  // افتراضي: "على القوة" أو أي حالة أخرى
-  return { bg: "#ebfaea", dot: "#35C128", text: "#26861d" };
+  return {
+    bg: "#ebfaea",
+    dot: "#35C128",
+    text: "#26861d",
+  };
 }
 
-function StatusBadge({ status }: { status: DbServiceStatus | undefined }) {
+function StatusBadge({
+  status,
+}: {
+  status: DbServiceStatus | undefined;
+}) {
   const s = getStatusBadgeStyle(status);
 
   return (
@@ -289,6 +333,7 @@ function StatusBadge({ status }: { status: DbServiceStatus | undefined }) {
         className="w-2 h-2 rounded-full shrink-0"
         style={{ background: s.dot }}
       />
+
       <span
         style={{
           ...F,
@@ -304,8 +349,15 @@ function StatusBadge({ status }: { status: DbServiceStatus | undefined }) {
   );
 }
 
-// ─── Action buttons ───────────────────────────────────────────────────────────
-function ActionBtns({ onView }: { onView: () => void }) {
+// ─────────────────────────────────────────────────────────────
+// Action buttons
+// ─────────────────────────────────────────────────────────────
+
+function ActionBtns({
+  onView,
+}: {
+  onView: () => void;
+}) {
   return (
     <div className="flex items-center gap-1.5 justify-end">
       <button
@@ -313,17 +365,31 @@ function ActionBtns({ onView }: { onView: () => void }) {
         className="bg-[#DCF4DF] rounded-[4px] p-[2px] hover:opacity-80 transition-opacity"
         title="تحديد"
       >
-        <svg width="15" height="14" viewBox="0 0 15 13.868" fill="none">
-          <path d={svgPaths.p11466900} fill="#415844" />
+        <svg
+          width="15"
+          height="14"
+          viewBox="0 0 15 13.868"
+          fill="none"
+        >
+          <path
+            d={svgPaths.p11466900}
+            fill="#415844"
+          />
         </svg>
       </button>
+
       <button
         type="button"
         className="bg-[#f5f5f5] rounded-[4px] p-[2px] hover:opacity-80 transition-opacity"
         title="عرض"
         onClick={onView}
       >
-        <svg width="13" height="9" viewBox="0 0 12.9339 8.74995" fill="none">
+        <svg
+          width="13"
+          height="9"
+          viewBox="0 0 12.9339 8.74995"
+          fill="none"
+        >
           <path
             clipRule="evenodd"
             d={svgPaths.p513580}
@@ -332,50 +398,82 @@ function ActionBtns({ onView }: { onView: () => void }) {
           />
         </svg>
       </button>
+
       <button
         type="button"
         className="bg-[#f5f5f5] rounded-[4px] p-[2px] hover:opacity-80 transition-opacity"
         title="تحويل"
       >
-        <ArrowDownUp size={11} className="text-[#2d3648]" />
+        <ArrowDownUp
+          size={11}
+          className="text-[#2d3648]"
+        />
       </button>
     </div>
   );
 }
 
-// ─── Bar Chart ────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Bar chart
+// ─────────────────────────────────────────────────────────────
+
 interface BarChartRow {
   label: string;
   outside: number;
   remaining: number;
 }
 
-function UnitBarChart({ data }: { data: BarChartRow[] }) {
+function UnitBarChart({
+  data,
+}: {
+  data: BarChartRow[];
+}) {
   return (
     <div className="flex flex-col gap-3">
-      {/* Legend */}
       <div className="flex items-center gap-4 justify-end">
         <div className="flex items-center gap-2">
-          <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
+          <span
+            style={{
+              ...F,
+              fontSize: 14,
+              color: "#2d3648",
+            }}
+          >
             المتبقي
           </span>
+
           <span className="w-4 h-4 rounded-[2px] shrink-0 bg-[#abb5f5]" />
         </div>
+
         <div className="flex items-center gap-2">
-          <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
+          <span
+            style={{
+              ...F,
+              fontSize: 14,
+              color: "#2d3648",
+            }}
+          >
             الخارج
           </span>
+
           <span className="w-4 h-4 rounded-[2px] shrink-0 bg-[#00B867]" />
         </div>
       </div>
 
-      {/* Chart — explicit Cell keys to prevent Recharts null-key duplicate warning */}
-      <ResponsiveContainer width="100%" height={180}>
+      <ResponsiveContainer
+        width="100%"
+        height={180}
+      >
         <BarChart
           data={data}
           barCategoryGap="30%"
           barGap={3}
-          margin={{ top: 4, right: 0, bottom: 4, left: 0 }}
+          margin={{
+            top: 4,
+            right: 0,
+            bottom: 4,
+            left: 0,
+          }}
         >
           <XAxis
             dataKey="label"
@@ -387,6 +485,7 @@ function UnitBarChart({ data }: { data: BarChartRow[] }) {
             axisLine={false}
             tickLine={false}
           />
+
           <YAxis
             tick={{
               fontFamily: "'Almarai', sans-serif",
@@ -399,6 +498,7 @@ function UnitBarChart({ data }: { data: BarChartRow[] }) {
             orientation="right"
             allowDecimals={false}
           />
+
           <Bar
             dataKey="outside"
             name="الخارج"
@@ -408,9 +508,13 @@ function UnitBarChart({ data }: { data: BarChartRow[] }) {
             isAnimationActive={false}
           >
             {data.map((_, i) => (
-              <Cell key={`outside-${i}`} fill="#00B867" />
+              <Cell
+                key={`outside-${i}`}
+                fill="#00B867"
+              />
             ))}
           </Bar>
+
           <Bar
             dataKey="remaining"
             name="المتبقي"
@@ -420,7 +524,10 @@ function UnitBarChart({ data }: { data: BarChartRow[] }) {
             isAnimationActive={false}
           >
             {data.map((_, i) => (
-              <Cell key={`remaining-${i}`} fill="#abb5f5" />
+              <Cell
+                key={`remaining-${i}`}
+                fill="#abb5f5"
+              />
             ))}
           </Bar>
         </BarChart>
@@ -429,7 +536,10 @@ function UnitBarChart({ data }: { data: BarChartRow[] }) {
   );
 }
 
-// ─── Donut Chart ──────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Donut chart
+// ─────────────────────────────────────────────────────────────
+
 function DonutChartPanel({
   pct,
   inside,
@@ -440,8 +550,14 @@ function DonutChartPanel({
   outside: number;
 }) {
   const donutData = [
-    { value: pct, name: "khawarij" },
-    { value: 100 - pct, name: "inside" },
+    {
+      value: pct,
+      name: "khawarij",
+    },
+    {
+      value: Math.max(0, 100 - pct),
+      name: "inside",
+    },
   ];
 
   return (
@@ -449,7 +565,6 @@ function DonutChartPanel({
       className="flex flex-col items-center justify-between h-full gap-2 py-2"
       dir="rtl"
     >
-      {/* داخل الوحدة */}
       <div className="flex flex-col items-center">
         <span
           style={{
@@ -462,14 +577,29 @@ function DonutChartPanel({
         >
           {inside}
         </span>
-        <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
+
+        <span
+          style={{
+            ...F,
+            fontSize: 14,
+            color: "#2d3648",
+          }}
+        >
           داخل الوحدة
         </span>
       </div>
 
-      {/* Donut */}
-      <div className="relative" style={{ width: 160, height: 160 }}>
-        <PieChart width={160} height={160}>
+      <div
+        className="relative"
+        style={{
+          width: 160,
+          height: 160,
+        }}
+      >
+        <PieChart
+          width={160}
+          height={160}
+        >
           <Pie
             data={donutData}
             cx={75}
@@ -481,21 +611,42 @@ function DonutChartPanel({
             dataKey="value"
             strokeWidth={0}
           >
-            {/* Explicit keys on Cell to prevent Recharts null-key duplicate warning */}
-            <Cell key="cell-khawarij" fill="#7D8FF0" />
-            <Cell key="cell-inside" fill="#00B867" />
+            <Cell
+              key="cell-khawarij"
+              fill="#7D8FF0"
+            />
+
+            <Cell
+              key="cell-inside"
+              fill="#00B867"
+            />
           </Pie>
         </PieChart>
-        {/* Center text */}
+
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span style={{ ...F, fontWeight: 700, fontSize: 20, color: "#2d3648" }}>
+          <span
+            style={{
+              ...F,
+              fontWeight: 700,
+              fontSize: 20,
+              color: "#2d3648",
+            }}
+          >
             {pct}%
           </span>
-          <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>خوارج</span>
+
+          <span
+            style={{
+              ...F,
+              fontSize: 14,
+              color: "#2d3648",
+            }}
+          >
+            خوارج
+          </span>
         </div>
       </div>
 
-      {/* خارج الوحده */}
       <div className="flex flex-col items-center">
         <span
           style={{
@@ -508,13 +659,259 @@ function DonutChartPanel({
         >
           {outside}
         </span>
-        <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
+
+        <span
+          style={{
+            ...F,
+            fontSize: 14,
+            color: "#2d3648",
+          }}
+        >
           خارج الوحده
         </span>
       </div>
     </div>
   );
 }
+
+// ─────────────────────────────────────────────────────────────
+// Source units panel
+// ─────────────────────────────────────────────────────────────
+
+interface SourceUnitRow {
+  unitName: string;
+  count: number;
+}
+
+function SourceUnitsPanel({
+  distribution,
+  totalCount,
+}: {
+  distribution: SourceUnitRow[];
+  totalCount: number;
+}) {
+  const half = Math.ceil(
+    distribution.length / 2
+  );
+
+  const leftColumn = distribution.slice(
+    0,
+    half
+  );
+
+  const rightColumn = distribution.slice(
+    half
+  );
+
+  const rowCount = Math.max(
+    leftColumn.length,
+    rightColumn.length
+  );
+
+  const thClass =
+    "px-3 py-2 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]";
+
+  const tdClass =
+    "px-3 py-2 text-right border-b border-[#eaecf0]";
+
+  return (
+    <div
+      className="flex flex-col gap-3 w-full h-full"
+      dir="rtl"
+    >
+      <div className="flex items-center justify-between w-full">
+        <span
+          style={{
+            ...F,
+            fontWeight: 700,
+            fontSize: 16,
+            color: "#2d3648",
+          }}
+        >
+          توزيع الأفراد حسب الوحدة الأصلية
+        </span>
+
+        <span
+          style={{
+            ...F,
+            fontSize: 13,
+            color: "#717d96",
+          }}
+        >
+          {distribution.length} وحدة مصدر
+        </span>
+      </div>
+
+      {distribution.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center py-6">
+          <span
+            style={{
+              ...F,
+              fontSize: 14,
+              color: "#a1aebe",
+            }}
+          >
+            لا يوجد أفراد ملحقين بهذه الوحدة حاليًا
+          </span>
+        </div>
+      ) : (
+        <div className="w-full overflow-x-auto max-h-[260px] overflow-y-auto rounded-[8px] border border-[#e2e7f0]">
+          <table
+            className="w-full min-w-[420px] border-collapse"
+            dir="rtl"
+          >
+            <thead>
+              <tr>
+                <th className={thClass}>
+                  <span
+                    style={{
+                      ...F,
+                      fontSize: 13,
+                      color: "#717d96",
+                    }}
+                  >
+                    الوحدة
+                  </span>
+                </th>
+
+                <th className={thClass}>
+                  <span
+                    style={{
+                      ...F,
+                      fontSize: 13,
+                      color: "#717d96",
+                    }}
+                  >
+                    العدد
+                  </span>
+                </th>
+
+                <th className={thClass}>
+                  <span
+                    style={{
+                      ...F,
+                      fontSize: 13,
+                      color: "#717d96",
+                    }}
+                  >
+                    الوحدة
+                  </span>
+                </th>
+
+                <th className={thClass}>
+                  <span
+                    style={{
+                      ...F,
+                      fontSize: 13,
+                      color: "#717d96",
+                    }}
+                  >
+                    العدد
+                  </span>
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {Array.from({
+                length: rowCount,
+              }).map((_, i) => {
+                const left = leftColumn[i];
+                const right = rightColumn[i];
+
+                return (
+                  <tr key={i}>
+                    <td className={tdClass}>
+                      <span
+                        style={{
+                          ...F,
+                          fontSize: 13,
+                          color: "#2d3648",
+                        }}
+                        dir="auto"
+                      >
+                        {left?.unitName ?? ""}
+                      </span>
+                    </td>
+
+                    <td className={tdClass}>
+                      <span
+                        style={{
+                          ...F,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: "#2d3648",
+                        }}
+                      >
+                        {left?.count ?? ""}
+                      </span>
+                    </td>
+
+                    <td className={tdClass}>
+                      <span
+                        style={{
+                          ...F,
+                          fontSize: 13,
+                          color: "#2d3648",
+                        }}
+                        dir="auto"
+                      >
+                        {right?.unitName ?? ""}
+                      </span>
+                    </td>
+
+                    <td className={tdClass}>
+                      <span
+                        style={{
+                          ...F,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: "#2d3648",
+                        }}
+                      >
+                        {right?.count ?? ""}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="w-full h-px bg-[#eff0f6]" />
+
+      <div className="flex items-center justify-between w-full">
+        <span
+          style={{
+            ...F,
+            fontSize: 13,
+            color: "#717d96",
+          }}
+        >
+          إجمالي الأفراد الملحقين
+        </span>
+
+        <span
+          style={{
+            ...F,
+            fontWeight: 700,
+            fontSize: 15,
+            color: "#2d3648",
+          }}
+        >
+          {totalCount}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Print styles
+// ─────────────────────────────────────────────────────────────
+
 function PrintStyles() {
   return (
     <style>
@@ -545,7 +942,8 @@ function PrintStyles() {
             border-collapse: collapse !important;
           }
 
-          th, td {
+          th,
+          td {
             border: 1px solid #ccc;
             padding: 6px !important;
           }
@@ -559,11 +957,18 @@ function PrintStyles() {
     </style>
   );
 }
+
+// ─────────────────────────────────────────────────────────────
+// Print report
+// ─────────────────────────────────────────────────────────────
+
 function UnitPrintReport({
   unit,
+  isMain,
   computed,
 }: {
   unit: DbUnit;
+  isMain: boolean;
   computed: {
     strengthCount: number;
     soldiersCount: number;
@@ -573,153 +978,402 @@ function UnitPrintReport({
     chartData: BarChartRow[];
     inside: number;
     outside: number;
+    sourceUnitsCount: number;
+    sourceUnitsDistribution: SourceUnitRow[];
   };
 }) {
-  const today = new Date().toLocaleDateString("ar-EG", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const today =
+    new Date().toLocaleDateString(
+      "ar-EG",
+      {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      }
+    );
 
   return (
-    <div className="unit-print-area hidden print:block" dir="rtl">
+    <div
+      className="unit-print-area hidden print:block"
+      dir="rtl"
+    >
       <div className="text-center mb-6">
-        <h2 style={{ ...F, fontSize: 22, fontWeight: 700 }}>
+        <h2
+          style={{
+            ...F,
+            fontSize: 22,
+            fontWeight: 700,
+          }}
+        >
           إحصائية الموقف العام - {unit.name}
         </h2>
-        <p style={{ ...F, fontSize: 14, marginTop: 6 }}>
+
+        <p
+          style={{
+            ...F,
+            fontSize: 14,
+            marginTop: 6,
+          }}
+        >
           تاريخ الطباعة: {today}
         </p>
       </div>
 
-      {/* الإحصائيات الأساسية */}
-      <table className="w-full mb-6" style={F}>
+      <table
+        className="w-full mb-6"
+        style={F}
+      >
         <thead>
           <tr>
             <th>البيان</th>
             <th>العدد</th>
           </tr>
         </thead>
+
         <tbody>
           <tr>
             <td>إجمالي القوة</td>
-            <td>{computed.strengthCount.toLocaleString("ar-EG")}</td>
+            <td>
+              {computed.strengthCount.toLocaleString(
+                "ar-EG"
+              )}
+            </td>
           </tr>
+
           <tr>
             <td>إجمالي ضباط الصف</td>
-            <td>{computed.ncosCount.toLocaleString("ar-EG")}</td>
+            <td>
+              {computed.ncosCount.toLocaleString(
+                "ar-EG"
+              )}
+            </td>
           </tr>
+
           <tr>
             <td>إجمالي الجنود</td>
-            <td>{computed.soldiersCount.toLocaleString("ar-EG")}</td>
+            <td>
+              {computed.soldiersCount.toLocaleString(
+                "ar-EG"
+              )}
+            </td>
           </tr>
-          <tr>
-            <td>إجمالي الخوارج</td>
-            <td>{computed.khawarijCount.toLocaleString("ar-EG")}</td>
-          </tr>
-        </tbody>
-      </table>
 
-      {/* تفصيل الخوارج */}
-      <table className="w-full mb-6" style={F}>
-        <thead>
-          <tr>
-            <th>الفئة</th>
-            <th>داخل الوحدة</th>
-            <th>خارج الوحدة (خوارج)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {computed.chartData.map((row) => (
-            <tr key={row.label}>
-              <td>{row.label}</td>
-              <td>{row.remaining.toLocaleString("ar-EG")}</td>
-              <td>{row.outside.toLocaleString("ar-EG")}</td>
+          {isMain ? (
+            <tr>
+              <td>إجمالي الخوارج</td>
+              <td>
+                {computed.khawarijCount.toLocaleString(
+                  "ar-EG"
+                )}
+              </td>
             </tr>
-          ))}
+          ) : (
+            <tr>
+              <td>عدد الوحدات المصدر</td>
+              <td>
+                {computed.sourceUnitsCount.toLocaleString(
+                  "ar-EG"
+                )}
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
 
-      {/* نسبة الخوارج */}
-      <p style={{ ...F, fontSize: 16, textAlign: "center", marginTop: 20 }}>
-        نسبة الخوارج: {computed.khawarijPct}% ({computed.outside} فرد من
-        إجمالي {computed.strengthCount} فرد)
-      </p>
+      {isMain ? (
+        <>
+          <table
+            className="w-full mb-6"
+            style={F}
+          >
+            <thead>
+              <tr>
+                <th>الفئة</th>
+                <th>داخل الوحدة</th>
+                <th>خارج الوحدة (خوارج)</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {computed.chartData.map(
+                (row) => (
+                  <tr key={row.label}>
+                    <td>{row.label}</td>
+
+                    <td>
+                      {row.remaining.toLocaleString(
+                        "ar-EG"
+                      )}
+                    </td>
+
+                    <td>
+                      {row.outside.toLocaleString(
+                        "ar-EG"
+                      )}
+                    </td>
+                  </tr>
+                )
+              )}
+            </tbody>
+          </table>
+
+          <p
+            style={{
+              ...F,
+              fontSize: 16,
+              textAlign: "center",
+              marginTop: 20,
+            }}
+          >
+            نسبة الخوارج:{" "}
+            {computed.khawarijPct}% (
+            {computed.outside} فرد من إجمالي{" "}
+            {computed.strengthCount} فرد)
+          </p>
+        </>
+      ) : (
+        <>
+          <table
+            className="w-full mb-6"
+            style={F}
+          >
+            <thead>
+              <tr>
+                <th>الوحدة الأصلية</th>
+                <th>عدد الأفراد الملحقين</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {computed.sourceUnitsDistribution
+                .length === 0 ? (
+                <tr>
+                  <td colSpan={2}>
+                    لا يوجد أفراد ملحقين بهذه الوحدة
+                  </td>
+                </tr>
+              ) : (
+                computed.sourceUnitsDistribution.map(
+                  (row) => (
+                    <tr key={row.unitName}>
+                      <td>{row.unitName}</td>
+                      <td>
+                        {row.count.toLocaleString(
+                          "ar-EG"
+                        )}
+                      </td>
+                    </tr>
+                  )
+                )
+              )}
+            </tbody>
+          </table>
+
+          <p
+            style={{
+              ...F,
+              fontSize: 16,
+              textAlign: "center",
+              marginTop: 20,
+            }}
+          >
+            إجمالي الأفراد الملحقين بالوحدة:{" "}
+            {computed.strengthCount} فرد من{" "}
+            {computed.sourceUnitsCount} وحدة مصدر
+          </p>
+        </>
+      )}
     </div>
   );
 }
 
-// ─── Helpers للمطابقة مع قاعدة البيانات ────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
 
-function isMainUnitType(unitType: string | null): boolean {
-  return unitType?.trim().toUpperCase() === "MAIN";
+function isMainUnitType(
+  unitType: string | null
+): boolean {
+  return (
+    unitType?.trim().toUpperCase() ===
+    "MAIN"
+  );
 }
 
-function isConscriptCategory(cat: DbPersonnelCategory | undefined): boolean {
+function isConscriptCategory(
+  cat: DbPersonnelCategory | undefined
+): boolean {
   if (!cat) return false;
-  const code = cat.code?.toUpperCase() ?? "";
-  return cat.name === "مجند" || code === "CONSCRIPT" || code === "SOLDIER";
+
+  const code =
+    cat.code?.toUpperCase() ?? "";
+
+  return (
+    cat.name === "مجند" ||
+    code === "CONSCRIPT" ||
+    code === "SOLDIER"
+  );
 }
 
-function isVolunteerCategory(cat: DbPersonnelCategory | undefined): boolean {
+function isVolunteerCategory(
+  cat: DbPersonnelCategory | undefined
+): boolean {
   if (!cat) return false;
-  const code = cat.code?.toUpperCase() ?? "";
-  return cat.name === "متطوع" || code === "VOLUNTEER";
+
+  const code =
+    cat.code?.toUpperCase() ?? "";
+
+  return (
+    cat.name === "متطوع" ||
+    code === "VOLUNTEER"
+  );
 }
 
-function isAttachedStatus(status: DbServiceStatus | undefined): boolean {
+function isAttachedStatus(
+  status: DbServiceStatus | undefined
+): boolean {
   if (!status) return false;
-  const code = status.code?.toUpperCase() ?? "";
-  return code === "ATTACHED" || status.name === "ملحق علي القوة";
+
+  const code =
+    status.code?.toUpperCase() ?? "";
+
+  return (
+    code === "ATTACHED" ||
+    status.name === "ملحق علي القوة"
+  );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
-const TABLE_COLS = [
-  { key: "milId", label: "رقم عسكري" },
-  { key: "rank", label: "درجة" },
-  { key: "name", label: "اسم" },
-  { key: "serviceType", label: "نوع الخدمه" },
-  { key: "status", label: "حالة التوزيع" },
-  { key: "attachment", label: "مكان الالحاق" },
-  { key: "actions", label: "الاجراء" },
+// ترتيب المتطوعين
+const VOLUNTEER_RANK_ORDER = [
+  "مساعد اول",
+  "مساعد",
+  "رقيب اول",
+  "رقيب",
+  "عريف",
 ];
 
+function getVolunteerRankIndex(
+  rankName: string
+): number {
+  const idx =
+    VOLUNTEER_RANK_ORDER.findIndex(
+      (r) => rankName.includes(r)
+    );
+
+  return idx === -1
+    ? VOLUNTEER_RANK_ORDER.length
+    : idx;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Table columns
+// ─────────────────────────────────────────────────────────────
+
+function getTableCols(isMain: boolean) {
+  return [
+    {
+      key: "milId",
+      label: "رقم عسكري",
+    },
+    {
+      key: "rank",
+      label: "درجة",
+    },
+    {
+      key: "name",
+      label: "اسم",
+    },
+    {
+      key: "serviceType",
+      label: "نوع الخدمه",
+    },
+
+    ...(isMain
+      ? [
+          {
+            key: "status",
+            label: "حالة التوزيع",
+          },
+        ]
+      : []),
+
+    {
+      key: "attachment",
+      label: isMain
+        ? "مكان الالحاق"
+        : "الوحدة الأساسية",
+    },
+
+    {
+      key: "actions",
+      label: "الاجراء",
+    },
+  ];
+}
+
+// ─────────────────────────────────────────────────────────────
+// Page
+// ─────────────────────────────────────────────────────────────
 
 export function UnitDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const [unit, setUnit] = useState<DbUnit | null>(null);
-  const [unitPersonnel, setUnitPersonnel] = useState<DbPersonnelRow[]>([]);
-  const [ranks, setRanks] = useState<DbRank[]>([]);
-  const [categories, setCategories] = useState<DbPersonnelCategory[]>([]);
-  const [statuses, setStatuses] = useState<DbServiceStatus[]>([]);
-  const [unitNamesById, setUnitNamesById] = useState<Record<string, string>>(
-    {}
-  );
+  const [unit, setUnit] =
+    useState<DbUnit | null>(null);
 
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
+  const [unitPersonnel, setUnitPersonnel] =
+    useState<DbPersonnelRow[]>([]);
+
+  const [ranks, setRanks] =
+    useState<DbRank[]>([]);
+
+  const [categories, setCategories] =
+    useState<DbPersonnelCategory[]>([]);
+
+  const [statuses, setStatuses] =
+    useState<DbServiceStatus[]>([]);
+
+  const [unitNamesById, setUnitNamesById] =
+    useState<Record<string, string>>({});
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [notFound, setNotFound] =
+    useState(false);
+
+  // ─────────────────────────────────────
+  // Load data
+  // ─────────────────────────────────────
 
   useEffect(() => {
     if (id) {
       loadUnitDetail(id);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  async function loadUnitDetail(unitId: string) {
+  async function loadUnitDetail(
+    unitId: string
+  ) {
     try {
       setLoading(true);
       setNotFound(false);
 
-      const { data: unitRow, error: unitError } = await supabase
+      const {
+        data: unitRow,
+        error: unitError,
+      } = await supabase
         .from("units")
-        .select("id,name,code,unit_type,parent_unit_id,is_active")
+        .select(
+          "id,name,code,unit_type,parent_unit_id,is_active"
+        )
         .eq("id", unitId)
         .maybeSingle();
 
-      if (unitError) throw unitError;
+      if (unitError) {
+        throw unitError;
+      }
 
       if (!unitRow) {
         setNotFound(true);
@@ -727,7 +1381,10 @@ export function UnitDetailPage() {
         return;
       }
 
-      const isMain = isMainUnitType(unitRow.unit_type);
+      const main =
+        isMainUnitType(
+          unitRow.unit_type
+        );
 
       const [
         personnelResult,
@@ -736,53 +1393,111 @@ export function UnitDetailPage() {
         statusesResult,
         unitsResult,
       ] = await Promise.all([
-        // قوة الوحدة الرئيسية = الأفراد اللي وحدتهم الأساسية هي دي
-        // قوة الوحدة الإدارية = الأفراد اللي مكان إلحاقهم هو دي
-        isMain
+        main
           ? supabase
               .from("personnel")
               .select(
-                "id,military_number,full_name,rank_id,personnel_category_id,service_status_id,primary_unit_id,attachment_unit_id,is_active"
+                "id,military_number,full_name,rank_id,personnel_category_id,service_status_id,primary_unit_id,attachment_unit_id,is_active,discharge_date"
               )
-              .eq("primary_unit_id", unitId)
+              .eq(
+                "primary_unit_id",
+                unitId
+              )
               .eq("is_active", true)
           : supabase
               .from("personnel")
               .select(
-                "id,military_number,full_name,rank_id,personnel_category_id,service_status_id,primary_unit_id,attachment_unit_id,is_active"
+                "id,military_number,full_name,rank_id,personnel_category_id,service_status_id,primary_unit_id,attachment_unit_id,is_active,discharge_date"
               )
-              .eq("attachment_unit_id", unitId)
+              .eq(
+                "attachment_unit_id",
+                unitId
+              )
               .eq("is_active", true),
 
-        supabase.from("ranks").select("id,name,code"),
-        supabase.from("personnel_categories").select("id,name,code"),
-        supabase.from("service_statuses").select("id,name,code"),
-        supabase.from("units").select("id,name"),
+        supabase
+          .from("ranks")
+          .select("id,name,code"),
+
+        supabase
+          .from("personnel_categories")
+          .select("id,name,code"),
+
+        supabase
+          .from("service_statuses")
+          .select("id,name,code"),
+
+        supabase
+          .from("units")
+          .select("id,name"),
       ]);
 
-      if (personnelResult.error) throw personnelResult.error;
-      if (ranksResult.error) throw ranksResult.error;
-      if (categoriesResult.error) throw categoriesResult.error;
-      if (statusesResult.error) throw statusesResult.error;
-      if (unitsResult.error) throw unitsResult.error;
+      if (personnelResult.error) {
+        throw personnelResult.error;
+      }
+
+      if (ranksResult.error) {
+        throw ranksResult.error;
+      }
+
+      if (categoriesResult.error) {
+        throw categoriesResult.error;
+      }
+
+      if (statusesResult.error) {
+        throw statusesResult.error;
+      }
+
+      if (unitsResult.error) {
+        throw unitsResult.error;
+      }
 
       setUnit(unitRow);
-      setUnitPersonnel(personnelResult.data ?? []);
-      setRanks(ranksResult.data ?? []);
-      setCategories(categoriesResult.data ?? []);
-      setStatuses(statusesResult.data ?? []);
 
-      const namesMap: Record<string, string> = {};
-      (unitsResult.data ?? []).forEach((u: { id: string; name: string }) => {
-        namesMap[u.id] = u.name;
-      });
+      setUnitPersonnel(
+        personnelResult.data ?? []
+      );
+
+      setRanks(
+        ranksResult.data ?? []
+      );
+
+      setCategories(
+        categoriesResult.data ?? []
+      );
+
+      setStatuses(
+        statusesResult.data ?? []
+      );
+
+      const namesMap: Record<
+        string,
+        string
+      > = {};
+
+      (
+        unitsResult.data ?? []
+      ).forEach(
+        (u: {
+          id: string;
+          name: string;
+        }) => {
+          namesMap[u.id] = u.name;
+        }
+      );
+
       setUnitNamesById(namesMap);
     } catch (error: any) {
-      console.error("Error loading unit detail:", error);
+      console.error(
+        "Error loading unit detail:",
+        error
+      );
 
       alert(
         `حدث خطأ أثناء تحميل بيانات الوحدة${
-          error?.message ? `\n\nتفاصيل الخطأ: ${error.message}` : ""
+          error?.message
+            ? `\n\nتفاصيل الخطأ: ${error.message}`
+            : ""
         }`
       );
     } finally {
@@ -790,112 +1505,401 @@ export function UnitDetailPage() {
     }
   }
 
+  // ─────────────────────────────────────
+  // Maps
+  // ─────────────────────────────────────
+
   const rankById = useMemo(() => {
-    const map = new Map<string, DbRank>();
-    ranks.forEach((r) => map.set(r.id, r));
+    const map =
+      new Map<string, DbRank>();
+
+    ranks.forEach((r) =>
+      map.set(r.id, r)
+    );
+
     return map;
   }, [ranks]);
 
   const categoryById = useMemo(() => {
-    const map = new Map<string, DbPersonnelCategory>();
-    categories.forEach((c) => map.set(c.id, c));
+    const map =
+      new Map<
+        string,
+        DbPersonnelCategory
+      >();
+
+    categories.forEach((c) =>
+      map.set(c.id, c)
+    );
+
     return map;
   }, [categories]);
 
   const statusById = useMemo(() => {
-    const map = new Map<string, DbServiceStatus>();
-    statuses.forEach((s) => map.set(s.id, s));
+    const map =
+      new Map<
+        string,
+        DbServiceStatus
+      >();
+
+    statuses.forEach((s) =>
+      map.set(s.id, s)
+    );
+
     return map;
   }, [statuses]);
 
-  const isMain = isMainUnitType(unit?.unit_type ?? null);
+  const isMain = isMainUnitType(
+    unit?.unit_type ?? null
+  );
 
-  // ---- الإحصائيات المحسوبة ----
+  // ─────────────────────────────────────
+  // Sorted personnel
+  // ─────────────────────────────────────
+  //
+  // الترتيب:
+  // 1. المتطوعون أولاً
+  // 2. المتطوعون حسب الرتبة
+  // 3. المجندون حسب تاريخ التسريح
+  // 4. أي فئات أخرى في النهاية
+  //
+  // ─────────────────────────────────────
+
+  const sortedPersonnel = useMemo(() => {
+    return [...unitPersonnel].sort(
+      (a, b) => {
+        const catA =
+          categoryById.get(
+            a.personnel_category_id ?? ""
+          );
+
+        const catB =
+          categoryById.get(
+            b.personnel_category_id ?? ""
+          );
+
+        const aIsVolunteer =
+          isVolunteerCategory(catA);
+
+        const bIsVolunteer =
+          isVolunteerCategory(catB);
+
+        // المتطوعون أولاً
+        if (
+          aIsVolunteer &&
+          !bIsVolunteer
+        ) {
+          return -1;
+        }
+
+        if (
+          !aIsVolunteer &&
+          bIsVolunteer
+        ) {
+          return 1;
+        }
+
+        // لو الاتنين متطوعين
+        if (
+          aIsVolunteer &&
+          bIsVolunteer
+        ) {
+          const rankNameA =
+            rankById.get(
+              a.rank_id ?? ""
+            )?.name ?? "";
+
+          const rankNameB =
+            rankById.get(
+              b.rank_id ?? ""
+            )?.name ?? "";
+
+          const rankIndexA =
+            getVolunteerRankIndex(
+              rankNameA
+            );
+
+          const rankIndexB =
+            getVolunteerRankIndex(
+              rankNameB
+            );
+
+          if (
+            rankIndexA !== rankIndexB
+          ) {
+            return (
+              rankIndexA -
+              rankIndexB
+            );
+          }
+
+          return rankNameA.localeCompare(
+            rankNameB,
+            "ar"
+          );
+        }
+
+        // المجندون حسب تاريخ التسريح
+        const dateA =
+          a.discharge_date;
+
+        const dateB =
+          b.discharge_date;
+
+        if (!dateA && !dateB) {
+          return 0;
+        }
+
+        if (!dateA) {
+          return 1;
+        }
+
+        if (!dateB) {
+          return -1;
+        }
+
+        return dateA.localeCompare(
+          dateB
+        );
+      }
+    );
+  }, [
+    unitPersonnel,
+    categoryById,
+    rankById,
+  ]);
+
+  // ─────────────────────────────────────
+  // Computed statistics
+  // ─────────────────────────────────────
+
   const computed = useMemo(() => {
-    const strengthCount = unitPersonnel.length;
+    const strengthCount =
+      unitPersonnel.length;
 
-    const soldiers = unitPersonnel.filter((p) =>
-      isConscriptCategory(categoryById.get(p.personnel_category_id ?? ""))
-    );
+    const soldiers =
+      unitPersonnel.filter((p) =>
+        isConscriptCategory(
+          categoryById.get(
+            p.personnel_category_id ?? ""
+          )
+        )
+      );
 
-    const ncos = unitPersonnel.filter((p) =>
-      isVolunteerCategory(categoryById.get(p.personnel_category_id ?? ""))
-    );
+    const ncos =
+      unitPersonnel.filter((p) =>
+        isVolunteerCategory(
+          categoryById.get(
+            p.personnel_category_id ?? ""
+          )
+        )
+      );
 
-    // الخوارج مفهوم خاص بالوحدة الأساسية فقط: فرد حالته الخدمية "ملحق علي القوة"
     const khawarijList = isMain
       ? unitPersonnel.filter((p) =>
-          isAttachedStatus(statusById.get(p.service_status_id ?? ""))
+          isAttachedStatus(
+            statusById.get(
+              p.service_status_id ?? ""
+            )
+          )
         )
       : [];
 
-    const soldiersKhawarijCount = isMain
-      ? soldiers.filter((p) =>
-          isAttachedStatus(statusById.get(p.service_status_id ?? ""))
-        ).length
-      : 0;
+    const soldiersKhawarijCount =
+      isMain
+        ? soldiers.filter((p) =>
+            isAttachedStatus(
+              statusById.get(
+                p.service_status_id ?? ""
+              )
+            )
+          ).length
+        : 0;
 
-    const ncosKhawarijCount = isMain
-      ? ncos.filter((p) =>
-          isAttachedStatus(statusById.get(p.service_status_id ?? ""))
-        ).length
-      : 0;
+    const ncosKhawarijCount =
+      isMain
+        ? ncos.filter((p) =>
+            isAttachedStatus(
+              statusById.get(
+                p.service_status_id ?? ""
+              )
+            )
+          ).length
+        : 0;
 
-    const khawarijCount = khawarijList.length;
+    const khawarijCount =
+      khawarijList.length;
 
     const khawarijPct =
-      isMain && strengthCount > 0
-        ? Math.round((khawarijCount / strengthCount) * 100)
+      isMain &&
+      strengthCount > 0
+        ? Math.round(
+            (khawarijCount /
+              strengthCount) *
+              100
+          )
         : 0;
 
     const chartData: BarChartRow[] = [
       {
         label: "اجمالي ضباط الصف",
-        outside: ncosKhawarijCount,
-        remaining: ncos.length - ncosKhawarijCount,
+        outside:
+          ncosKhawarijCount,
+        remaining: Math.max(
+          0,
+          ncos.length -
+            ncosKhawarijCount
+        ),
       },
+
       {
         label: "اجمالي الجنود",
-        outside: soldiersKhawarijCount,
-        remaining: soldiers.length - soldiersKhawarijCount,
+        outside:
+          soldiersKhawarijCount,
+        remaining: Math.max(
+          0,
+          soldiers.length -
+            soldiersKhawarijCount
+        ),
       },
+
       {
         label: "اجمالي القوة",
-        outside: khawarijCount,
-        remaining: strengthCount - khawarijCount,
+        outside:
+          khawarijCount,
+        remaining: Math.max(
+          0,
+          strengthCount -
+            khawarijCount
+        ),
       },
     ];
 
+    // توزيع الأفراد حسب الوحدة الأصلية
+    const sourceUnitsCountMap =
+      new Map<string, number>();
+
+    if (!isMain) {
+      unitPersonnel.forEach((p) => {
+        const sourceUnitId =
+          p.primary_unit_id;
+
+        const sourceUnitName =
+          sourceUnitId
+            ? unitNamesById[
+                sourceUnitId
+              ] ?? "غير محدد"
+            : "غير محدد";
+
+        sourceUnitsCountMap.set(
+          sourceUnitName,
+          (sourceUnitsCountMap.get(
+            sourceUnitName
+          ) ?? 0) + 1
+        );
+      });
+    }
+
+    const sourceUnitsDistribution =
+      Array.from(
+        sourceUnitsCountMap.entries()
+      )
+        .map(
+          ([
+            unitName,
+            count,
+          ]) => ({
+            unitName,
+            count,
+          })
+        )
+        .sort(
+          (a, b) =>
+            b.count - a.count
+        );
+
     return {
       strengthCount,
-      soldiersCount: soldiers.length,
-      ncosCount: ncos.length,
+
+      soldiersCount:
+        soldiers.length,
+
+      ncosCount:
+        ncos.length,
+
       khawarijCount,
+
       khawarijPct,
+
       chartData,
-      inside: strengthCount - khawarijCount,
-      outside: khawarijCount,
+
+      inside:
+        Math.max(
+          0,
+          strengthCount -
+            khawarijCount
+        ),
+
+      outside:
+        khawarijCount,
+
+      sourceUnitsCount:
+        sourceUnitsCountMap.size,
+
+      sourceUnitsDistribution,
     };
-  }, [unitPersonnel, categoryById, statusById, isMain]);
+  }, [
+    unitPersonnel,
+    categoryById,
+    statusById,
+    isMain,
+    unitNamesById,
+  ]);
+
+  // ─────────────────────────────────────
+  // Print
+  // ─────────────────────────────────────
+
   function handlePrintUnitStats() {
-    const originalTitle = document.title;
+    if (!unit) return;
 
-  document.title = `احصائيه الموقف العام ${unit.name}`;
+    const originalTitle =
+      document.title;
 
-  window.print();
+    document.title =
+      `احصائيه الموقف العام ${unit.name}`;
 
-  document.title = originalTitle;
-}
+    window.print();
+
+    document.title =
+      originalTitle;
+  }
+
+  // ─────────────────────────────────────
+  // Loading
+  // ─────────────────────────────────────
 
   if (loading) {
     return (
-      <div dir="rtl" className="w-full flex items-center justify-center py-20">
-        <p style={{ ...F, fontSize: 18, color: "#415844" }}>
+      <div
+        dir="rtl"
+        className="w-full flex items-center justify-center py-20"
+      >
+        <p
+          style={{
+            ...F,
+            fontSize: 18,
+            color: "#415844",
+          }}
+        >
           جاري تحميل البيانات...
         </p>
       </div>
     );
   }
+
+  // ─────────────────────────────────────
+  // Not found
+  // ─────────────────────────────────────
 
   if (notFound || !unit) {
     return (
@@ -903,15 +1907,32 @@ export function UnitDetailPage() {
         dir="rtl"
         className="w-full flex flex-col items-center justify-center gap-4 py-20"
       >
-        <p style={{ ...F, fontSize: 18, color: "#2d3648" }}>
+        <p
+          style={{
+            ...F,
+            fontSize: 18,
+            color: "#2d3648",
+          }}
+        >
           لم يتم العثور على هذه الوحدة
         </p>
+
         <button
           type="button"
-          onClick={() => navigate("/dashboard/units-report")}
+          onClick={() =>
+            navigate(
+              "/dashboard/units-report"
+            )
+          }
           className="h-[40px] px-5 rounded-[8px] bg-[#DCF4DF]"
         >
-          <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
+          <span
+            style={{
+              ...F,
+              fontSize: 14,
+              color: "#2d3648",
+            }}
+          >
             العودة لقائمة الوحدات
           </span>
         </button>
@@ -919,43 +1940,124 @@ export function UnitDetailPage() {
     );
   }
 
-  const STATS = [
-    {
-      label: "اجمالي القوة",
-      value: computed.strengthCount.toLocaleString("ar-EG"),
-      icon: <IconGroup />,
-    },
-    {
-      label: "اجمالي ضباط الصف",
-      value: computed.ncosCount.toLocaleString("ar-EG"),
-      icon: <IconNCO />,
-    },
-     {
-      label: "اجمالي الجنود",
-      value: computed.soldiersCount.toLocaleString("ar-EG"),
-      icon: <IconSoldiers />,
-    },
-    {
-      label: "اجمالي الخوارج",
-      value: computed.khawarijCount.toLocaleString("ar-EG"),
-      icon: <IconKhawarij />,
-    },
-   
-    
-    
-  ];
+  // ─────────────────────────────────────
+  // Table columns
+  // ─────────────────────────────────────
+
+  const tableCols =
+    getTableCols(isMain);
+
+  // ─────────────────────────────────────
+  // Stats cards
+  // ─────────────────────────────────────
+
+  const STATS = isMain
+    ? [
+        {
+          label: "اجمالي القوة",
+          value:
+            computed.strengthCount.toLocaleString(
+              "ar-EG"
+            ),
+          icon: <IconGroup />,
+        },
+
+        {
+          label: "اجمالي ضباط الصف",
+          value:
+            computed.ncosCount.toLocaleString(
+              "ar-EG"
+            ),
+          icon: <IconNCO />,
+        },
+
+        {
+          label: "اجمالي الجنود",
+          value:
+            computed.soldiersCount.toLocaleString(
+              "ar-EG"
+            ),
+          icon: <IconSoldiers />,
+        },
+
+        {
+          label: "اجمالي الخوارج",
+          value:
+            computed.khawarijCount.toLocaleString(
+              "ar-EG"
+            ),
+          icon: <IconKhawarij />,
+        },
+      ]
+    : [
+        {
+          label: "اجمالي القوة",
+          value:
+            computed.strengthCount.toLocaleString(
+              "ar-EG"
+            ),
+          icon: <IconGroup />,
+        },
+
+        {
+          label: "اجمالي ضباط الصف",
+          value:
+            computed.ncosCount.toLocaleString(
+              "ar-EG"
+            ),
+          icon: <IconNCO />,
+        },
+
+        {
+          label: "اجمالي الجنود",
+          value:
+            computed.soldiersCount.toLocaleString(
+              "ar-EG"
+            ),
+          icon: <IconSoldiers />,
+        },
+
+        {
+          label: "عدد الوحدات المصدر",
+          value:
+            computed.sourceUnitsCount.toLocaleString(
+              "ar-EG"
+            ),
+          icon: (
+            <Building2
+              size={24}
+              className="text-[#00522E]"
+              strokeWidth={2}
+            />
+          ),
+        },
+      ];
+
+  // ─────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────
 
   return (
-    <div className="flex flex-col gap-5 w-full" dir="rtl">
+    <div
+      className="flex flex-col gap-5 w-full"
+      dir="rtl"
+    >
       <PrintStyles />
-    <UnitPrintReport unit={unit} computed={computed} />
-      {/* ── Page title ─────────────────────────────── */}
+
+      <UnitPrintReport
+        unit={unit}
+        isMain={isMain}
+        computed={computed}
+      />
+
+      {/* Page title */}
       <h1
         className="text-center w-full"
         style={{
           ...F,
           fontWeight: 700,
-          fontSize: "clamp(20px,3.5vw,30px)",
+          fontSize:
+            "clamp(20px,3.5vw,30px)",
           color: "#2d3648",
           lineHeight: 1.5,
         }}
@@ -963,20 +2065,33 @@ export function UnitDetailPage() {
         الموقف العام {unit.name}
       </h1>
 
-      {/* ── Stats section ──────────────────────────── */}
+      {/* Stats */}
       <section className="flex flex-col gap-3 w-full">
         <div className="flex items-center justify-between w-full">
           <h2
-            style={{ ...F, fontWeight: 700, fontSize: 24, color: "#2d3648" }}
+            style={{
+              ...F,
+              fontWeight: 700,
+              fontSize: 24,
+              color: "#2d3648",
+            }}
           >
             إحصائيات الوحدة
           </h2>
+
           <button
             type="button"
-            onClick={handlePrintUnitStats}
-            className="flex items-center gap-1.5 bg-[#DCF4DF] rounded-[8px] px-3 py-2 hover:opacity-80 transition-opacity"
+            onClick={
+              handlePrintUnitStats
+            }
+            className="flex items-center gap-1.5 bg-[#DCF4DF] rounded-[8px] px-3 py-2 hover:opacity-80 transition-opacity no-print"
           >
-            <svg width="16" height="16" viewBox="0 0 13.3333 13.3333" fill="none">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 13.3333 13.3333"
+              fill="none"
+            >
               <path
                 clipRule="evenodd"
                 d={svgPaths.pfd2e80}
@@ -984,6 +2099,7 @@ export function UnitDetailPage() {
                 fillRule="evenodd"
               />
             </svg>
+
             <span
               style={{
                 ...F,
@@ -1015,17 +2131,20 @@ export function UnitDetailPage() {
                 >
                   {s.value}
                 </span>
+
                 <span
                   style={{
                     ...F,
                     fontSize: 14,
                     color: "#717d96",
-                    whiteSpace: "nowrap",
+                    whiteSpace:
+                      "nowrap",
                   }}
                 >
                   {s.label}
                 </span>
               </div>
+
               <div className="flex items-center justify-center shrink-0">
                 {s.icon}
               </div>
@@ -1034,31 +2153,67 @@ export function UnitDetailPage() {
         </div>
       </section>
 
-      {/* ── Charts section ─────────────────────────── */}
+      {/* Charts */}
       <section className="flex flex-wrap gap-4 w-full items-stretch">
-        <div className="flex-1 min-w-[300px] bg-white rounded-[12px] border border-[#eff0f6] p-6">
-          <UnitBarChart data={computed.chartData} />
-        </div>
-        <div className="bg-white rounded-[12px] border border-[#eff0f6] p-5 w-[220px] min-w-[200px] flex items-center justify-center">
-          <DonutChartPanel
-            pct={computed.khawarijPct}
-            inside={computed.inside}
-            outside={computed.outside}
-          />
-        </div>
+        {isMain ? (
+          <>
+            <div className="flex-1 min-w-[300px] bg-white rounded-[12px] border border-[#eff0f6] p-6">
+              <UnitBarChart
+                data={
+                  computed.chartData
+                }
+              />
+            </div>
+
+            <div className="bg-white rounded-[12px] border border-[#eff0f6] p-5 w-[220px] min-w-[200px] flex items-center justify-center">
+              <DonutChartPanel
+                pct={
+                  computed.khawarijPct
+                }
+                inside={
+                  computed.inside
+                }
+                outside={
+                  computed.outside
+                }
+              />
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 min-w-[300px] bg-white rounded-[12px] border border-[#eff0f6] p-6">
+            <SourceUnitsPanel
+              distribution={
+                computed.sourceUnitsDistribution
+              }
+              totalCount={
+                computed.strengthCount
+              }
+            />
+          </div>
+        )}
       </section>
 
-      {/* ── Soldiers table ─────────────────────────── */}
+      {/* Personnel table */}
       <section className="bg-white rounded-[12px] border border-[#eff0f6] w-full overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#eff0f6]">
-          <h3 style={{ ...F, fontWeight: 700, fontSize: 24, color: "#2d3648" }}>
+          <h3
+            style={{
+              ...F,
+              fontWeight: 700,
+              fontSize: 24,
+              color: "#2d3648",
+            }}
+          >
             افراد الوحده
           </h3>
+
           <button
             type="button"
             className="hover:opacity-80 transition-opacity"
             onClick={() =>
-              navigate(`/dashboard/units-report/${unit.id}/soldiers`)
+              navigate(
+                `/dashboard/units-report/${unit.id}/soldiers`
+              )
             }
           >
             <span
@@ -1066,9 +2221,12 @@ export function UnitDetailPage() {
                 ...F,
                 fontWeight: 700,
                 fontSize: 18,
-                background: "linear-gradient(to bottom, #00b867, #00522e)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
+                background:
+                  "linear-gradient(to bottom, #00b867, #00522e)",
+                WebkitBackgroundClip:
+                  "text",
+                WebkitTextFillColor:
+                  "transparent",
               }}
             >
               عرض الجميع
@@ -1077,7 +2235,10 @@ export function UnitDetailPage() {
         </div>
 
         <div className="overflow-x-auto w-full">
-          <table className="w-full min-w-[720px]" dir="rtl">
+          <table
+            className="w-full min-w-[720px]"
+            dir="rtl"
+          >
             <thead>
               <tr className="bg-white border-b border-[#d4d8fa]">
                 <th className="w-10 px-4 py-3 text-center">
@@ -1087,139 +2248,235 @@ export function UnitDetailPage() {
                     readOnly
                   />
                 </th>
-                {TABLE_COLS.map((c) => (
-                  <th
-                    key={c.key}
-                    className="px-4 py-3 text-right whitespace-nowrap"
-                  >
-                    <div className="flex items-start gap-1 justify-start">
-                      <span
-                        style={{
-                          ...F,
-                          fontWeight: 700,
-                          fontSize: 12,
-                          color: "#717d96",
-                        }}
-                      >
-                        {c.label}
-                      </span>
-                      <svg
-                        className="shrink-0"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 16 16"
-                        fill="none"
-                      >
-                        <path
-                          d={svgPaths.p14089660}
-                          stroke="#A0ABC0"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="1.33"
-                        />
-                      </svg>
-                    </div>
-                  </th>
-                ))}
+
+                {tableCols.map(
+                  (c) => (
+                    <th
+                      key={c.key}
+                      className="px-4 py-3 text-right whitespace-nowrap"
+                    >
+                      <div className="flex items-start gap-1 justify-start">
+                        <span
+                          style={{
+                            ...F,
+                            fontWeight: 700,
+                            fontSize: 12,
+                            color:
+                              "#717d96",
+                          }}
+                        >
+                          {c.label}
+                        </span>
+
+                        <svg
+                          className="shrink-0"
+                          width="16"
+                          height="16"
+                          viewBox="0 0 16 16"
+                          fill="none"
+                        >
+                          <path
+                            d={
+                              svgPaths.p14089660
+                            }
+                            stroke="#A0ABC0"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="1.33"
+                          />
+                        </svg>
+                      </div>
+                    </th>
+                  )
+                )}
               </tr>
             </thead>
+
             <tbody>
-              {unitPersonnel.length === 0 ? (
+              {sortedPersonnel.length ===
+              0 ? (
                 <tr>
                   <td
-                    colSpan={TABLE_COLS.length + 1}
+                    colSpan={
+                      tableCols.length + 1
+                    }
                     className="text-center py-10"
-                    style={{ ...F, fontSize: 14, color: "#717d96" }}
+                    style={{
+                      ...F,
+                      fontSize: 14,
+                      color:
+                        "#717d96",
+                    }}
                   >
                     لا يوجد أفراد بهذه الوحدة
                   </td>
                 </tr>
               ) : (
-                unitPersonnel.map((row, idx) => {
-                  const rank = rankById.get(row.rank_id ?? "");
-                  const category = categoryById.get(
-                    row.personnel_category_id ?? ""
-                  );
-                  const status = statusById.get(row.service_status_id ?? "");
-                  const attachmentName = row.attachment_unit_id
-                    ? unitNamesById[row.attachment_unit_id] ?? "—"
-                    : "لا يوجد";
+                sortedPersonnel.map(
+                  (row, idx) => {
+                    const rank =
+                      rankById.get(
+                        row.rank_id ??
+                          ""
+                      );
 
-                  return (
-                    <tr
-                      key={row.id}
-                      className={`border-b border-[#eaecf0] ${
-                        idx % 2 === 0 ? "bg-white" : "bg-[#fafbff]"
-                      } hover:bg-[#f5f6fb] transition-colors`}
-                    >
-                      <td className="w-10 px-4 py-3 text-center">
-                        <input
-                          type="checkbox"
-                          className="w-4 h-4 rounded border-[#d4d8fa] cursor-pointer"
-                          readOnly
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          style={{
-                            ...F,
-                            fontSize: 14,
-                            color: "#2d3648",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {row.military_number}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
-                          {rank?.name ?? "—"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          style={{
-                            ...F,
-                            fontSize: 14,
-                            color: "#2d3648",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {row.full_name}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
-                          {category?.name ?? "—"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={status} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          style={{
-                            ...F,
-                            fontSize: 14,
-                            color: "#2d3648",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {attachmentName}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <ActionBtns
-                          onView={() =>
-                            navigate(
-                              `/dashboard/individual-query/soldier/${row.id}`
-                            )
-                          }
-                        />
-                      </td>
-                    </tr>
-                  );
-                })
+                    const category =
+                      categoryById.get(
+                        row.personnel_category_id ??
+                          ""
+                      );
+
+                    const status =
+                      statusById.get(
+                        row.service_status_id ??
+                          ""
+                      );
+
+                    // مهم:
+                    // مكان الإلحاق للوحدة الرئيسية
+                    // والوحدة الأساسية للوحدة الإدارية
+                    const attachmentName =
+                      isMain
+                        ? row.attachment_unit_id
+                          ? unitNamesById[
+                              row
+                                .attachment_unit_id
+                            ] ??
+                            "—"
+                          : "لا يوجد"
+                        : row.primary_unit_id
+                        ? unitNamesById[
+                            row
+                              .primary_unit_id
+                          ] ??
+                          "—"
+                        : "—";
+
+                    return (
+                      <tr
+                        key={row.id}
+                        className={`border-b border-[#eaecf0] ${
+                          idx % 2 === 0
+                            ? "bg-white"
+                            : "bg-[#fafbff]"
+                        } hover:bg-[#f5f6fb] transition-colors`}
+                      >
+                        {/* Checkbox */}
+                        <td className="w-10 px-4 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 rounded border-[#d4d8fa] cursor-pointer"
+                            readOnly
+                          />
+                        </td>
+
+                        {/* Military number */}
+                        <td className="px-4 py-3">
+                          <span
+                            style={{
+                              ...F,
+                              fontSize: 14,
+                              color:
+                                "#2d3648",
+                              whiteSpace:
+                                "nowrap",
+                            }}
+                          >
+                            {
+                              row.military_number
+                            }
+                          </span>
+                        </td>
+
+                        {/* Rank */}
+                        <td className="px-4 py-3">
+                          <span
+                            style={{
+                              ...F,
+                              fontSize: 14,
+                              color:
+                                "#2d3648",
+                            }}
+                          >
+                            {rank?.name ??
+                              "—"}
+                          </span>
+                        </td>
+
+                        {/* Name */}
+                        <td className="px-4 py-3">
+                          <span
+                            style={{
+                              ...F,
+                              fontSize: 14,
+                              color:
+                                "#2d3648",
+                              whiteSpace:
+                                "nowrap",
+                            }}
+                          >
+                            {row.full_name}
+                          </span>
+                        </td>
+
+                        {/* Service type */}
+                        <td className="px-4 py-3">
+                          <span
+                            style={{
+                              ...F,
+                              fontSize: 14,
+                              color:
+                                "#2d3648",
+                            }}
+                          >
+                            {category?.name ??
+                              "—"}
+                          </span>
+                        </td>
+
+                        {/* Status - main unit only */}
+                        {isMain && (
+                          <td className="px-4 py-3">
+                            <StatusBadge
+                              status={
+                                status
+                              }
+                            />
+                          </td>
+                        )}
+
+                        {/* Attachment / primary unit */}
+                        <td className="px-4 py-3">
+                          <span
+                            style={{
+                              ...F,
+                              fontSize: 14,
+                              color:
+                                "#2d3648",
+                              whiteSpace:
+                                "nowrap",
+                            }}
+                          >
+                            {
+                              attachmentName
+                            }
+                          </span>
+                        </td>
+
+                        {/* Actions */}
+                        <td className="px-4 py-3">
+                          <ActionBtns
+                            onView={() =>
+                              navigate(
+                                `/dashboard/individual-query/soldier/${row.id}`
+                              )
+                            }
+                          />
+                        </td>
+                      </tr>
+                    );
+                  }
+                )
               )}
             </tbody>
           </table>
@@ -1228,3 +2485,5 @@ export function UnitDetailPage() {
     </div>
   );
 }
+
+export default UnitDetailPage;

@@ -26,6 +26,7 @@ import { UnitTreePage } from "./pages/UnitTreePage";
 import { ManageUsersPage } from "./pages/ManageUsersPage";
 import ActivityLogPage from "./pages/ActivityLogPage";
 import { DataBackupPage } from "./pages/DataBackupPage";
+import { ManageBranchHeadsPage } from "./pages/ManageBranchHeadsPage";
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -60,6 +61,7 @@ export const router = createBrowserRouter([
       { path: "manage-units/:id/tree", Component: UnitTreePage },
       { path: "activity-log", Component: ActivityLogPage },
       { path: "data-backup", Component: DataBackupPage },
+      { path: "manage-branch-heads", Component: ManageBranchHeadsPage },
     ],
   },
 ]);

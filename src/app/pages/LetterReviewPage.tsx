@@ -4,38 +4,57 @@ import { Download, Printer } from "lucide-react";
 import type { CSSProperties } from "react";
 import html2canvas from "html2canvas-pro";
 
-
 import { supabase } from "../../lib/supabase";
 import imgEagle from "figma:asset/af406d517dfa4e5b22e9993bd61d8e4e002646b6.png";
 
+/* =========================================================
+   Fonts
+========================================================= */
 
 const F: CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
 
-
-// خط خاص بمعاينة/طباعة الخطاب فقط
 const PF: CSSProperties = {
   fontFamily: "'Times New Roman', Times, serif",
 };
 
-
 /* =========================================================
-   تحويل الأرقام الإنجليزية إلى أرقام عربية
+   Constants
 ========================================================= */
 
+const BLANK_SPACE = "ــــــــــــ";
+
+const ATTACH_STATUS_ID =
+  "d443b755-802a-4e5d-8a1b-0c372c5f94dd";
+
+const DETACH_STATUS_ID =
+  "b64822a7-38e3-4c98-b738-0f0f077bb6f2";
+
+/* =========================================================
+   Helpers
+========================================================= */
 
 const toArabicDigits = (
   value: string | number | null | undefined
 ): string => {
   if (value === null || value === undefined) return "";
 
-
   return String(value).replace(/\d/g, (digit) => {
     return "٠١٢٣٤٥٦٧٨٩"[Number(digit)];
   });
 };
 
+const getRelationObject = <T,>(
+  value: T | T[] | null | undefined
+): T | null => {
+  if (!value) return null;
+  return Array.isArray(value) ? value[0] ?? null : value;
+};
+
+/* =========================================================
+   Types
+========================================================= */
 
 type Soldier = {
   id: string;
@@ -50,7 +69,6 @@ type Soldier = {
   dischargeDate: string | null;
 };
 
-
 type LetterData = {
   destination: string;
   attachmentPlace: string;
@@ -58,7 +76,6 @@ type LetterData = {
   issuingUnitId?: string;
   attachmentUnitId?: string;
 };
-
 
 type PageState = {
   letterType?: "attachment" | "end-attachment";
@@ -68,13 +85,6 @@ type PageState = {
   soldiers?: Soldier[];
   letterData?: LetterData;
 };
-
-
-/* =========================================================
-   نتيجة عملية إنشاء ورفع المعاينة المؤقتة — تُستخدم للتشخيص
-   ولمعرفة سبب الفشل بدقة بدل الاكتفاء بتسجيل الخطأ فقط.
-========================================================= */
-
 
 type PreviewResult =
   | { ok: true }
@@ -89,78 +99,59 @@ type PreviewResult =
         | "db-update-failed";
     };
 
-
 /* =========================================================
-   تحويل عنصر الـ HTML الخاص بمعاينة الخطاب إلى PNG ورفعه
-   كصورة مؤقتة لحين رفع النسخة الموقعة رسميًا.
-
-
-   هذه الدالة "Best effort": أي فشل هنا لا يوقف عملية حفظ
-   الخطاب نفسها، فقط يتم تسجيل الخطأ بالتفصيل في الـ console
-   حتى يسهل تشخيص أي مشكلة مستقبلية (CORS / RLS / عمود مفقود...).
+   Preview Upload
 ========================================================= */
-
 
 async function generateAndUploadPreview(
   letterId: string
 ): Promise<PreviewResult> {
   console.log(
-    "[PREVIEW] بدء إنشاء المعاينة المؤقتة لـ letterId:",
+    "[PREVIEW] Starting preview generation:",
     letterId
   );
-
 
   const previewElement = document.querySelector(
     ".letter-preview"
   ) as HTMLElement | null;
 
-
   if (!previewElement) {
     console.warn(
-      "[PREVIEW] لم يتم العثور على عنصر .letter-preview في الـ DOM — تخطي إنشاء المعاينة المؤقتة"
+      "[PREVIEW] .letter-preview not found"
     );
-    return { ok: false, reason: "no-preview-element" };
+
+    return {
+      ok: false,
+      reason: "no-preview-element",
+    };
   }
-
-
-  // -----------------------------------------------------
-  // ✅ التأكد إن كل الصور جوه العنصر خلصت تحميل قبل الالتقاط
-  // (خصوصًا شعار الجمهورية) — تفادي التقاط الصورة وهي لسه
-  // بتتحمل، وهو سبب شائع لصور فاضية أو مقطوعة في النتيجة.
-  // -----------------------------------------------------
-
 
   const images = Array.from(
     previewElement.querySelectorAll("img")
   );
 
-
   await Promise.all(
     images.map((img) => {
-      if (img.complete) return Promise.resolve();
-
+      if (img.complete) {
+        return Promise.resolve();
+      }
 
       return new Promise<void>((resolve) => {
         img.onload = () => resolve();
+
         img.onerror = () => {
           console.warn(
-            "[PREVIEW] فشل تحميل صورة داخل المعاينة:",
+            "[PREVIEW] Image failed:",
             img.src
           );
-          resolve(); // نكمل حتى لو صورة واحدة فشلت تحميلها
+
+          resolve();
         };
       });
     })
   );
 
-
-  console.log(
-    "[PREVIEW] كل الصور جاهزة، جاري الالتقاط بـ html2canvas..."
-  );
-
-
   let canvas: HTMLCanvasElement;
-
 
   try {
     canvas = await html2canvas(previewElement, {
@@ -168,134 +159,111 @@ async function generateAndUploadPreview(
       backgroundColor: "#ffffff",
       useCORS: true,
       allowTaint: false,
-      logging: true, // يطبع تفاصيل html2canvas الداخلية في الكونسول للتشخيص
+      logging: false,
     });
-  } catch (captureError) {
+  } catch (error) {
     console.error(
-      "[PREVIEW] فشل html2canvas أثناء الالتقاط:",
-      captureError
+      "[PREVIEW] html2canvas failed:",
+      error
     );
-    return { ok: false, reason: "capture-failed" };
+
+    return {
+      ok: false,
+      reason: "capture-failed",
+    };
   }
-
-
-  console.log(
-    "[PREVIEW] تم الالتقاط بنجاح. أبعاد الـ canvas:",
-    canvas.width,
-    "x",
-    canvas.height
-  );
-
 
   let blob: Blob | null = null;
 
-
   try {
-    blob = await new Promise<Blob | null>((resolve, reject) => {
-      try {
-        canvas.toBlob((b) => resolve(b), "image/png");
-      } catch (taintedError) {
-        // canvas.toBlob بيرمي SecurityError مباشرة لو الـ canvas
-        // "tainted" بسبب صورة cross-origin بدون CORS headers صحيحة
-        reject(taintedError);
+    blob = await new Promise<Blob | null>(
+      (resolve, reject) => {
+        try {
+          canvas.toBlob(
+            (result) => resolve(result),
+            "image/png"
+          );
+        } catch (error) {
+          reject(error);
+        }
       }
-    });
-  } catch (blobError) {
-    console.error(
-      "[PREVIEW] ⚠️ فشل تحويل الـ canvas إلى Blob — على الأرجح الـ canvas أصبح tainted بسبب صورة الشعار (imgEagle) التي لا تدعم CORS بشكل صحيح:",
-      blobError
     );
-    return { ok: false, reason: "tainted-canvas" };
-  }
+  } catch (error) {
+    console.error(
+      "[PREVIEW] Canvas is probably tainted:",
+      error
+    );
 
+    return {
+      ok: false,
+      reason: "tainted-canvas",
+    };
+  }
 
   if (!blob) {
-    console.warn(
-      "[PREVIEW] canvas.toBlob رجّع null بدون سبب واضح — تخطي رفع المعاينة المؤقتة"
-    );
-    return { ok: false, reason: "empty-blob" };
+    return {
+      ok: false,
+      reason: "empty-blob",
+    };
   }
-
-
-  console.log(
-    "[PREVIEW] تم إنشاء الـ Blob بنجاح. الحجم بالبايت:",
-    blob.size
-  );
-
 
   const previewPath = `${letterId}/preview.png`;
 
-
-  console.log(
-    "[PREVIEW] جاري رفع الملف إلى Storage على المسار:",
-    previewPath
-  );
-
-
-  const { error: uploadError } = await supabase.storage
-    .from("letter-attachments")
-    .upload(previewPath, blob, {
-      cacheControl: "3600",
-      upsert: true,
-      contentType: "image/png",
-    });
-
+  const { error: uploadError } =
+    await supabase.storage
+      .from("letter-attachments")
+      .upload(previewPath, blob, {
+        cacheControl: "3600",
+        upsert: true,
+        contentType: "image/png",
+      });
 
   if (uploadError) {
     console.error(
-      "[PREVIEW] ❌ فشل رفع الملف إلى Storage:",
-      uploadError.message,
+      "[PREVIEW] Upload failed:",
       uploadError
     );
-    return { ok: false, reason: "upload-failed" };
+
+    return {
+      ok: false,
+      reason: "upload-failed",
+    };
   }
 
-
-  console.log(
-    "[PREVIEW] ✅ تم رفع الملف بنجاح، جاري تحديث جدول letters..."
-  );
-
-
-  const {
-    error: updateError,
-    data: updateData,
-  } = await supabase
-    .from("letters")
-    .update({ preview_image_path: previewPath })
-    .eq("id", letterId)
-    .select("id, preview_image_path");
-
+  const { error: updateError } =
+    await supabase
+      .from("letters")
+      .update({
+        preview_image_path: previewPath,
+      })
+      .eq("id", letterId);
 
   if (updateError) {
     console.error(
-      "[PREVIEW] ❌ فشل تحديث عمود preview_image_path — تحقق من وجود العمود في جدول letters وصلاحيات RLS للـ UPDATE:",
-      updateError.message,
+      "[PREVIEW] DB update failed:",
       updateError
     );
-    return { ok: false, reason: "db-update-failed" };
+
+    return {
+      ok: false,
+      reason: "db-update-failed",
+    };
   }
-
-
-  console.log(
-    "[PREVIEW] ✅ تم تحديث preview_image_path بنجاح:",
-    updateData
-  );
-
 
   return { ok: true };
 }
-
 
 /* =========================================================
    Loading Modal
 ========================================================= */
 
-
 function LoadingModal() {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: "rgba(0,0,0,.45)" }}
+      style={{
+        background: "rgba(0,0,0,.45)",
+      }}
     >
       <div
         className="bg-white rounded-[24px] flex flex-col items-center justify-center"
@@ -321,7 +289,6 @@ function LoadingModal() {
           ))}
         </div>
 
-
         <p
           style={{
             ...F,
@@ -333,7 +300,6 @@ function LoadingModal() {
         >
           يرجى الانتظار
         </p>
-
 
         <p
           style={{
@@ -348,7 +314,6 @@ function LoadingModal() {
         </p>
       </div>
 
-
       <style>
         {`
           @keyframes reviewBounce {
@@ -356,7 +321,6 @@ function LoadingModal() {
               transform: translateY(0);
               opacity: 1;
             }
-
 
             40% {
               transform: translateY(-14px);
@@ -369,11 +333,9 @@ function LoadingModal() {
   );
 }
 
-
 /* =========================================================
    Success Modal
 ========================================================= */
-
 
 function SuccessModal({
   letterNumber,
@@ -383,7 +345,9 @@ function SuccessModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: "rgba(0,0,0,.45)" }}
+      style={{
+        background: "rgba(0,0,0,.45)",
+      }}
     >
       <div
         className="bg-white rounded-[24px] flex flex-col items-center justify-center text-center"
@@ -411,7 +375,6 @@ function SuccessModal({
           </span>
         </div>
 
-
         <p
           style={{
             ...F,
@@ -424,7 +387,6 @@ function SuccessModal({
           عملية ناجحة!
         </p>
 
-
         <p
           style={{
             ...F,
@@ -436,7 +398,6 @@ function SuccessModal({
         >
           تم حفظ الخطاب وتحديث بيانات الأفراد بنجاح
         </p>
-
 
         {letterNumber !== null && (
           <p
@@ -451,7 +412,6 @@ function SuccessModal({
             رقم الخطاب: {toArabicDigits(letterNumber)}
           </p>
         )}
-
 
         <p
           style={{
@@ -468,11 +428,9 @@ function SuccessModal({
   );
 }
 
-
 /* =========================================================
    Step Bubble
 ========================================================= */
-
 
 function StepBubble({
   number,
@@ -493,8 +451,8 @@ function StepBubble({
           borderColor: done
             ? "#00a85a"
             : active
-              ? "#2d3648"
-              : "#a1aebe",
+            ? "#2d3648"
+            : "#a1aebe",
           background: done ? "#00a85a" : "#fff",
         }}
       >
@@ -509,7 +467,6 @@ function StepBubble({
         </span>
       </div>
 
-
       <span
         style={{
           ...F,
@@ -517,8 +474,8 @@ function StepBubble({
           color: done
             ? "#00864d"
             : active
-              ? "#2d3648"
-              : "#465668",
+            ? "#2d3648"
+            : "#465668",
           whiteSpace: "nowrap",
         }}
       >
@@ -528,11 +485,9 @@ function StepBubble({
   );
 }
 
-
 /* =========================================================
    Stepper
 ========================================================= */
-
 
 function Stepper() {
   const steps = [
@@ -542,14 +497,16 @@ function Stepper() {
     "المراجعة والتصديق",
   ];
 
-
   return (
     <div
       className="flex items-start justify-center flex-wrap"
       dir="rtl"
     >
       {steps.map((step, index) => (
-        <div key={step} className="flex items-start">
+        <div
+          key={step}
+          className="flex items-start"
+        >
           <StepBubble
             number={`0${index + 1}`}
             label={step}
@@ -557,16 +514,19 @@ function Stepper() {
             active={index === 3}
           />
 
-
           {index < 3 && (
             <div className="flex items-center gap-[3px] mt-4 mx-2">
-              {Array.from({ length: 16 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="w-[3px] h-[3px] rounded-full"
-                  style={{ background: "#1A202C" }}
-                />
-              ))}
+              {Array.from({ length: 16 }).map(
+                (_, i) => (
+                  <div
+                    key={i}
+                    className="w-[3px] h-[3px] rounded-full"
+                    style={{
+                      background: "#1A202C",
+                    }}
+                  />
+                )
+              )}
             </div>
           )}
         </div>
@@ -575,11 +535,9 @@ function Stepper() {
   );
 }
 
-
 /* =========================================================
    Info Pair
 ========================================================= */
-
 
 function InfoPair({
   label,
@@ -600,7 +558,6 @@ function InfoPair({
         {label}
       </span>
 
-
       <span
         style={{
           ...F,
@@ -610,7 +567,6 @@ function InfoPair({
       >
         :
       </span>
-
 
       <span
         style={{
@@ -625,11 +581,45 @@ function InfoPair({
   );
 }
 
+/* =========================================================
+   Date Blank
+========================================================= */
+
+function DateBlank({
+  month,
+  year,
+}: {
+  month: number;
+  year: number;
+}) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "baseline",
+        direction: "rtl",
+        unicodeBidi: "isolate",
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span style={{ display: "inline-block", width: "25px" }}>
+        &nbsp;
+      </span>
+
+      <span>/</span>
+
+      <span>{toArabicDigits(month)}</span>
+
+      <span>/</span>
+
+      <span>{toArabicDigits(year)}</span>
+    </span>
+  );
+}
 
 /* =========================================================
    Letter Preview
 ========================================================= */
-
 
 function LetterPreview({
   soldiers,
@@ -648,19 +638,12 @@ function LetterPreview({
   branchHeadName: string;
   branchHeadRank: string;
 }) {
-  /* =======================================================
-     التاريخ بالأرقام العربية
-  ======================================================= */
+  const now = new Date();
+const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
+  const currentYear = now.getFullYear();
 
-
-  const today = toArabicDigits(
-    new Date().toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    })
-  );
-
+  const isDetach =
+    letterType === "end-attachment";
 
   return (
     <>
@@ -668,7 +651,7 @@ function LetterPreview({
         className="bg-white border border-[#ddd] rounded-[4px] p-8 w-full max-w-[680px] mx-auto shadow-sm letter-preview"
         dir="rtl"
       >
-        {/* رأس الخطاب */}
+        {/* Header */}
         <div
           style={{
             display: "flex",
@@ -696,59 +679,56 @@ function LetterPreview({
                 fontSize: 14,
                 fontWeight: 700,
                 margin: 0,
-                textAlign: "center",
               }}
             >
               قيادة قـــوات الصاعقــة
             </p>
-
 
             <p
               style={{
                 ...PF,
                 fontSize: 14,
                 margin: "3px 0",
-                textAlign: "center",
               }}
             >
               فــرع التنظيـــم والإدارة
             </p>
-
 
             <p
               style={{
                 ...PF,
                 fontSize: 14,
                 margin: 0,
-                textAlign: "center",
               }}
             >
-              التاريخ : {today}
+              التاريخ :{" "}
+              <DateBlank
+                month={currentMonth}
+                year={currentYear}
+              />
             </p>
           </div>
 
-
-          {/* اللوجو */}
-          <div className="print-logo" style={{ flexShrink: 0 }}>
+          <div
+            className="print-logo"
+            style={{
+              flexShrink: 0,
+            }}
+          >
             <img
               src={imgEagle}
               alt="شعار الجمهورية"
               crossOrigin="anonymous"
               style={{
-                width: "200%",
-                height: "200%",
+                width: "100%",
+                height: "100%",
                 objectFit: "contain",
               }}
             />
           </div>
         </div>
 
-
-        {/* =================================================
-            الجهة
-        ================================================= */}
-
-
+        {/* Destination */}
         <p
           style={{
             ...PF,
@@ -756,65 +736,91 @@ function LetterPreview({
             fontWeight: 700,
             marginBottom: 14,
             textAlign: "center",
-            width: "100%",
           }}
         >
-          إلى / {toArabicDigits(destination || "...")}
+          إلى /{" "}
+          {toArabicDigits(destination || "...")}
         </p>
 
+        {/* Body */}
+        <p
+          style={{
+            ...PF,
+            fontSize: 14,
+            color: "#333",
+            lineHeight: 1.8,
+            marginBottom: 12,
+            textAlign: "right",
+          }}
+        >
+          {soldiers.length === 1 ? (
+            isDetach ? (
+              <>
+                قادم لكم اليوم{" "}
+                <DateBlank
+                  month={currentMonth}
+                  year={currentYear}
+                />{" "}
+                الفرد المذكور اسمه بعد بمهامته
+                وملبوساته الأميرية وذلك بعد انتهاء
+                عمله (مأمورية تدريبية){" "}
+                {toArabicDigits(
+                  reason || "أوامر قيادة"
+                )}{" "}
+                وبياناته كالتالي:
+              </>
+            ) : (
+              <>
+                قادم لكم اليوم{" "}
+                <DateBlank
+                  month={currentMonth}
+                  year={currentYear}
+                />{" "}
+                الفرد المذكور اسمه بعد بمهامته
+                وملبوساته الأميرية وذلك للعمل
+                (مأمورية تدريبية) طرفكم{" "}
+                {toArabicDigits(
+                  reason || "أوامر قيادة"
+                )}{" "}
+                بالمكان الموضح قرينه وبياناته
+                كالتالي:
+              </>
+            )
+          ) : isDetach ? (
+            <>
+              قادم لكم اليوم{" "}
+              <DateBlank
+                month={currentMonth}
+                year={currentYear}
+              />{" "}
+              الأفراد المذكورة أسمائهم بعد
+              بمهامتهم وملبوساتهم الأميرية وذلك
+              بعد انتهاء عملهم (مأمورية تدريبية){" "}
+              {toArabicDigits(
+                reason || "أوامر قيادة"
+              )}{" "}
+              وبياناتهم كالتالي:
+            </>
+          ) : (
+            <>
+              قادم لكم اليوم{" "}
+              <DateBlank
+                month={currentMonth}
+                year={currentYear}
+              />{" "}
+              الأفراد المذكورة أسمائهم بعد
+              بمهامتهم وملبوساتهم الأميرية وذلك
+              للعمل (مأمورية تدريبية) طرفكم{" "}
+              {toArabicDigits(
+                reason || "أوامر قيادة"
+              )}{" "}
+              بالأماكن الموضحة قرين كلا منهم
+              وبياناتهم كالتالي:
+            </>
+          )}
+        </p>
 
-        {/* =================================================
-            نص الخطاب
-        ================================================= */}
-
-
-     <p
-  style={{
-    ...PF,
-    fontSize: 14,
-    color: "#333",
-    lineHeight: 1.8,
-    marginBottom: 12,
-    textAlign: "right",
-  }}
->
-  {soldiers.length === 1 ? (
-    letterType === "end-attachment" ? (
-      <>
-        قادم لكم اليوم الفرد المذكور اسمه بعد وذلك بعد انتهاء
-        عمله (مأمورية تدريبية)  {" "}
-        {toArabicDigits(reason || "أوامر قيادة")} وبياناته كالتالي:
-      </>
-    ) : (
-      <>
-        قادم لكم اليوم الفرد المذكور اسمه بعد وذلك للعمل
-        (مأمورية تدريبية) طرفكم  {" "}
-        {toArabicDigits(reason || "أوامر قيادة")} بالمكان الموضح
-        قرينه وبياناته كالتالي:
-      </>
-    )
-  ) : letterType === "end-attachment" ? (
-    <>
-      قادم لكم اليوم الأفراد المذكورة أسمائهم بعد وذلك بعد انتهاء
-      عملهم (مأمورية تدريبية)  {" "}
-      {toArabicDigits(reason || "أوامر قيادة")} وبياناتهم كالتالي:
-    </>
-  ) : (
-    <>
-      قادم لكم اليوم الأفراد المذكورة أسمائهم بعد وذلك للعمل
-      (مأمورية تدريبية) طرفكم  {" "}
-      {toArabicDigits(reason || "أوامر قيادة")} بالأماكن الموضحة
-      قرين كلا منهم وبياناتهم كالتالي:
-    </>
-  )}
-</p>
-
-
-        {/* =================================================
-            الجدول
-        ================================================= */}
-
-
+        {/* Table */}
         <table
           className="w-full border-collapse mb-4"
           style={{
@@ -850,11 +856,9 @@ function LetterPreview({
             </tr>
           </thead>
 
-
           <tbody>
             {soldiers.map((soldier, index) => (
               <tr key={soldier.id}>
-                {/* رقم */}
                 <td
                   style={{
                     padding: "5px",
@@ -865,8 +869,6 @@ function LetterPreview({
                   {toArabicDigits(index + 1)}
                 </td>
 
-
-                {/* الدرجة */}
                 <td
                   style={{
                     padding: "5px",
@@ -877,20 +879,16 @@ function LetterPreview({
                   {toArabicDigits(soldier.rank)}
                 </td>
 
-
-                {/* الاسم */}
                 <td
                   style={{
                     padding: "5px",
-                    textAlign: "center",
                     border: "1px solid #eee",
+                    textAlign: "center",
                   }}
                 >
                   {toArabicDigits(soldier.name)}
                 </td>
 
-
-                {/* الوحدة */}
                 <td
                   style={{
                     padding: "5px",
@@ -901,19 +899,19 @@ function LetterPreview({
                   {toArabicDigits(soldier.unit)}
                 </td>
 
-
-                {/* وحدة الإلحاق */}
                 <td
                   style={{
                     padding: "5px",
-                    textAlign: "center",
                     border: "1px solid #eee",
+                    textAlign: "center",
                   }}
                 >
                   {toArabicDigits(
-                    soldier.attachmentUnit ||
-                      attachmentPlace ||
-                      "-"
+                    isDetach
+                      ? "-"
+                      : soldier.attachmentUnit ||
+                          attachmentPlace ||
+                          "-"
                   )}
                 </td>
               </tr>
@@ -921,22 +919,19 @@ function LetterPreview({
           </tbody>
         </table>
 
-
-        {/* التحية */}
+        {/* Greeting */}
         <p
           style={{
             ...PF,
             fontSize: 14,
             marginTop: 20,
             textAlign: "center",
-            width: "100%",
           }}
         >
           مع وافر التحية ،،،
         </p>
 
-
-        {/* التوقيع */}
+        {/* Signature */}
         <div
           className="signature-block"
           style={{
@@ -959,9 +954,8 @@ function LetterPreview({
               whiteSpace: "pre",
             }}
           >
-            {"التوقيع (                                  )"}
+            {"التوقيع (                             )"}
           </p>
-
 
           <p
             style={{
@@ -969,15 +963,20 @@ function LetterPreview({
               fontWeight: 700,
             }}
           >
-            {toArabicDigits(branchHeadRank || "جاري تحميل الرتبة")} /{" "}
-            {toArabicDigits(branchHeadName || "جاري تحميل الاسم")}
+            {toArabicDigits(
+              branchHeadRank || "جاري تحميل الرتبة"
+            )}{" "}
+            /{" "}
+            {toArabicDigits(
+              branchHeadName || "جاري تحميل الاسم"
+            )}
           </p>
-
 
           <p
             style={{
               margin: "4px 0 0",
               fontWeight: 700,
+              
             }}
           >
             رئيس فرع التنظيــــم والاداره
@@ -985,27 +984,16 @@ function LetterPreview({
         </div>
       </div>
 
-
-      {/* =================================================
-          CSS الخاص بالخطاب
-      ================================================= */}
-
-
       <style>
         {`
           .print-logo {
             width: 80px;
             height: 80px;
-
-
             display: flex;
             align-items: center;
             justify-content: center;
-
-
             flex-shrink: 0;
           }
-
 
           .print-logo img {
             width: 100%;
@@ -1013,31 +1001,18 @@ function LetterPreview({
             object-fit: contain;
           }
 
-
           @media print {
             .print-logo {
               width: 32px !important;
               height: 32px !important;
-
-
-              display: flex !important;
-              align-items: center !important;
-              justify-content: center !important;
             }
-
 
             .print-logo img {
               width: 32px !important;
               height: 32px !important;
-
-
               max-width: 32px !important;
               max-height: 32px !important;
-
-
-              object-fit: contain !important;
             }
-
 
             .letter-preview {
               box-shadow: none !important;
@@ -1047,18 +1022,15 @@ function LetterPreview({
               padding: 16px !important;
             }
 
-
             body {
               background: #fff !important;
             }
-
 
             * {
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
             }
           }
-
 
           @page {
             size: A4;
@@ -1070,28 +1042,23 @@ function LetterPreview({
   );
 }
 
-
 /* =========================================================
    Main Page
 ========================================================= */
-
 
 export function LetterReviewPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-
-  const state = location.state as PageState | null;
-
+  const state =
+    location.state as PageState | null;
 
   const letterType =
     state?.letterType === "end-attachment"
       ? "end-attachment"
       : "attachment";
 
-
   const soldiers = state?.soldiers ?? [];
-
 
   const letterData: LetterData =
     state?.letterData ?? {
@@ -1101,62 +1068,49 @@ export function LetterReviewPage() {
       reason: "",
       issuingUnitId: soldiers[0]?.unitId,
       attachmentUnitId:
-        soldiers[0]?.attachmentUnitId ?? undefined,
+        soldiers[0]?.attachmentUnitId ??
+        undefined,
     };
-
 
   const [letterNumber, setLetterNumber] =
     useState<number | null>(null);
 
-
   const [branchHeadName, setBranchHeadName] =
     useState("");
-
 
   const [branchHeadRank, setBranchHeadRank] =
     useState("");
 
-
   const [saving, setSaving] = useState(false);
-
 
   const [success, setSuccess] = useState(false);
 
-
   const [error, setError] = useState("");
 
-
-  // ✅ تنبيه غير حاجب (non-blocking) يظهر للمستخدم لو فشل حفظ
-  // المعاينة المؤقتة فقط، دون التأثير على نجاح حفظ الخطاب نفسه.
   const [previewWarning, setPreviewWarning] =
     useState("");
 
-
   /* =======================================================
-     Check Session
+     Session
   ======================================================= */
 
-
   useEffect(() => {
+    let mounted = true;
+
     const checkSession = async () => {
       const {
         data: { session },
         error: sessionError,
       } = await supabase.auth.getSession();
 
+      if (!mounted) return;
 
       if (sessionError) {
-        console.error(sessionError);
-
-
         setError(
           "حدث خطأ أثناء التحقق من جلسة الدخول."
         );
-
-
         return;
       }
-
 
       if (!session?.user) {
         setError(
@@ -1165,25 +1119,26 @@ export function LetterReviewPage() {
       }
     };
 
-
     void checkSession();
-  }, []);
 
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   /* =======================================================
      Load Branch Head
   ======================================================= */
 
-
   useEffect(() => {
+    let mounted = true;
+
     const loadBranchHead = async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-
       if (!session?.user) return;
-
 
       const { data, error } = await supabase
         .from("branch_heads")
@@ -1202,44 +1157,49 @@ export function LetterReviewPage() {
         .limit(1)
         .maybeSingle();
 
+      if (!mounted) return;
 
       if (error) {
-        console.error("Branch head error:", error);
+        console.error(
+          "Branch head error:",
+          error
+        );
         return;
       }
 
-
       if (!data) return;
 
+      const rank = getRelationObject(
+        data.rank
+      ) as { name?: string } | null;
 
-      const rank = Array.isArray(data.rank)
-        ? data.rank[0]
-        : data.rank;
+      setBranchHeadName(
+        data.full_name ?? ""
+      );
 
-
-      setBranchHeadName(data.full_name ?? "");
-      setBranchHeadRank(rank?.name ?? "");
+      setBranchHeadRank(
+        rank?.name ?? ""
+      );
     };
 
-
     void loadBranchHead();
-  }, []);
 
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   /* =======================================================
      Save Letter
   ======================================================= */
 
-
   const saveLetter = useCallback(async () => {
-    if (saving) return;
-
+    if (saving || success) return;
 
     if (!soldiers.length) {
       setError("لا يوجد أفراد في الخطاب.");
       return;
     }
-
 
     if (!state?.letterTypeId) {
       setError(
@@ -1248,21 +1208,21 @@ export function LetterReviewPage() {
       return;
     }
 
-
     setSaving(true);
     setError("");
     setPreviewWarning("");
 
-
     let createdLetterId: string | null = null;
 
-
     try {
+      /* -----------------------------------------------
+         Session
+      ----------------------------------------------- */
+
       const {
         data: { session },
         error: sessionError,
       } = await supabase.auth.getSession();
-
 
       if (sessionError) {
         throw new Error(
@@ -1270,16 +1230,17 @@ export function LetterReviewPage() {
         );
       }
 
-
       if (!session?.user) {
         throw new Error(
           "جلسة تسجيل الدخول غير موجودة. من فضلك سجل الدخول مرة أخرى."
         );
       }
 
-
       const userId = session.user.id;
 
+      /* -----------------------------------------------
+         Letter Type
+      ----------------------------------------------- */
 
       const {
         data: letterTypeRow,
@@ -1290,13 +1251,11 @@ export function LetterReviewPage() {
         .eq("id", state.letterTypeId)
         .maybeSingle();
 
-
       if (typeError) {
         throw new Error(
           `خطأ في نوع الخطاب: ${typeError.message}`
         );
       }
-
 
       if (!letterTypeRow) {
         throw new Error(
@@ -1304,14 +1263,11 @@ export function LetterReviewPage() {
         );
       }
 
-
       const isAttach =
         letterTypeRow.code === "ATTACH";
 
-
       const isDetach =
         letterTypeRow.code === "DEATTACH";
-
 
       if (!isAttach && !isDetach) {
         throw new Error(
@@ -1319,11 +1275,13 @@ export function LetterReviewPage() {
         );
       }
 
+      /* -----------------------------------------------
+         Units
+      ----------------------------------------------- */
 
       const issuingUnitId =
         letterData.issuingUnitId ??
         soldiers[0]?.unitId;
-
 
       if (!issuingUnitId) {
         throw new Error(
@@ -1331,12 +1289,10 @@ export function LetterReviewPage() {
         );
       }
 
-
       const attachmentUnitId =
         letterData.attachmentUnitId ??
         soldiers[0]?.attachmentUnitId ??
         null;
-
 
       if (isAttach && !attachmentUnitId) {
         throw new Error(
@@ -1344,15 +1300,16 @@ export function LetterReviewPage() {
         );
       }
 
-
       const finalAttachmentUnitId =
         isDetach ? null : attachmentUnitId;
 
-
       const newServiceStatusId = isAttach
-        ? "d443b755-802a-4e5d-8a1b-0c372c5f94dd"
-        : "b64822a7-38e3-4c98-b738-0f0f077bb6f2";
+        ? ATTACH_STATUS_ID
+        : DETACH_STATUS_ID;
 
+      /* -----------------------------------------------
+         Branch Head
+      ----------------------------------------------- */
 
       const {
         data: branchHead,
@@ -1363,7 +1320,9 @@ export function LetterReviewPage() {
           id,
           full_name,
           rank_id,
-          rank:letter_officer_ranks!branch_heads_rank_id_fkey(name)
+          rank:letter_officer_ranks!branch_heads_rank_id_fkey(
+            name
+          )
         `)
         .eq("is_active", true)
         .order("created_at", {
@@ -1372,13 +1331,11 @@ export function LetterReviewPage() {
         .limit(1)
         .maybeSingle();
 
-
       if (branchError) {
         throw new Error(
           `خطأ في تحميل رئيس الفرع: ${branchError.message}`
         );
       }
-
 
       if (!branchHead) {
         throw new Error(
@@ -1386,53 +1343,29 @@ export function LetterReviewPage() {
         );
       }
 
-
-      const branchRank = Array.isArray(
+      const branchRank = getRelationObject(
         branchHead.rank
-      )
-        ? branchHead.rank[0]
-        : branchHead.rank;
+      ) as { name?: string } | null;
 
+      /* -----------------------------------------------
+         Insert Letter
+      ----------------------------------------------- */
 
       const letterInsert = {
         letter_type_id: letterTypeRow.id,
-
-
-       
-
-
         issuing_unit_id: issuingUnitId,
-
-
-        attachment_unit_id:
-          finalAttachmentUnitId,
-
-
+        attachment_unit_id: finalAttachmentUnitId,
         reason:
-          letterData.reason ||
-          "أوامر قيادة",
-
-
+          letterData.reason || "أوامر قيادة",
         personnel_count: soldiers.length,
-
-
         branch_head_id: branchHead.id,
-
-
         branch_head_name:
-          branchHead.full_name,
-
-
+          branchHead.full_name ?? "",
         branch_head_rank:
           branchRank?.name ?? "",
-
-
         status: "UNDOCUMENTED",
-
-
         created_by: userId,
       };
-
 
       const {
         data: newLetter,
@@ -1443,13 +1376,11 @@ export function LetterReviewPage() {
         .select("id, letter_number")
         .single();
 
-
       if (insertLetterError) {
         throw new Error(
           `خطأ في حفظ الخطاب: ${insertLetterError.message}`
         );
       }
-
 
       if (!newLetter) {
         throw new Error(
@@ -1457,9 +1388,11 @@ export function LetterReviewPage() {
         );
       }
 
-
       createdLetterId = newLetter.id;
 
+      /* -----------------------------------------------
+         Link Personnel
+      ----------------------------------------------- */
 
       const personnelRows = soldiers.map(
         (soldier) => ({
@@ -1468,13 +1401,11 @@ export function LetterReviewPage() {
         })
       );
 
-
       const {
         error: personnelError,
       } = await supabase
         .from("letter_personnel")
         .insert(personnelRows);
-
 
       if (personnelError) {
         throw new Error(
@@ -1482,187 +1413,159 @@ export function LetterReviewPage() {
         );
       }
 
+      /* -----------------------------------------------
+         Update Personnel
+      ----------------------------------------------- */
 
-     const personnelIds = soldiers.map(
-  (soldier) => soldier.id
-);
+      const updateResults =
+        await Promise.all(
+          soldiers.map(async (soldier) => {
+            const soldierAttachmentId =
+              isDetach
+                ? null
+                : soldier.attachmentUnitId ??
+                  finalAttachmentUnitId;
 
-// ✅ كل فرد له تحديث منفصل: نستخدم وحدة الإلحاق الخاصة به
-// (لو اتعدّلت من الجدول) بدل ما نطبّق قيمة واحدة عامة على الجميع.
-const updateResults = await Promise.all(
-  soldiers.map((soldier) => {
-    const soldierAttachmentId = isDetach
-      ? null
-      : soldier.attachmentUnitId ?? finalAttachmentUnitId;
+            return supabase
+              .from("personnel")
+              .update({
+                service_status_id:
+                  newServiceStatusId,
+                attachment_unit_id:
+                  soldierAttachmentId,
+                updated_at:
+                  new Date().toISOString(),
+              })
+              .eq("id", soldier.id);
+          })
+        );
 
-    return supabase
-      .from("personnel")
-      .update({
-        service_status_id: newServiceStatusId,
-        attachment_unit_id: soldierAttachmentId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", soldier.id);
-  })
-);
+      const updatePersonnelError =
+        updateResults.find(
+          (result) => result.error
+        )?.error;
 
-const updatePersonnelError = updateResults.find(
-  (result) => result.error
-)?.error;
+      if (updatePersonnelError) {
+        throw new Error(
+          `تم حفظ الخطاب وربط الأفراد، ولكن فشل تحديث حالة الأفراد: ${updatePersonnelError.message}`
+        );
+      }
 
-if (updatePersonnelError) {
-  throw new Error(
-    `تم حفظ الخطاب وربط الأفراد، ولكن فشل تحديث حالة الأفراد: ${updatePersonnelError.message}`
-  );
-}
+      /* -----------------------------------------------
+         Verify Personnel
+      ----------------------------------------------- */
 
+      const personnelIds = soldiers.map(
+        (soldier) => soldier.id
+      );
 
-     const {
-  data: updatedPersonnel,
-  error: verifyPersonnelError,
-} = await supabase
-  .from("personnel")
-  .select(
-    "id, service_status_id, attachment_unit_id"
-  )
-  .in("id", personnelIds);
+      const {
+        data: updatedPersonnel,
+        error: verifyPersonnelError,
+      } = await supabase
+        .from("personnel")
+        .select(
+          "id, service_status_id, attachment_unit_id"
+        )
+        .in("id", personnelIds);
 
-if (verifyPersonnelError) {
-  throw new Error(
-    `تعذر التحقق من تحديث بيانات الأفراد: ${verifyPersonnelError.message}`
-  );
-}
+      if (verifyPersonnelError) {
+        throw new Error(
+          `تعذر التحقق من تحديث بيانات الأفراد: ${verifyPersonnelError.message}`
+        );
+      }
 
-if (
-  !updatedPersonnel ||
-  updatedPersonnel.length !==
-    personnelIds.length
-) {
-  throw new Error(
-    "لم يتم تحديث جميع الأفراد المحددين."
-  );
-}
+      if (
+        !updatedPersonnel ||
+        updatedPersonnel.length !==
+          personnelIds.length
+      ) {
+        throw new Error(
+          "لم يتم تحديث جميع الأفراد المحددين."
+        );
+      }
 
-// ✅ نبني خريطة توقعات لكل فرد بقيمته الخاصة بدل قيمة واحدة عامة
-const expectedAttachmentBySoldierId = new Map(
-  soldiers.map((soldier) => [
-    soldier.id,
-    isDetach ? null : soldier.attachmentUnitId ?? finalAttachmentUnitId,
-  ])
-);
+      const expectedAttachmentBySoldierId =
+        new Map(
+          soldiers.map((soldier) => [
+            soldier.id,
+            isDetach
+              ? null
+              : soldier.attachmentUnitId ??
+                finalAttachmentUnitId,
+          ])
+        );
 
-const invalidPersonnel = updatedPersonnel.filter((person) => {
-  const expectedAttachment = expectedAttachmentBySoldierId.get(person.id);
+      const invalidPersonnel =
+        updatedPersonnel.filter((person) => {
+          const expectedAttachment =
+            expectedAttachmentBySoldierId.get(
+              person.id
+            );
 
-  return (
-    person.service_status_id !== newServiceStatusId ||
-    person.attachment_unit_id !== expectedAttachment
-  );
-});
+          return (
+            person.service_status_id !==
+              newServiceStatusId ||
+            person.attachment_unit_id !==
+              expectedAttachment
+          );
+        });
 
-if (invalidPersonnel.length > 0) {
-  throw new Error(
-    "فشل التحقق من تحديث حالة أو جهة إلحاق بعض الأفراد."
-  );
-}
-      // =====================================================
-// تسجيل إصدار الخطاب في سجل العمليات
-// يتم التسجيل بعد نجاح:
-// 1. إنشاء الخطاب
-// 2. ربط الأفراد
-// 3. تحديث حالات الأفراد
-// 4. التحقق من التحديث
-// =====================================================
+      if (invalidPersonnel.length) {
+        throw new Error(
+          "فشل التحقق من تحديث حالة أو جهة إلحاق بعض الأفراد."
+        );
+      }
 
+      /* -----------------------------------------------
+         Audit Log
+      ----------------------------------------------- */
 
-const { data: profile, error: profileError } =
-  await supabase
-    .from("profiles")
-    .select("username")
-    .eq("id", userId)
-    .maybeSingle();
+      const {
+        data: profile,
+        error: profileError,
+      } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", userId)
+        .maybeSingle();
 
+      if (profileError) {
+        console.warn(
+          "AUDIT PROFILE WARNING:",
+          profileError.message
+        );
+      }
 
-if (profileError) {
-  console.warn(
-    "AUDIT PROFILE WARNING:",
-    profileError.message
-  );
-}
+      const auditDetails =
+        `رقم الخطاب: ${newLetter.letter_number} — ` +
+        `نوع الخطاب: ${letterTypeRow.name} — ` +
+        `عدد الأفراد: ${soldiers.length}`;
 
+      const { error: auditError } =
+        await supabase
+          .from("audit_logs")
+          .insert({
+            user_id: userId,
+            user_name:
+              profile?.username ??
+              "غير معروف",
+            action_type: "CREATE",
+            action: "إصدار خطاب",
+            entity: "letters",
+            details: auditDetails,
+          });
 
-const auditDetails =
-  `رقم الخطاب: ${newLetter.letter_number} — ` +
-  `نوع الخطاب: ${letterTypeRow.name} — ` +
-  `عدد الأفراد: ${soldiers.length}`;
+      if (auditError) {
+        console.error(
+          "AUDIT LOG ERROR:",
+          auditError
+        );
+      }
 
-
-const { error: auditError } = await supabase
-  .from("audit_logs")
-  .insert({
-    user_id: userId,
-
-
-    user_name:
-      profile?.username ??
-      "غير معروف",
-
-
-    action_type: "CREATE",
-
-
-    action: "إصدار خطاب",
-
-
-    entity: "letters",
-
-
-    details: auditDetails,
-  });
-
-
-if (auditError) {
-  // فشل تسجيل الـ Audit لا يمنع نجاح إصدار الخطاب
-  console.error(
-    "AUDIT LOG ERROR:",
-    auditError
-  );
-}
-
-
-// =====================================================
-// نجاح العملية
-// =====================================================
-
-
-setLetterNumber(
-  newLetter.letter_number
-);
-
-
-setBranchHeadName(
-  branchHead.full_name ?? ""
-);
-
-
-setBranchHeadRank(
-  branchRank?.name ?? ""
-);
-
-
-setSaving(false);
-setSuccess(true);
-
-
-      // =====================================================
-      // ✅ إنشاء صورة PNG من معاينة الخطاب ورفعها مؤقتًا
-      //
-      // هذه خطوة "Best effort": أي فشل هنا لا يجب أن يوقف نجاح
-      // حفظ الخطاب، لذلك تم عزلها في try/catch منفصل. لكن على
-      // عكس النسخة السابقة، هنا بنعرض تحذير غير حاجب للمستخدم
-      // ولوج مفصّل في الكونسول لتسهيل التشخيص.
-      // =====================================================
-
+      /* -----------------------------------------------
+         Preview
+      ----------------------------------------------- */
 
       try {
         const previewResult =
@@ -1670,13 +1573,11 @@ setSuccess(true);
             newLetter.id
           );
 
-
         if (!previewResult.ok) {
           console.warn(
-            "[SAVE LETTER] المعاينة المؤقتة لم تُحفظ — السبب:",
+            "[PREVIEW] Failed:",
             previewResult.reason
           );
-
 
           setPreviewWarning(
             "تم حفظ الخطاب بنجاح، لكن تعذّر إنشاء نسخة المعاينة المؤقتة. يمكنك رفع النسخة الموقعة مباشرة من صفحة تفاصيل الخطاب."
@@ -1684,31 +1585,30 @@ setSuccess(true);
         }
       } catch (previewError) {
         console.error(
-          "PREVIEW GENERATION ERROR:",
+          "[PREVIEW] Unexpected error:",
           previewError
         );
-
 
         setPreviewWarning(
           "تم حفظ الخطاب بنجاح، لكن تعذّر إنشاء نسخة المعاينة المؤقتة. يمكنك رفع النسخة الموقعة مباشرة من صفحة تفاصيل الخطاب."
         );
       }
 
+      /* -----------------------------------------------
+         Success
+      ----------------------------------------------- */
 
       setLetterNumber(
         newLetter.letter_number
       );
 
-
       setBranchHeadName(
         branchHead.full_name ?? ""
       );
 
-
       setBranchHeadRank(
         branchRank?.name ?? ""
       );
-
 
       setSaving(false);
       setSuccess(true);
@@ -1718,6 +1618,14 @@ setSuccess(true);
         err
       );
 
+      /*
+       * Rollback للخطاب والروابط.
+       *
+       * ملاحظة:
+       * استرجاع personnel نفسه بشكل آمن يحتاج حفظ القيم
+       * القديمة لكل فرد قبل التحديث أو تنفيذ العملية داخل
+       * PostgreSQL RPC/Transaction.
+       */
 
       if (createdLetterId) {
         try {
@@ -1728,7 +1636,6 @@ setSuccess(true);
               "letter_id",
               createdLetterId
             );
-
 
           await supabase
             .from("letters")
@@ -1745,9 +1652,7 @@ setSuccess(true);
         }
       }
 
-
       setSaving(false);
-
 
       setError(
         err instanceof Error
@@ -1757,47 +1662,31 @@ setSuccess(true);
     }
   }, [
     saving,
+    success,
     soldiers,
     state,
     letterData,
   ]);
 
-
   /* =======================================================
-     Redirect After Success
+     Redirect
   ======================================================= */
-
 
   useEffect(() => {
     if (!success) return;
 
-
     const timer = window.setTimeout(() => {
       navigate("/dashboard");
     }, 3000);
-
 
     return () => {
       window.clearTimeout(timer);
     };
   }, [success, navigate]);
 
-
   /* =======================================================
-     Page Title
+     Print
   ======================================================= */
-
-
-  const pageTitle =
-    letterType === "end-attachment"
-      ? "اصدار خطاب إنهاء إلحاق"
-      : "اصدار خطاب إلحاق";
-
-
-  /* =======================================================
-     PRINT ONLY LETTER
-  ======================================================= */
-
 
   const handlePrintLetter = () => {
     const letterElement =
@@ -1805,19 +1694,16 @@ setSuccess(true);
         ".letter-preview"
       ) as HTMLElement | null;
 
-
     if (!letterElement) {
       alert("تعذر العثور على الخطاب.");
       return;
     }
-
 
     const printWindow = window.open(
       "",
       "_blank",
       "width=900,height=1200"
     );
-
 
     if (!printWindow) {
       alert(
@@ -1826,37 +1712,39 @@ setSuccess(true);
       return;
     }
 
+    const letterHtml =
+      letterElement.outerHTML;
 
-    const letterHtml = letterElement.outerHTML;
+    const letterTypeLabel =
+      state?.letterTypeName ||
+      (letterType === "end-attachment"
+        ? "إنهاء إلحاق"
+        : "إلحاق");
 
+    const letterNumberLabel =
+      letterNumber !== null
+        ? toArabicDigits(letterNumber)
+        : "";
+
+    const pdfTitle =
+      `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
+        letterData.destination || ""
+      }`.trim();
 
     printWindow.document.open();
 
-const letterTypeLabel =
-  state?.letterTypeName ||
-  (letterType === "end-attachment" ? "إنهاء إلحاق" : "إلحاق");
-
-const letterNumberLabel =
-  letterNumber !== null ? toArabicDigits(letterNumber) : "";
-
-const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
-  letterData.destination || ""
-}`.trim();
     printWindow.document.write(`
       <!DOCTYPE html>
       <html lang="ar" dir="rtl">
         <head>
           <meta charset="UTF-8" />
 
-
           <meta
             name="viewport"
             content="width=device-width, initial-scale=1.0"
           />
 
-
           <title>${pdfTitle}</title>
-
 
           <style>
             @page {
@@ -1864,183 +1752,92 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
               margin: 10mm;
             }
 
-
             * {
               box-sizing: border-box;
-
-
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
             }
-
 
             html,
             body {
               margin: 0;
               padding: 0;
-
-
               width: 100%;
               min-height: 100%;
-
-
               background: #fff;
             }
 
-
             body {
               direction: rtl;
-
-
               font-family:
                 'Times New Roman',
                 Times,
                 serif;
             }
 
-
-            .print-page {
-              display: flex;
-              flex-direction: column;
-              justify-content: flex-start;
-              gap: 6mm;
-
-
-              width: 100%;
-              height: 277mm;
-            }
-
-
-            .print-copy {
-              flex: 1 1 50%;
-              overflow: hidden;
-
-
-              transform: scale(0.94);
-              transform-origin: top center;
-
-
-              page-break-inside: avoid;
-            }
-
-
             .letter-preview {
               display: block !important;
-
-
               width: 100% !important;
               max-width: none !important;
-
-
               margin: 0 !important;
-
-
               padding: 10px !important;
-
-
               border: 1.5px solid #000 !important;
               border-radius: 0 !important;
-
-
               box-shadow: none !important;
-
-
               background: #fff !important;
             }
-
 
             .print-logo {
               width: 32px !important;
               height: 32px !important;
-
-
               display: flex !important;
-
-
               align-items: center !important;
               justify-content: center !important;
-
-
               flex-shrink: 0 !important;
             }
-
 
             .print-logo img {
               width: 32px !important;
               height: 32px !important;
-
-
               max-width: 32px !important;
               max-height: 32px !important;
-
-
               object-fit: contain !important;
             }
-
 
             table {
               width: 100% !important;
               border-collapse: collapse !important;
             }
 
-
             th,
             td {
-              border: 1px solid #ddd;
+              border: 1px solid #ddd !important;
             }
-
 
             img {
               display: block;
             }
-
-
-            @media print {
-              html,
-              body {
-                width: 100%;
-                min-height: 100%;
-
-
-                overflow: visible !important;
-              }
-
-
-              .print-page {
-                page-break-inside: avoid;
-              }
-            }
           </style>
         </head>
 
-
         <body>
-          <div class="print-page">
-            <div class="print-copy">${letterHtml}</div>
-            <div class="print-copy">${letterHtml}</div>
-          </div>
+          ${letterHtml}
         </body>
       </html>
     `);
 
-
     printWindow.document.close();
 
-
     const doPrint = () => {
-      setTimeout(() => {
+      window.setTimeout(() => {
         printWindow.focus();
-
-
         printWindow.print();
 
-
-        setTimeout(() => {
+        window.setTimeout(() => {
           printWindow.close();
         }, 500);
-      }, 500);
+      }, 700);
     };
-
 
     if (
       printWindow.document.readyState ===
@@ -2052,20 +1849,24 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
     }
   };
 
+  /* =======================================================
+     Page Title
+  ======================================================= */
+
+  const pageTitle =
+    letterType === "end-attachment"
+      ? "اصدار خطاب إنهاء إلحاق"
+      : "اصدار خطاب إلحاق";
 
   /* =======================================================
      Render
   ======================================================= */
-
 
   return (
     <div
       className="flex flex-col gap-6 w-full pb-10"
       dir="rtl"
     >
-      {/* عنوان الصفحة */}
-
-
       <h1
         className="text-center"
         style={{
@@ -2078,17 +1879,9 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
         {pageTitle}
       </h1>
 
-
-      {/* Stepper */}
-
-
       <div className="flex justify-center">
         <Stepper />
       </div>
-
-
-      {/* Error */}
-
 
       {error && (
         <div
@@ -2105,10 +1898,6 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
         </div>
       )}
 
-
-      {/* Preview Warning (تحذير غير حاجب) */}
-
-
       {previewWarning && !error && (
         <div
           className="w-full rounded-[10px] px-5 py-4"
@@ -2124,12 +1913,7 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
         </div>
       )}
 
-
-      {/* =================================================
-          Letter Information
-      ================================================= */}
-
-
+      {/* Letter Information */}
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
           <span
@@ -2143,28 +1927,28 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
           </span>
         </div>
 
-
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 px-6 py-5">
           <InfoPair
             label="نوع الخطاب"
             value={
               state?.letterTypeName ||
-              (letterType === "end-attachment"
+              (letterType ===
+              "end-attachment"
                 ? "إنهاء إلحاق"
                 : "إلحاق")
             }
           />
 
-
           <InfoPair
             label="رقم الخطاب"
             value={
               letterNumber !== null
-                ? toArabicDigits(letterNumber)
+                ? toArabicDigits(
+                    letterNumber
+                  )
                 : "سيتم توليده عند الحفظ"
             }
           />
-
 
           <InfoPair
             label="جهة الخطاب"
@@ -2172,7 +1956,6 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
               letterData.destination
             )}
           />
-
 
           <InfoPair
             label="تاريخ الخطاب"
@@ -2183,14 +1966,12 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
             )}
           />
 
-
           <InfoPair
             label="الوحدة الأساسية"
             value={toArabicDigits(
               soldiers[0]?.unit ?? ""
             )}
           />
-
 
           <InfoPair
             label="عدد الأفراد"
@@ -2199,20 +1980,20 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
             )}
           />
 
-
           <InfoPair
             label="وحدة الإلحاق"
             value={
-              letterType === "end-attachment"
+              letterType ===
+              "end-attachment"
                 ? "سيتم إنهاء الإلحاق"
                 : toArabicDigits(
                     letterData.attachmentPlace ||
-                      soldiers[0]?.attachmentUnit ||
+                      soldiers[0]
+                        ?.attachmentUnit ||
                       "لا يوجد"
                   )
             }
           />
-
 
           <InfoPair
             label="رئيس الفرع"
@@ -2224,12 +2005,7 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
         </div>
       </section>
 
-
-      {/* =================================================
-          Personnel
-      ================================================= */}
-
-
+      {/* Personnel */}
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
           <span
@@ -2242,7 +2018,6 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
             بيانات الأفراد
           </span>
         </div>
-
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[600px] border-collapse">
@@ -2272,7 +2047,6 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
               </tr>
             </thead>
 
-
             <tbody>
               {soldiers.map((soldier) => (
                 <tr key={soldier.id}>
@@ -2282,20 +2056,17 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
                     )}
                   </td>
 
-
                   <td className="px-4 py-3 border-b">
                     {toArabicDigits(
                       soldier.name
                     )}
                   </td>
 
-
                   <td className="px-4 py-3 border-b">
                     {toArabicDigits(
                       soldier.unit
                     )}
                   </td>
-
 
                   <td className="px-4 py-3 border-b">
                     {letterType ===
@@ -2314,12 +2085,7 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
         </div>
       </section>
 
-
-      {/* =================================================
-          Letter Preview
-      ================================================= */}
-
-
+      {/* Preview */}
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
           <span
@@ -2332,7 +2098,6 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
             معاينة الخطاب
           </span>
         </div>
-
 
         <div className="p-6 bg-[#f7f9fc]">
           <LetterPreview
@@ -2355,16 +2120,8 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
         </div>
       </section>
 
-
-      {/* =================================================
-          Buttons
-      ================================================= */}
-
-
+      {/* Buttons */}
       <div className="flex flex-wrap items-center gap-4">
-        {/* حفظ الخطاب */}
-
-
         <button
           type="button"
           disabled={saving || success}
@@ -2376,16 +2133,13 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
             background:
               "linear-gradient(to bottom,#00b867,#00522e)",
             opacity:
-              saving || success
-                ? 0.6
-                : 1,
+              saving || success ? 0.6 : 1,
           }}
         >
           <Printer
             size={16}
             color="#fff"
           />
-
 
           <span
             style={{
@@ -2400,12 +2154,9 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
           </span>
         </button>
 
-
-        {/* طباعة / معاينة */}
-
-
         <button
           type="button"
+          disabled={saving}
           onClick={handlePrintLetter}
           className="flex items-center gap-2 min-h-[48px] px-6 rounded-[8px] border border-[#2d3648] bg-white"
         >
@@ -2413,7 +2164,6 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
             size={16}
             color="#2d3648"
           />
-
 
           <span
             style={{
@@ -2425,10 +2175,6 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
             طباعة / تحميل المعاينة
           </span>
         </button>
-
-
-        {/* إلغاء */}
-
 
         <button
           type="button"
@@ -2451,14 +2197,8 @@ const pdfTitle = `خطاب ${letterTypeLabel} ${letterNumberLabel} ${
         </button>
       </div>
 
-
-      {/* =================================================
-          Modals
-      ================================================= */}
-
-
+      {/* Modals */}
       {saving && <LoadingModal />}
-
 
       {success && (
         <SuccessModal

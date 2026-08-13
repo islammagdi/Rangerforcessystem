@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+
 import { useLocation, useNavigate } from "react-router";
 import {
   Trash2,
@@ -9,13 +10,36 @@ import {
   CalendarDays,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import { logActivity } from "../../lib/logActivity";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
 
 const PERSONNEL_TABLE_NAME = "personnel";
+async function getCurrentUserInfo(): Promise<{
+  userId: string | null;
+  userName: string;
+}> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
+  if (!user) {
+    return { userId: null, userName: "غير معروف" };
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("username")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  return {
+    userId: user.id,
+    userName: profile?.username ?? "غير معروف",
+  };
+}
 /* =========================================================
    Types
 ========================================================= */
@@ -2284,23 +2308,51 @@ export function GroupReviewPage() {
           };
         });
 
-      const { error } =
-        await supabase
-          .from(
-            PERSONNEL_TABLE_NAME
-          )
-          .upsert(payload, {
-            onConflict:
-              "military_number",
-          });
+  const { data: savedPersonnel, error } =
+  await supabase
+    .from(
+      PERSONNEL_TABLE_NAME
+    )
+    .upsert(payload, {
+      onConflict:
+        "military_number",
+    })
+    .select("id, military_number");
 
-      if (error) {
-        throw error;
-      }
+if (error) {
+  throw error;
+}
+const { userId, userName } = await getCurrentUserInfo();
 
-      navigate(
-        "/dashboard/add-soldier/group-success",
-        {
+const newCount = approvedRows.filter(
+  (r) => r.classification === "new"
+).length;
+
+const updatedCount = approvedRows.filter(
+  (r) => r.classification === "update"
+).length;
+
+await logActivity({
+  userId,
+  userName,
+  actionType: "CREATE",
+  action: "قيد قوة جديدة (كشف جماعي)",
+  entity: "personnel",
+  details: JSON.stringify({
+    fileName: state?.file_name ?? "",
+    resultsCount: approvedRows.length,
+    newCount,
+    updatedCount,
+    personnel: (savedPersonnel ?? []).map((p) => ({
+      id: p.id,
+      militaryNumber: p.military_number,
+    })),
+  }),
+});
+
+navigate(
+  "/dashboard/add-soldier/group-success",
+  {
           state: {
             stats: {
               total:

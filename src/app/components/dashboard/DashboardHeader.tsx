@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useLocation } from "react-router";
 import {
   ChevronDown,
   KeyRound,
@@ -7,6 +8,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../../../lib/supabase";
 import imgAvatar from "../../../assets/avatar.png";
+import { Breadcrumbs } from "./Breadcrumbs";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
@@ -610,6 +612,8 @@ export function DashboardHeader({
   pageTitle = "الموقف العام",
 }: DashboardHeaderProps) {
 
+  const location = useLocation();
+
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const [modal, setModal] = useState<
@@ -763,16 +767,12 @@ export function DashboardHeader({
             Right: Page title
         ====================================================== */}
 
+        {/* ======================================================
+            Right: Breadcrumbs
+        ====================================================== */}
+
         <div className="flex items-center">
-          <span
-            style={{
-              color: "#2d3648",
-              fontFamily: "'Almarai', sans-serif",
-              fontSize: "18px",
-            }}
-          >
-            {pageTitle}
-          </span>
+          <Breadcrumbs pathname={location.pathname} />
         </div>
 
         {/* ======================================================

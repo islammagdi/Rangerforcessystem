@@ -1,4 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useParams, useNavigate } from "react-router";
 import { createPortal } from "react-dom";
 import { ChevronDown, CalendarDays } from "lucide-react";
@@ -27,6 +33,10 @@ const DISCHARGED_STATUS_ID = "ac8ddfa3-1578-455b-9b6a-b056260fcb1f";
 
 // طول الرقم العسكري المطلوب بالظبط
 const MILITARY_NUMBER_LENGTH = 13;
+function isSoldierRankName(name?: string | null): boolean {
+  const n = (name ?? "").trim();
+  return n === "جندي" || n === "جندى";
+}
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -970,6 +980,37 @@ function isoToDisplayDate(iso: string | null | undefined): string {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Current user display name
+// ─────────────────────────────────────────────────────────────
+// بيرجع اسم المستخدم المسجّل دخوله حاليًا (اللي بيعمل التعديل فعليًا)
+// بدل اسم الفرد اللي بيتم تعديل بياناته.
+//
+// ⚠️ افتراض: الاسم مخزّن في user_metadata.full_name (نمط شائع في Supabase Auth).
+// لو عندك عمود اسم مختلف أو جدول "profiles" منفصل، عدّل الدالة دي بس
+// وباقي الكود هيفضل شغال زي ما هو.
+async function getCurrentUserDisplayName(): Promise<string> {
+  try {
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+
+    if (error || !user) {
+      return "مستخدم غير معروف";
+    }
+
+    const metaName =
+      (user.user_metadata as any)?.full_name ||
+      (user.user_metadata as any)?.name;
+
+    return metaName || user.email || "مستخدم غير معروف";
+  } catch (err) {
+    console.error("Error getting current user:", err);
+    return "مستخدم غير معروف";
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // Page
 // ─────────────────────────────────────────────────────────────
 
@@ -1041,7 +1082,12 @@ export function SoldierEditPage() {
 
   const isVolunteerCategory = selectedCategoryName === VOLUNTEER_CATEGORY_NAME;
   const isConscriptCategory = selectedCategoryName === CONSCRIPT_CATEGORY_NAME;
-
+const filteredRankOptions = useMemo(() => {
+  return rankOptions.filter((rank) => {
+    const soldier = isSoldierRankName(rank.name);
+    return isConscriptCategory ? soldier : !soldier;
+  });
+}, [rankOptions, isConscriptCategory]);
   // ───────────────────────────────────────────────────────────
   // Load Dropdown Data
   // ───────────────────────────────────────────────────────────
@@ -1305,14 +1351,26 @@ export function SoldierEditPage() {
   // لو الفئة الجديدة "متطوع" مفيش تاريخ تسريح، فبنصفّره تلقائيًا
   // ───────────────────────────────────────────────────────────
 
-  function handleCategoryChange(option: Option) {
-    setCategoryId(option.id);
-    setError("");
+function handleCategoryChange(option: Option) {
+  setCategoryId(option.id);
+  setError("");
 
-    if (option.name === VOLUNTEER_CATEGORY_NAME) {
-      setDischargeDateIso(null);
+  if (option.name === VOLUNTEER_CATEGORY_NAME) {
+    setDischargeDateIso(null);
+  }
+
+  // إعادة ضبط الدرجة لو بقت غير متوافقة مع الفئة الجديدة
+  const willBeConscript = option.name === CONSCRIPT_CATEGORY_NAME;
+  const currentRank = rankOptions.find((r) => r.id === rankId);
+
+  if (currentRank) {
+    const rankIsSoldier = isSoldierRankName(currentRank.name);
+
+    if (willBeConscript !== rankIsSoldier) {
+      setRankId(null);
     }
   }
+}
 
   // ───────────────────────────────────────────────────────────
   // Save
@@ -1428,33 +1486,41 @@ export function SoldierEditPage() {
 
         return;
       }
-await logActivity({
-  userName: soldier.name,
-  actionType: "UPDATE",
-  action: "تعديل بيانات فرد",
-  entity: `الفرد: ${soldier.name}`,
-  details: [
-    `الرقم العسكري: ${soldier.militaryId} → ${trimmedMilitaryNumber}`,
-    `الدرجة: ${soldier.rank} → ${
-      rankOptions.find((o) => o.id === rankId)?.name ?? "-"
-    }`,
-    `الفئة: ${soldier.category} → ${
-      categoryOptions.find((o) => o.id === categoryId)?.name ?? "-"
-    }`,
-    `الوحدة: ${soldier.unit} → ${
-      unitOptions.find((o) => o.id === unitId)?.name ?? "-"
-    }`,
-    `الموقف الخدمي: ${soldier.serviceStatus} → ${
-      serviceStatusOptions.find((o) => o.id === serviceStatusId)?.name ?? "-"
-    }`,
-    `جهة الإلحاق: ${soldier.attachmentPlace || "-"} → ${
-      attachmentUnitOptions.find((o) => o.id === attachmentUnitId)?.name ?? "-"
-    }`,
-    `تاريخ التسريح: ${soldier.dischargeDate || "-"} → ${
-      dischargeDateIso ? isoToDisplayDate(dischargeDateIso) : "-"
-    }`,
-  ].join("\n"),
-});
+
+      // ✅ FIX: نجيب اسم المستخدم الحالي (اللي بيعمل التعديل فعليًا)
+      // بدل ما نسجّل اسم الفرد اللي بيتم تعديل بياناته (soldier.name).
+      const currentUserName = await getCurrentUserDisplayName();
+
+      await logActivity({
+        userName: currentUserName,
+        actionType: "UPDATE",
+        action: "تعديل بيانات فرد",
+        entity: `الفرد: ${soldier.name}`,
+        details: [
+          `الرقم العسكري: ${soldier.militaryId} → ${trimmedMilitaryNumber}`,
+          `الدرجة: ${soldier.rank} → ${
+            rankOptions.find((o) => o.id === rankId)?.name ?? "-"
+          }`,
+          `الفئة: ${soldier.category} → ${
+            categoryOptions.find((o) => o.id === categoryId)?.name ?? "-"
+          }`,
+          `الوحدة: ${soldier.unit} → ${
+            unitOptions.find((o) => o.id === unitId)?.name ?? "-"
+          }`,
+          `الموقف الخدمي: ${soldier.serviceStatus} → ${
+            serviceStatusOptions.find((o) => o.id === serviceStatusId)
+              ?.name ?? "-"
+          }`,
+          `جهة الإلحاق: ${soldier.attachmentPlace || "-"} → ${
+            attachmentUnitOptions.find((o) => o.id === attachmentUnitId)
+              ?.name ?? "-"
+          }`,
+          `تاريخ التسريح: ${soldier.dischargeDate || "-"} → ${
+            dischargeDateIso ? isoToDisplayDate(dischargeDateIso) : "-"
+          }`,
+        ].join("\n"),
+      });
+
       // الرجوع لشاشة بيانات الفرد بعد نجاح الحفظ
       navigate(`/dashboard/individual-query/soldier/${soldier.id}`);
     } catch (err) {
@@ -1579,16 +1645,15 @@ await logActivity({
                   >
                     الدرجة
                   </p>
-
-                  <EditDropdown
-                    options={rankOptions}
-                    value={rankId}
-                    onChange={(option) => {
-                      setRankId(option.id);
-                      setError("");
-                    }}
-                    placeholder="اختر الدرجة"
-                  />
+<EditDropdown
+  options={filteredRankOptions}
+  value={rankId}
+  onChange={(option) => {
+    setRankId(option.id);
+    setError("");
+  }}
+  placeholder="اختر الدرجة"
+/>
                 </div>
               }
               right={
