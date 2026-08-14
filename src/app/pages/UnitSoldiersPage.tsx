@@ -14,8 +14,14 @@ const F: React.CSSProperties = {
 type LocationFilter = "all" | "inside" | "outside";
 type RankFilter = "all" | "soldiers" | "nco";
 
+interface PrimaryUnitFilter {
+  id: string;
+  name: string;
+}
+
 interface SoldierRow {
   id: string;
+  primaryUnitId: string | null;
   milId: string;
   rank: string;
   name: string;
@@ -39,7 +45,10 @@ interface UnitMeta {
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
-const STATUS_CFG: Record<string, { bg: string; dot: string; text: string }> = {
+const STATUS_CFG: Record<
+  string,
+  { bg: string; dot: string; text: string }
+> = {
   "داخل الوحده": {
     bg: "#ebfaea",
     dot: "#35C128",
@@ -53,7 +62,9 @@ const STATUS_CFG: Record<string, { bg: string; dot: string; text: string }> = {
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const s = STATUS_CFG[status] ?? STATUS_CFG["داخل الوحده"];
+  const s =
+    STATUS_CFG[status] ??
+    STATUS_CFG["داخل الوحده"];
 
   return (
     <span
@@ -82,7 +93,11 @@ function StatusBadge({ status }: { status: string }) {
 
 // ─── Action buttons ───────────────────────────────────────────────────────────
 
-function ActionBtns({ onView }: { onView: () => void }) {
+function ActionBtns({
+  onView,
+}: {
+  onView: () => void;
+}) {
   return (
     <div className="flex items-center gap-1.5">
       <button
@@ -96,7 +111,10 @@ function ActionBtns({ onView }: { onView: () => void }) {
           viewBox="0 0 15 13.868"
           fill="none"
         >
-          <path d={svgPaths.p11466900} fill="#415844" />
+          <path
+            d={svgPaths.p11466900}
+            fill="#415844"
+          />
         </svg>
       </button>
 
@@ -147,7 +165,10 @@ function ActionBtns({ onView }: { onView: () => void }) {
 // ─── Filter button group ──────────────────────────────────────────────────────
 
 interface FilterBtnGroupProps<T extends string> {
-  options: { value: T; label: string }[];
+  options: {
+    value: T;
+    label: string;
+  }[];
   active: T;
   onChange: (v: T) => void;
 }
@@ -158,11 +179,17 @@ function FilterBtnGroup<T extends string>({
   onChange,
 }: FilterBtnGroupProps<T>) {
   return (
-    <div className="flex items-stretch" dir="rtl">
+    <div
+      className="flex items-stretch"
+      dir="rtl"
+    >
       {options.map((opt, idx) => {
-        const isActive = opt.value === active;
+        const isActive =
+          opt.value === active;
+
         const isFirst = idx === 0;
-        const isLast = idx === options.length - 1;
+        const isLast =
+          idx === options.length - 1;
 
         const borderRadius = isFirst
           ? "rounded-tr-[12px] rounded-br-[12px]"
@@ -174,10 +201,16 @@ function FilterBtnGroup<T extends string>({
           <button
             key={opt.value}
             type="button"
-            onClick={() => onChange(opt.value)}
+            onClick={() =>
+              onChange(opt.value)
+            }
             className={`
-              px-4 py-2 border border-[#eff0f6] border-solid
-              transition-colors whitespace-nowrap min-w-[80px]
+              px-4 py-2
+              border border-[#eff0f6]
+              border-solid
+              transition-colors
+              whitespace-nowrap
+              min-w-[80px]
               ${borderRadius}
               ${
                 isActive
@@ -208,7 +241,7 @@ function FilterBtnGroup<T extends string>({
 }
 
 // ─── Table columns ────────────────────────────────────────────────────────────
-// ترتيب رتب المتطوعين (الأعلى أولاً)
+
 const VOLUNTEER_RANK_ORDER = [
   "مساعد اول",
   "مساعد",
@@ -217,38 +250,77 @@ const VOLUNTEER_RANK_ORDER = [
   "عريف",
 ];
 
-function isVolunteerRow(row: SoldierRow): boolean {
+function isVolunteerRow(
+  row: SoldierRow
+): boolean {
   return (
     row.serviceType.includes("متطوع") &&
     !row.serviceType.includes("مجند")
   );
 }
 
-function getVolunteerRankIndex(rank: string): number {
-  const idx = VOLUNTEER_RANK_ORDER.findIndex((r) => rank.includes(r));
-  return idx === -1 ? VOLUNTEER_RANK_ORDER.length : idx;
+function getVolunteerRankIndex(
+  rank: string
+): number {
+  const idx =
+    VOLUNTEER_RANK_ORDER.findIndex((r) =>
+      rank.includes(r)
+    );
+
+  return idx === -1
+    ? VOLUNTEER_RANK_ORDER.length
+    : idx;
 }
 
-function sortSoldierRows(rows: SoldierRow[]): SoldierRow[] {
+function sortSoldierRows(
+  rows: SoldierRow[]
+): SoldierRow[] {
   return [...rows].sort((a, b) => {
-    const aIsVolunteer = isVolunteerRow(a);
-    const bIsVolunteer = isVolunteerRow(b);
+    const aIsVolunteer =
+      isVolunteerRow(a);
 
-    // المتطوعين أولاً، ثم الجنود
-    if (aIsVolunteer && !bIsVolunteer) return -1;
-    if (!aIsVolunteer && bIsVolunteer) return 1;
+    const bIsVolunteer =
+      isVolunteerRow(b);
 
-    // لو الاتنين متطوعين: رتب حسب ترتيب الرتب
-    if (aIsVolunteer && bIsVolunteer) {
-      return getVolunteerRankIndex(a.rank) - getVolunteerRankIndex(b.rank);
+    if (
+      aIsVolunteer &&
+      !bIsVolunteer
+    ) {
+      return -1;
     }
 
-    // لو الاتنين جنود: رتب بالاسم أبجديًا
-    return a.name.localeCompare(b.name, "ar");
+    if (
+      !aIsVolunteer &&
+      bIsVolunteer
+    ) {
+      return 1;
+    }
+
+    if (
+      aIsVolunteer &&
+      bIsVolunteer
+    ) {
+      return (
+        getVolunteerRankIndex(
+          a.rank
+        ) -
+        getVolunteerRankIndex(
+          b.rank
+        )
+      );
+    }
+
+    return a.name.localeCompare(
+      b.name,
+      "ar"
+    );
   });
 }
 
-function formatDischargeDate(row: SoldierRow, rawDate: string | null): string {
+function formatDischargeDate(
+  row: SoldierRow,
+  rawDate: string | null
+): string {
   if (isVolunteerRow(row)) {
     return "لا يوجد";
   }
@@ -257,32 +329,68 @@ function formatDischargeDate(row: SoldierRow, rawDate: string | null): string {
     return "-";
   }
 
-  const [year, month, day] = rawDate.split("-");
+  const [year, month, day] =
+    rawDate.split("-");
+
   return `${day}/${month}/${year}`;
 }
 
-function isMainUnitType(unitType: string | null | undefined): boolean {
-  return unitType?.trim().toUpperCase() === "MAIN";
+function isMainUnitType(
+  unitType: string | null | undefined
+): boolean {
+  return (
+    unitType
+      ?.trim()
+      .toUpperCase() === "MAIN"
+  );
 }
 
-// أعمدة الجدول تختلف حسب نوع الوحدة:
-// - الوحدة الأساسية: تعرض "حالة التوزيع" وتسمي العمود "مكان الالحاق"
-// - الوحدة الإدارية: تخفي "حالة التوزيع" وتسمي نفس العمود "الوحدة الأساسية"
-function getTableCols(isMain: boolean) {
+function getTableCols(
+  isMain: boolean
+) {
   return [
-    { key: "milId", label: "رقم عسكري" },
-    { key: "rank", label: "درجة" },
-    { key: "name", label: "اسم" },
-    { key: "serviceType", label: "نوع الخدمه" },
-    ...(isMain ? [{ key: "status", label: "حالة التوزيع" }] : []),
+    {
+      key: "milId",
+      label: "رقم عسكري",
+    },
+    {
+      key: "rank",
+      label: "درجة",
+    },
+    {
+      key: "name",
+      label: "اسم",
+    },
+    {
+      key: "serviceType",
+      label: "نوع الخدمه",
+    },
+    ...(isMain
+      ? [
+          {
+            key: "status",
+            label: "حالة التوزيع",
+          },
+        ]
+      : []),
     {
       key: "attachment",
-      label: isMain ? "مكان الالحاق" : "الوحدة الأساسية",
+      label: isMain
+        ? "مكان الالحاق"
+        : "الوحدة الأساسية",
     },
-    { key: "dischargeDate", label: "تاريخ التسريح" },
-    { key: "actions", label: "الاجراء" },
+    {
+      key: "dischargeDate",
+      label: "تاريخ التسريح",
+    },
+    {
+      key: "actions",
+      label: "الاجراء",
+    },
   ];
 }
+
+// ─── Print styles ─────────────────────────────────────────────────────────────
 
 function PrintStyles() {
   return (
@@ -314,7 +422,8 @@ function PrintStyles() {
             border-collapse: collapse !important;
           }
 
-          th, td {
+          th,
+          td {
             border: 1px solid #ccc;
             padding: 6px !important;
             font-size: 11px !important;
@@ -330,6 +439,8 @@ function PrintStyles() {
   );
 }
 
+// ─── Print report ─────────────────────────────────────────────────────────────
+
 function UnitSoldiersPrintReport({
   unit,
   rows,
@@ -337,46 +448,95 @@ function UnitSoldiersPrintReport({
   unit: UnitMeta;
   rows: SoldierRow[];
 }) {
-  const today = new Date().toLocaleString("ar-EG");
-  const printCols = getTableCols(unit.isMain);
+  const today =
+    new Date().toLocaleString(
+      "ar-EG"
+    );
+
+  const printCols =
+    getTableCols(unit.isMain);
 
   return (
-    <div className="soldiers-print-area hidden print:block" dir="rtl">
-      {/* نفس الهيدر الموجود في الصفحة */}
+    <div
+      className="soldiers-print-area hidden print:block"
+      dir="rtl"
+    >
       <div className="mb-4">
-        <p style={{ ...F, fontWeight: 700, fontSize: 22 }}>
+        <p
+          style={{
+            ...F,
+            fontWeight: 700,
+            fontSize: 22,
+          }}
+        >
           {unit.name}
         </p>
 
         <div className="flex items-center gap-6 flex-wrap mt-2">
-          <span style={{ ...F, fontSize: 14 }}>
+          <span
+            style={{
+              ...F,
+              fontSize: 14,
+            }}
+          >
             القوة: {unit.total} فرد
           </span>
-          <span style={{ ...F, fontSize: 14 }}>
+
+          <span
+            style={{
+              ...F,
+              fontSize: 14,
+            }}
+          >
             ضباط صف: {unit.nco} ضابط صف
           </span>
-          <span style={{ ...F, fontSize: 14 }}>
+
+          <span
+            style={{
+              ...F,
+              fontSize: 14,
+            }}
+          >
             الجنود: {unit.soldiers} جندي
           </span>
+
           {unit.isMain && (
-            <span style={{ ...F, fontSize: 14 }}>
+            <span
+              style={{
+                ...F,
+                fontSize: 14,
+              }}
+            >
               خوارج: {unit.khawarij} فرد
             </span>
           )}
-          <span style={{ ...F, fontSize: 14 }}>
+
+          <span
+            style={{
+              ...F,
+              fontSize: 14,
+            }}
+          >
             المتبقي: {unit.remaining} فرد
           </span>
         </div>
       </div>
 
-      {/* جدول الأفراد بنفس ترتيب الأعمدة المعروض */}
-      <table className="w-full" style={F}>
+      <table
+        className="w-full"
+        style={F}
+      >
         <thead>
           <tr>
             {printCols
-              .filter((c) => c.key !== "actions")
+              .filter(
+                (c) =>
+                  c.key !== "actions"
+              )
               .map((c) => (
-                <th key={c.key}>{c.label}</th>
+                <th key={c.key}>
+                  {c.label}
+                </th>
               ))}
           </tr>
         </thead>
@@ -387,17 +547,36 @@ function UnitSoldiersPrintReport({
               <td>{row.milId}</td>
               <td>{row.rank}</td>
               <td>{row.name}</td>
-              <td>{row.serviceType}</td>
-              {unit.isMain && <td>{row.status}</td>}
-              <td>{row.attachment}</td>
-              <td>{row.dischargeDate}</td>
+              <td>
+                {row.serviceType}
+              </td>
+
+              {unit.isMain && (
+                <td>{row.status}</td>
+              )}
+
+              <td>
+                {row.attachment}
+              </td>
+
+              <td>
+                {row.dischargeDate}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      <p style={{ ...F, fontSize: 12, marginTop: 12, textAlign: "left" }}>
-        تاريخ الطباعة: {today} — عدد النتائج: {rows.length} فرد
+      <p
+        style={{
+          ...F,
+          fontSize: 12,
+          marginTop: 12,
+          textAlign: "left",
+        }}
+      >
+        تاريخ الطباعة: {today} —
+        عدد النتائج: {rows.length} فرد
       </p>
     </div>
   );
@@ -406,30 +585,56 @@ function UnitSoldiersPrintReport({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function UnitSoldiersPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id } =
+    useParams<{ id: string }>();
+
   const navigate = useNavigate();
 
-  // مهم: id هنا UUID وليس رقم
   const unitId = id;
 
-  const [unit, setUnit] = useState<UnitMeta | null>(null);
+  const [unit, setUnit] =
+    useState<UnitMeta | null>(null);
 
-  const [locationFilter, setLocationFilter] =
-    useState<LocationFilter>("all");
+  const [
+    locationFilter,
+    setLocationFilter,
+  ] = useState<LocationFilter>(
+    "all"
+  );
 
-  const [rankFilter, setRankFilter] =
-    useState<RankFilter>("all");
+  const [
+    primaryUnitFilter,
+    setPrimaryUnitFilter,
+  ] = useState<string>("all");
 
-  const [search, setSearch] = useState("");
+  const [
+    primaryUnits,
+    setPrimaryUnits,
+  ] = useState<
+    PrimaryUnitFilter[]
+  >([]);
 
-  const [allChecked, setAllChecked] = useState(false);
+  const [
+    rankFilter,
+    setRankFilter,
+  ] = useState<RankFilter>("all");
 
-  const [loading, setLoading] = useState(true);
+  const [search, setSearch] =
+    useState("");
 
-  const [error, setError] = useState("");
+  const [
+    allChecked,
+    setAllChecked,
+  ] = useState(false);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState("");
 
   // ───────────────────────────────────────────────────────────────────────────
-  // Load unit + personnel from Supabase
+  // Load data
   // ───────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -449,11 +654,11 @@ export function UnitSoldiersPage() {
       setLoading(true);
       setError("");
 
-      // ───────────────────────────────────────────────────────────────────────
-      // 1) Get unit
-      // ───────────────────────────────────────────────────────────────────────
-
-      const { data: unitData, error: unitError } = await supabase
+      // 1) الوحدة
+      const {
+        data: unitData,
+        error: unitError,
+      } = await supabase
         .from("units")
         .select(`
           id,
@@ -467,49 +672,39 @@ export function UnitSoldiersPage() {
         throw unitError;
       }
 
-      // ───────────────────────────────────────────────────────────────────────
-      // 2) Get all personnel belonging to this unit
-      //
-      // primary_unit_id = الوحدة الأساسية
-      // attachment_unit_id = الوحدة الملحق بها
-      //
-      // مهم جدًا: الفرد يظهر في صفحة الوحدة سواء كانت هذه الوحدة هي
-      // وحدته الأساسية (primary_unit_id) أو الوحدة الملحق بها حاليًا
-      // (attachment_unit_id). قبل التعديل كان الاستعلام يعتمد على
-      // primary_unit_id فقط، لذلك الوحدات الفرعية (التي تستقبل أفرادًا
-      // عن طريق الإلحاق فقط) كانت تظهر فارغة دائمًا.
-      // ───────────────────────────────────────────────────────────────────────
-
-      const { data: personnelData, error: personnelError } =
-        await supabase
-          .from("personnel")
-          .select(`
-            id,
-            military_number,
-            full_name,
-            rank_id,
-            personnel_category_id,
-            service_status_id,
-            primary_unit_id,
-            attachment_unit_id,
-            is_active,
-            discharge_date
-          `)
-          .or(
-            `primary_unit_id.eq.${unitId},attachment_unit_id.eq.${unitId}`
-          )
-          .order("full_name", { ascending: true });
+      // 2) الأفراد
+      const {
+        data: personnelData,
+        error: personnelError,
+      } = await supabase
+        .from("personnel")
+        .select(`
+          id,
+          military_number,
+          full_name,
+          rank_id,
+          personnel_category_id,
+          service_status_id,
+          primary_unit_id,
+          attachment_unit_id,
+          is_active,
+          discharge_date
+        `)
+        .or(
+          `primary_unit_id.eq.${unitId},attachment_unit_id.eq.${unitId}`
+        )
+        .order("full_name", {
+          ascending: true,
+        });
 
       if (personnelError) {
         throw personnelError;
       }
 
-      const personnel = personnelData ?? [];
+      const personnel =
+        personnelData ?? [];
 
-      // ───────────────────────────────────────────────────────────────────────
-      // 3) Get ranks
-      // ───────────────────────────────────────────────────────────────────────
-
+      // 3) الرتب
       const rankIds = [
         ...new Set(
           personnel
@@ -521,7 +716,10 @@ export function UnitSoldiersPage() {
       let ranks: any[] = [];
 
       if (rankIds.length > 0) {
-        const { data, error } = await supabase
+        const {
+          data,
+          error,
+        } = await supabase
           .from("ranks")
           .select("id, name")
           .in("id", rankIds);
@@ -533,14 +731,14 @@ export function UnitSoldiersPage() {
         ranks = data ?? [];
       }
 
-      // ───────────────────────────────────────────────────────────────────────
-      // 4) Get personnel categories
-      // ───────────────────────────────────────────────────────────────────────
-
+      // 4) تصنيفات الأفراد
       const categoryIds = [
         ...new Set(
           personnel
-            .map((p) => p.personnel_category_id)
+            .map(
+              (p) =>
+                p.personnel_category_id
+            )
             .filter(Boolean)
         ),
       ];
@@ -548,10 +746,16 @@ export function UnitSoldiersPage() {
       let categories: any[] = [];
 
       if (categoryIds.length > 0) {
-        const { data, error } = await supabase
+        const {
+          data,
+          error,
+        } = await supabase
           .from("personnel_categories")
           .select("id, name")
-          .in("id", categoryIds);
+          .in(
+            "id",
+            categoryIds
+          );
 
         if (error) {
           throw error;
@@ -560,15 +764,14 @@ export function UnitSoldiersPage() {
         categories = data ?? [];
       }
 
-      // ───────────────────────────────────────────────────────────────────────
-      // 5) Get attachment units + primary units (لعرض اسم الوحدة الأخرى
-      //    في عمود "مكان الالحاق" في الحالتين)
-      // ───────────────────────────────────────────────────────────────────────
-
+      // 5) كل الوحدات المرتبطة بالأفراد
       const attachmentUnitIds = [
         ...new Set(
           personnel
-            .map((p) => p.attachment_unit_id)
+            .map(
+              (p) =>
+                p.attachment_unit_id
+            )
             .filter(Boolean)
         ),
       ];
@@ -576,23 +779,34 @@ export function UnitSoldiersPage() {
       const primaryUnitIds = [
         ...new Set(
           personnel
-            .map((p) => p.primary_unit_id)
+            .map(
+              (p) =>
+                p.primary_unit_id
+            )
             .filter(Boolean)
         ),
       ];
 
-      // اجمع كل الوحدات المطلوبة في استعلام واحد (بدون تكرار)
       const otherUnitIds = [
-        ...new Set([...attachmentUnitIds, ...primaryUnitIds]),
+        ...new Set([
+          ...attachmentUnitIds,
+          ...primaryUnitIds,
+        ]),
       ];
 
       let otherUnits: any[] = [];
 
       if (otherUnitIds.length > 0) {
-        const { data, error } = await supabase
+        const {
+          data,
+          error,
+        } = await supabase
           .from("units")
           .select("id, name")
-          .in("id", otherUnitIds);
+          .in(
+            "id",
+            otherUnitIds
+          );
 
         if (error) {
           throw error;
@@ -601,136 +815,229 @@ export function UnitSoldiersPage() {
         otherUnits = data ?? [];
       }
 
-      // ───────────────────────────────────────────────────────────────────────
       // Maps
-      // ───────────────────────────────────────────────────────────────────────
-
       const rankMap = new Map(
-        ranks.map((rank) => [rank.id, rank.name])
+        ranks.map((rank) => [
+          rank.id,
+          rank.name,
+        ])
       );
 
       const categoryMap = new Map(
-        categories.map((category) => [category.id, category.name])
+        categories.map((category) => [
+          category.id,
+          category.name,
+        ])
       );
 
       const unitNameMap = new Map(
-        otherUnits.map((u) => [u.id, u.name])
+        otherUnits.map((u) => [
+          u.id,
+          u.name,
+        ])
       );
 
-      // ───────────────────────────────────────────────────────────────────────
-      // 6) Convert Supabase data -> table rows
-      //
-      // منطق "داخل / خارج الوحدة" و"مكان الالحاق" الآن يعتمد على مكانين
-      // ممكن يكون الفرد ظاهر فيهم:
-      //
-      // - لو primary_unit_id بتاعه = الوحدة المفتوحة، وملهوش attachment_unit_id
-      //   (أو attachment_unit_id بتاعه = نفس الوحدة) => هو "داخل الوحده"
-      //   ومفيش مكان الحاق.
-      //
-      // - لو primary_unit_id بتاعه = الوحدة المفتوحة لكنه اتنقل فعليًا
-      //   لوحدة تانية (attachment_unit_id مختلف) => هو "خارج الوحده"
-      //   ومكان الالحاق = اسم الوحدة التانية.
-      //
-      // - لو الفرد مش من أصل الوحدة (primary_unit_id مختلف) لكنه ملحق
-      //   بيها حاليًا (attachment_unit_id = الوحدة المفتوحة) => هو
-      //   "داخل الوحده" من منظور الوحدة دي (موجود فعليًا فيها)،
-      //   ومكان الالحاق يوضح وحدته الأصلية.
-      // ───────────────────────────────────────────────────────────────────────
+      // 6) Dropdown الوحدات الأساسية
+      // يظهر فقط في الوحدة الإدارية
+      const uniquePrimaryUnitIds = [
+        ...new Set(
+          personnel
+            .map(
+              (person) =>
+                person.primary_unit_id
+            )
+            .filter(Boolean)
+            .filter(
+              (primaryId) =>
+                primaryId !== unitId
+            )
+        ),
+      ];
 
-      const rows: SoldierRow[] = personnel.map((person) => {
-        const isOwnUnit = person.primary_unit_id === unitId;
-        const isAttachedHere = person.attachment_unit_id === unitId;
+      const primaryUnitOptions: PrimaryUnitFilter[] =
+        uniquePrimaryUnitIds
+          .map((primaryId) => ({
+            id: primaryId,
+            name:
+              unitNameMap.get(
+                primaryId
+              ) ?? "غير محدد",
+          }))
+          .filter(
+            (item, index, array) =>
+              array.findIndex(
+                (x) =>
+                  x.id === item.id
+              ) === index
+          )
+          .sort((a, b) =>
+            a.name.localeCompare(
+              b.name,
+              "ar"
+            )
+          );
 
-        // الفرد يُعتبر "داخل الوحده" لو موجود فعليًا فيها الآن:
-        // إما لأنها وحدته الأصلية وملوش إلحاق مكان تاني،
-        // أو لأنه ملحق بيها فعليًا حاليًا.
-        const isInside =
-          (isOwnUnit &&
-            (!person.attachment_unit_id ||
-              person.attachment_unit_id === unitId)) ||
-          isAttachedHere;
+      setPrimaryUnits(
+        primaryUnitOptions
+      );
 
-        let attachment = "لا يوجد";
+      // لو الفلتر الحالي لم يعد موجودًا
+      // نرجعه إلى الكل
+      setPrimaryUnitFilter(
+        (current) => {
+          if (
+            current === "all" ||
+            primaryUnitOptions.some(
+              (item) =>
+                item.id === current
+            )
+          ) {
+            return current;
+          }
 
-        if (
-          isOwnUnit &&
-          person.attachment_unit_id &&
-          person.attachment_unit_id !== unitId
-        ) {
-          // أصله من هنا لكنه اتحول لوحدة تانية
-          attachment =
-            unitNameMap.get(person.attachment_unit_id) ?? "غير محدد";
-        } else if (isAttachedHere && !isOwnUnit) {
-          // ملحق هنا لكن أصله في وحدة تانية
-          attachment =
-            unitNameMap.get(person.primary_unit_id) ?? "غير محدد";
+          return "all";
         }
+      );
 
-        const baseRow: SoldierRow = {
-          id: person.id,
+      // 7) تحويل البيانات
+      const rows: SoldierRow[] =
+        personnel.map((person) => {
+          const isOwnUnit =
+            person.primary_unit_id ===
+            unitId;
 
-          milId: person.military_number ?? "",
+          const isAttachedHere =
+            person.attachment_unit_id ===
+            unitId;
 
-          rank:
-            rankMap.get(person.rank_id) ??
-            "غير محدد",
+          const isInside =
+            (isOwnUnit &&
+              (!person.attachment_unit_id ||
+                person.attachment_unit_id ===
+                  unitId)) ||
+            isAttachedHere;
 
-          name:
-            person.full_name ??
-            "",
+          let attachment =
+            "لا يوجد";
 
-          serviceType:
-            categoryMap.get(person.personnel_category_id) ??
-            "غير محدد",
+          if (
+            isOwnUnit &&
+            person.attachment_unit_id &&
+            person.attachment_unit_id !==
+              unitId
+          ) {
+            attachment =
+              unitNameMap.get(
+                person.attachment_unit_id
+              ) ??
+              "غير محدد";
+          } else if (
+            isAttachedHere &&
+            !isOwnUnit
+          ) {
+            attachment =
+              unitNameMap.get(
+                person.primary_unit_id
+              ) ??
+              "غير محدد";
+          }
 
-          status: isInside
-            ? "داخل الوحده"
-            : "خارج الوحده",
+          const baseRow: SoldierRow =
+            {
+              id: person.id,
 
-          attachment,
+              primaryUnitId:
+                person.primary_unit_id ??
+                null,
 
-          dischargeDate: "",
-        };
+              milId:
+                person.military_number ??
+                "",
 
-        return {
-          ...baseRow,
-          dischargeDate: formatDischargeDate(baseRow, person.discharge_date),
-        };
-      });
+              rank:
+                rankMap.get(
+                  person.rank_id
+                ) ??
+                "غير محدد",
 
-      // ───────────────────────────────────────────────────────────────────────
-      // 7) Calculate statistics
-      // ───────────────────────────────────────────────────────────────────────
+              name:
+                person.full_name ??
+                "",
 
-      const soldiers = rows.filter(
-        (row) =>
-          row.rank.includes("جندي") ||
-          row.serviceType.includes("مجند")
-      ).length;
+              serviceType:
+                categoryMap.get(
+                  person.personnel_category_id
+                ) ??
+                "غير محدد",
 
-      const khawarij = rows.filter(
-        (row) => row.status === "خارج الوحده"
-      ).length;
+              status: isInside
+                ? "داخل الوحده"
+                : "خارج الوحده",
 
-      const nco = rows.length - soldiers;
+              attachment,
 
-      const remaining = rows.filter(
-        (row) => row.status === "داخل الوحده"
-      ).length;
+              dischargeDate: "",
+            };
+
+          return {
+            ...baseRow,
+            dischargeDate:
+              formatDischargeDate(
+                baseRow,
+                person.discharge_date
+              ),
+          };
+        });
+
+      // 8) الإحصائيات
+      const soldiers =
+        rows.filter(
+          (row) =>
+            row.rank.includes(
+              "جندي"
+            ) ||
+            row.serviceType.includes(
+              "مجند"
+            )
+        ).length;
+
+      const khawarij =
+        rows.filter(
+          (row) =>
+            row.status ===
+            "خارج الوحده"
+        ).length;
+
+      const nco =
+        rows.length - soldiers;
+
+      const remaining =
+        rows.filter(
+          (row) =>
+            row.status ===
+            "داخل الوحده"
+        ).length;
 
       setUnit({
         id: unitData.id,
         name: unitData.name,
-        isMain: isMainUnitType(unitData.unit_type),
+        isMain: isMainUnitType(
+          unitData.unit_type
+        ),
         total: rows.length,
         soldiers,
         nco,
         khawarij,
         remaining,
-        rows: sortSoldierRows(rows),
+        rows: sortSoldierRows(
+          rows
+        ),
       });
     } catch (err: any) {
-      console.error("Error loading unit personnel:", err);
+      console.error(
+        "Error loading unit personnel:",
+        err
+      );
 
       setError(
         err?.message ||
@@ -748,35 +1055,76 @@ export function UnitSoldiersPage() {
   const filtered = useMemo(() => {
     if (!unit) return [];
 
-    return unit.rows.filter((row) => {
-      const matchLoc =
-        locationFilter === "all"
-          ? true
-          : locationFilter === "inside"
-            ? row.status === "داخل الوحده"
-            : row.status === "خارج الوحده";
+    return unit.rows.filter(
+      (row) => {
+        // الوحدة الأساسية فقط
+        // تستخدم فلتر داخل / خارج
+        const matchLocation =
+          !unit.isMain
+            ? true
+            : locationFilter ===
+                "all"
+              ? true
+              : locationFilter ===
+                  "inside"
+                ? row.status ===
+                  "داخل الوحده"
+                : row.status ===
+                  "خارج الوحده";
 
-      const matchRank =
-        rankFilter === "all"
-          ? true
-          : rankFilter === "soldiers"
-            ? row.rank.includes("جندي") ||
-              row.serviceType.includes("مجند")
-            : !row.rank.includes("جندي") &&
-              !row.serviceType.includes("مجند");
+        // الوحدة الإدارية تستخدم
+        // الوحدة الأساسية للفرد
+        const matchPrimaryUnit =
+          unit.isMain ||
+          primaryUnitFilter ===
+            "all"
+            ? true
+            : row.primaryUnitId ===
+              primaryUnitFilter;
 
-      const normalizedSearch = search.trim();
+        const matchRank =
+          rankFilter === "all"
+            ? true
+            : rankFilter ===
+                "soldiers"
+              ? row.rank.includes(
+                  "جندي"
+                ) ||
+                row.serviceType.includes(
+                  "مجند"
+                )
+              : !row.rank.includes(
+                  "جندي"
+                ) &&
+                !row.serviceType.includes(
+                  "مجند"
+                );
 
-      const matchSearch =
-        normalizedSearch === "" ||
-        row.milId.includes(normalizedSearch) ||
-        row.name.includes(normalizedSearch);
+        const normalizedSearch =
+          search.trim();
 
-      return matchLoc && matchRank && matchSearch;
-    });
+        const matchSearch =
+          normalizedSearch ===
+            "" ||
+          row.milId.includes(
+            normalizedSearch
+          ) ||
+          row.name.includes(
+            normalizedSearch
+          );
+
+        return (
+          matchLocation &&
+          matchPrimaryUnit &&
+          matchRank &&
+          matchSearch
+        );
+      }
+    );
   }, [
     unit,
     locationFilter,
+    primaryUnitFilter,
     rankFilter,
     search,
   ]);
@@ -785,24 +1133,47 @@ export function UnitSoldiersPage() {
     value: LocationFilter;
     label: string;
   }[] = [
-    { value: "all", label: "الكل" },
-    { value: "inside", label: "داخل الوحده" },
-    { value: "outside", label: "خارج الوحده" },
+    {
+      value: "all",
+      label: "الكل",
+    },
+    {
+      value: "inside",
+      label: "داخل الوحده",
+    },
+    {
+      value: "outside",
+      label: "خارج الوحده",
+    },
   ];
 
   const rankOptions: {
     value: RankFilter;
     label: string;
   }[] = [
-    { value: "all", label: "الكل" },
-    { value: "soldiers", label: "جنود" },
-    { value: "nco", label: "ضباط صف" },
+    {
+      value: "all",
+      label: "الكل",
+    },
+    {
+      value: "soldiers",
+      label: "جنود",
+    },
+    {
+      value: "nco",
+      label: "ضباط صف",
+    },
   ];
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Print
+  // ───────────────────────────────────────────────────────────────────────────
 
   function handlePrintSoldiersList() {
     if (!unit) return;
 
-    const originalTitle = document.title;
+    const originalTitle =
+      document.title;
 
     document.title = `كشف اسماء ${unit.name}`;
 
@@ -828,7 +1199,8 @@ export function UnitSoldiersPage() {
             color: "#4a5468",
           }}
         >
-          جاري تحميل بيانات أفراد الوحدة...
+          جاري تحميل بيانات أفراد
+          الوحدة...
         </span>
       </div>
     );
@@ -851,7 +1223,8 @@ export function UnitSoldiersPage() {
             color: "#e34040",
           }}
         >
-          {error || "لم يتم العثور على الوحدة"}
+          {error ||
+            "لم يتم العثور على الوحدة"}
         </span>
 
         <button
@@ -870,15 +1243,8 @@ export function UnitSoldiersPage() {
     );
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // Table columns (تختلف حسب نوع الوحدة)
-  // ───────────────────────────────────────────────────────────────────────────
-
-  const tableCols = getTableCols(unit.isMain);
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // UI
-  // ───────────────────────────────────────────────────────────────────────────
+  const tableCols =
+    getTableCols(unit.isMain);
 
   return (
     <div
@@ -886,7 +1252,12 @@ export function UnitSoldiersPage() {
       dir="rtl"
     >
       <PrintStyles />
-      <UnitSoldiersPrintReport unit={unit} rows={filtered} />
+
+      <UnitSoldiersPrintReport
+        unit={unit}
+        rows={filtered}
+      />
+
       {/* Page title */}
 
       <h1
@@ -894,7 +1265,8 @@ export function UnitSoldiersPage() {
         style={{
           ...F,
           fontWeight: 700,
-          fontSize: "clamp(18px,3vw,28px)",
+          fontSize:
+            "clamp(18px,3vw,28px)",
           color: "#2d3648",
           lineHeight: 1.5,
         }}
@@ -928,7 +1300,6 @@ export function UnitSoldiersPage() {
                 label: "ضباط صف:",
                 value: `${unit.nco} ضابط صف`,
               },
-
               {
                 label: "الجنود:",
                 value: `${unit.soldiers} جندي`,
@@ -941,7 +1312,6 @@ export function UnitSoldiersPage() {
                     },
                   ]
                 : []),
-
               {
                 label: "المتبقي:",
                 value: `${unit.remaining} فرد`,
@@ -974,7 +1344,8 @@ export function UnitSoldiersPage() {
                   </span>
                 </div>
 
-                {i < arr.length - 1 && (
+                {i <
+                  arr.length - 1 && (
                   <div className="w-px h-9 bg-[#cbd2e0] shrink-0" />
                 )}
               </div>
@@ -983,7 +1354,9 @@ export function UnitSoldiersPage() {
 
           <button
             type="button"
-            onClick={handlePrintSoldiersList}
+            onClick={
+              handlePrintSoldiersList
+            }
             className="flex items-center gap-1.5 bg-[#DCF4DF] rounded-[8px] px-3 py-2 hover:opacity-80 transition-opacity shrink-0"
           >
             <svg
@@ -1005,7 +1378,8 @@ export function UnitSoldiersPage() {
                 ...F,
                 fontSize: 14,
                 color: "#2d3648",
-                whiteSpace: "nowrap",
+                whiteSpace:
+                  "nowrap",
               }}
             >
               طباعة كشف الاسماء
@@ -1032,7 +1406,9 @@ export function UnitSoldiersPage() {
           <button
             type="button"
             onClick={() =>
-              navigate("/dashboard/add-soldier")
+              navigate(
+                "/dashboard/add-soldier"
+              )
             }
             className="flex items-center gap-1.5 bg-[#DCF4DF] rounded-[8px] px-3 py-2 hover:opacity-80 transition-opacity"
           >
@@ -1065,6 +1441,9 @@ export function UnitSoldiersPage() {
         {/* Filters */}
 
         <div className="flex items-end gap-4 flex-wrap px-5 py-4 border-b border-[#eff0f6]">
+
+          {/* Search */}
+
           <div className="flex-1 min-w-[220px]">
             <div className="relative bg-white rounded-[8px] border border-[#e2e7f0] flex items-center gap-3 px-3 py-2.5">
               <svg
@@ -1089,7 +1468,9 @@ export function UnitSoldiersPage() {
                 placeholder="ابحث برقم عسكري, الاسم"
                 value={search}
                 onChange={(e) =>
-                  setSearch(e.target.value)
+                  setSearch(
+                    e.target.value
+                  )
                 }
                 style={{
                   ...F,
@@ -1100,17 +1481,118 @@ export function UnitSoldiersPage() {
             </div>
           </div>
 
+          {/* Filters */}
+
           <div className="flex items-center gap-4 flex-wrap">
-            <FilterBtnGroup
-              options={locationOptions}
-              active={locationFilter}
-              onChange={setLocationFilter}
-            />
+
+            {/* Primary unit dropdown
+                للوحدة الإدارية فقط */}
+
+            {!unit.isMain && (
+              <div className="relative min-w-[250px]">
+                <select
+                  value={
+                    primaryUnitFilter
+                  }
+                  onChange={(e) =>
+                    setPrimaryUnitFilter(
+                      e.target.value
+                    )
+                  }
+                  className="
+                    appearance-none
+                    w-full
+                    bg-white
+                    border
+                    border-[#e2e7f0]
+                    rounded-[8px]
+                    px-4
+                    py-2.5
+                    pl-10
+                    outline-none
+                    cursor-pointer
+                    hover:border-[#00b867]
+                    focus:border-[#00b867]
+                    transition-colors
+                  "
+                  style={{
+                    ...F,
+                    fontSize: 15,
+                    color: "#2d3648",
+                  }}
+                  dir="rtl"
+                >
+                  <option value="all">
+                    كل الوحدات الأساسية
+                  </option>
+
+                  {primaryUnits.map(
+                    (primaryUnit) => (
+                      <option
+                        key={
+                          primaryUnit.id
+                        }
+                        value={
+                          primaryUnit.id
+                        }
+                      >
+                        {
+                          primaryUnit.name
+                        }
+                      </option>
+                    )
+                  )}
+                </select>
+
+                <svg
+                  className="
+                    absolute
+                    left-3
+                    top-1/2
+                    -translate-y-1/2
+                    pointer-events-none
+                  "
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                >
+                  <path
+                    d="M4 6L8 10L12 6"
+                    stroke="#717d96"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+            )}
+
+            {/* Location filter
+                للوحدة الأساسية فقط */}
+
+            {unit.isMain && (
+              <FilterBtnGroup
+                options={
+                  locationOptions
+                }
+                active={
+                  locationFilter
+                }
+                onChange={
+                  setLocationFilter
+                }
+              />
+            )}
+
+            {/* Rank filter */}
 
             <FilterBtnGroup
               options={rankOptions}
               active={rankFilter}
-              onChange={setRankFilter}
+              onChange={
+                setRankFilter
+              }
             />
           </div>
         </div>
@@ -1128,9 +1610,13 @@ export function UnitSoldiersPage() {
                   <input
                     type="checkbox"
                     className="w-4 h-4 rounded cursor-pointer"
-                    checked={allChecked}
+                    checked={
+                      allChecked
+                    }
                     onChange={(e) =>
-                      setAllChecked(e.target.checked)
+                      setAllChecked(
+                        e.target.checked
+                      )
                     }
                   />
                 </th>
@@ -1160,7 +1646,9 @@ export function UnitSoldiersPage() {
                         className="shrink-0"
                       >
                         <path
-                          d={svgPaths.p14089660}
+                          d={
+                            svgPaths.p14089660
+                          }
                           stroke="#A0ABC0"
                           strokeLinecap="round"
                           strokeLinejoin="round"
@@ -1174,10 +1662,14 @@ export function UnitSoldiersPage() {
             </thead>
 
             <tbody>
-              {filtered.length === 0 ? (
+              {filtered.length ===
+              0 ? (
                 <tr>
                   <td
-                    colSpan={tableCols.length + 1}
+                    colSpan={
+                      tableCols.length +
+                      1
+                    }
                     className="text-center py-10"
                   >
                     <span
@@ -1192,120 +1684,140 @@ export function UnitSoldiersPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((row, idx) => (
-                  <tr
-                    key={row.id}
-                    className={`
-                      border-b border-[#eaecf0]
-                      ${
-                        idx % 2 === 0
-                          ? "bg-white"
-                          : "bg-[#fafbff]"
-                      }
-                      hover:bg-[#f5f6fb]
-                      transition-colors
-                    `}
-                  >
-                    <td className="w-10 px-4 py-3 text-center">
-                      <input
-                        type="checkbox"
-                        className="w-4 h-4 rounded cursor-pointer"
-                        checked={allChecked}
-                        readOnly
-                      />
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <span
-                        style={{
-                          ...F,
-                          fontSize: 14,
-                          color: "#2d3648",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {row.milId}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <span
-                        style={{
-                          ...F,
-                          fontSize: 14,
-                          color: "#2d3648",
-                        }}
-                      >
-                        {row.rank}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <span
-                        style={{
-                          ...F,
-                          fontSize: 14,
-                          color: "#2d3648",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {row.name}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <span
-                        style={{
-                          ...F,
-                          fontSize: 14,
-                          color: "#2d3648",
-                        }}
-                      >
-                        {row.serviceType}
-                      </span>
-                    </td>
-
-                    {unit.isMain && (
-                      <td className="px-4 py-3">
-                        <StatusBadge status={row.status} />
-                      </td>
-                    )}
-
-                    <td className="px-4 py-3">
-                      <span
-                        style={{
-                          ...F,
-                          fontSize: 14,
-                          color: "#2d3648",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {row.attachment}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        style={{
-                          ...F,
-                          fontSize: 14,
-                          color: "#2d3648",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {row.dischargeDate}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <ActionBtns
-                        onView={() =>
-                          navigate(
-                            `/dashboard/individual-query/soldier/${row.id}`
-                          )
+                filtered.map(
+                  (row, idx) => (
+                    <tr
+                      key={row.id}
+                      className={`
+                        border-b border-[#eaecf0]
+                        ${
+                          idx % 2 === 0
+                            ? "bg-white"
+                            : "bg-[#fafbff]"
                         }
-                      />
-                    </td>
-                  </tr>
-                ))
+                        hover:bg-[#f5f6fb]
+                        transition-colors
+                      `}
+                    >
+                      <td className="w-10 px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 rounded cursor-pointer"
+                          checked={
+                            allChecked
+                          }
+                          readOnly
+                        />
+                      </td>
+
+                      <td className="px-4 py-3">
+                        <span
+                          style={{
+                            ...F,
+                            fontSize: 14,
+                            color: "#2d3648",
+                            whiteSpace:
+                              "nowrap",
+                          }}
+                        >
+                          {row.milId}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3">
+                        <span
+                          style={{
+                            ...F,
+                            fontSize: 14,
+                            color: "#2d3648",
+                          }}
+                        >
+                          {row.rank}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3">
+                        <span
+                          style={{
+                            ...F,
+                            fontSize: 14,
+                            color: "#2d3648",
+                            whiteSpace:
+                              "nowrap",
+                          }}
+                        >
+                          {row.name}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3">
+                        <span
+                          style={{
+                            ...F,
+                            fontSize: 14,
+                            color: "#2d3648",
+                          }}
+                        >
+                          {
+                            row.serviceType
+                          }
+                        </span>
+                      </td>
+
+                      {unit.isMain && (
+                        <td className="px-4 py-3">
+                          <StatusBadge
+                            status={
+                              row.status
+                            }
+                          />
+                        </td>
+                      )}
+
+                      <td className="px-4 py-3">
+                        <span
+                          style={{
+                            ...F,
+                            fontSize: 14,
+                            color: "#2d3648",
+                            whiteSpace:
+                              "nowrap",
+                          }}
+                        >
+                          {
+                            row.attachment
+                          }
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3">
+                        <span
+                          style={{
+                            ...F,
+                            fontSize: 14,
+                            color: "#2d3648",
+                            whiteSpace:
+                              "nowrap",
+                          }}
+                        >
+                          {
+                            row.dischargeDate
+                          }
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3">
+                        <ActionBtns
+                          onView={() =>
+                            navigate(
+                              `/dashboard/individual-query/soldier/${row.id}`
+                            )
+                          }
+                        />
+                      </td>
+                    </tr>
+                  )
+                )
               )}
             </tbody>
           </table>
@@ -1332,7 +1844,9 @@ export function UnitSoldiersPage() {
                 color: "#4a5468",
               }}
             >
-              {new Date().toLocaleString("ar-EG")}
+              {new Date().toLocaleString(
+                "ar-EG"
+              )}
             </span>
           </div>
 

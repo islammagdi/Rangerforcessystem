@@ -31,6 +31,7 @@ export interface LetterData {
   attachmentPlace: string;
   attachmentPlaceId: string | null;
   reason: string;
+   notes: string; // ✅ جديد
 }
 
 interface Unit {
@@ -696,7 +697,7 @@ export function LetterDataPage() {
   );
 
   const [reason, setReason] = useState("");
-
+const [notes, setNotes] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // ─────────────────────────────────────────────────────────
@@ -887,6 +888,7 @@ export function LetterDataPage() {
   attachmentPlaceId: isEndAttachment ? null : attachmentPlaceId,
 
   reason,
+  notes, // ✅ جديد
 };
 
     navigate("/dashboard/issue-letter/review", {
@@ -1167,7 +1169,34 @@ export function LetterDataPage() {
               </p>
             )}
           </div>
+{/* Notes */}
 
+<div className="flex flex-col gap-1.5 w-full">
+  <label
+    style={{
+      ...F,
+      fontWeight: 700,
+      fontSize: 15,
+      color: "#2d3648",
+    }}
+  >
+    ملاحظات (اختياري)
+  </label>
+
+  <textarea
+    value={notes}
+    onChange={(e) => setNotes(e.target.value)}
+    placeholder="اكتب أي ملاحظات إضافية"
+    rows={2}
+    dir="rtl"
+    className="w-full bg-white border border-[#e2e7f0] rounded-[8px] px-3 py-3 text-right outline-none resize-none focus:border-[#1f3d97] transition-colors"
+    style={{
+      ...F,
+      fontSize: 16,
+      color: "#4a5468",
+    }}
+  />
+</div>
           {/* Soldiers */}
 
           {localSoldiers.length > 0 && (

@@ -73,6 +73,7 @@ type LetterData = {
   destination: string;
   attachmentPlace: string;
   reason: string;
+  notes?: string; // ✅ جديد
   issuingUnitId?: string;
   attachmentUnitId?: string;
 };
@@ -626,6 +627,7 @@ function LetterPreview({
   destination,
   attachmentPlace,
   reason,
+   notes,
   letterType,
   branchHeadName,
   branchHeadRank,
@@ -634,6 +636,7 @@ function LetterPreview({
   destination: string;
   attachmentPlace: string;
   reason: string;
+  notes?: string;
   letterType: string;
   branchHeadName: string;
   branchHeadRank: string;
@@ -681,7 +684,7 @@ const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
                 margin: 0,
               }}
             >
-              قيادة قـــوات الصاعقــة
+              قيـــــادة قـــوات الصـاعقـــة
             </p>
 
             <p
@@ -691,7 +694,7 @@ const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
                 margin: "3px 0",
               }}
             >
-              فــرع التنظيـــم والإدارة
+              فــــــرع التنظيــــــم والإدارة
             </p>
 
             <p
@@ -701,7 +704,7 @@ const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
                 margin: 0,
               }}
             >
-              التاريخ :{" "}
+              التاريــخ :{" "}
               <DateBlank
                 month={currentMonth}
                 year={currentYear}
@@ -736,6 +739,7 @@ const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
             fontWeight: 700,
             marginBottom: 14,
             textAlign: "center",
+            textDecoration: "underline",
           }}
         >
           إلى /{" "}
@@ -930,6 +934,41 @@ const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
         >
           مع وافر التحية ،،،
         </p>
+{notes && notes.trim() && (
+  <div
+    style={{
+      marginTop: 16,
+    }}
+    dir="rtl"
+  >
+    <p
+      style={{
+        ...PF,
+        fontSize: 14,
+        margin: 0,
+        textAlign: "right",
+        fontWeight: 800,
+        color: "#333",
+      }}
+    >
+      ملاحظات:
+    </p>
+
+    <p
+      style={{
+        ...PF,
+        fontSize: 14,
+        margin: 0,
+        marginTop: 4,
+        textAlign: "right",
+        fontWeight: 500,
+        color: "#333",
+      }}
+    >
+      {toArabicDigits(notes)}
+    </p>
+  </div>
+)}
 
         {/* Signature */}
         <div
@@ -979,7 +1018,7 @@ const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
               
             }}
           >
-            رئيس فرع التنظيــــم والاداره
+            رئـــيس فـــرع التنظيــــم والاداره
           </p>
         </div>
       </div>
@@ -1686,6 +1725,15 @@ export function LetterReviewPage() {
 
   /* =======================================================
      Print
+     ---------------------------------------------------
+     المطلوب: طباعة نفس الخطاب مرتين في نفس صفحة الـ A4
+     (نسختين فوق بعض)، بدل نسخة واحدة بس.
+
+     الحل: بناخد outerHTML بتاع .letter-preview مرة واحدة
+     ونكرره جوه اتنين <div class="print-copy"> داخل
+     <div class="print-page">، مع تصغير بسيط (transform:
+     scale) لكل نسخة عشان النسختين يتظبطوا في ارتفاع صفحة
+     A4 واحدة من غير ما حد فيهم يتقطع لصفحة تانية.
   ======================================================= */
 
   const handlePrintLetter = () => {
@@ -1775,6 +1823,24 @@ export function LetterReviewPage() {
                 serif;
             }
 
+            /* الصفحة مقسومة لنصين، كل نص فيه نسخة كاملة من الخطاب */
+            .print-page {
+              display: flex;
+              flex-direction: column;
+              justify-content: flex-start;
+              gap: 6mm;
+              width: 100%;
+              height: 277mm;
+            }
+
+            .print-copy {
+              flex: 1 1 50%;
+              overflow: hidden;
+              transform: scale(0.94);
+              transform-origin: top center;
+              page-break-inside: avoid;
+            }
+
             .letter-preview {
               display: block !important;
               width: 100% !important;
@@ -1817,11 +1883,32 @@ export function LetterReviewPage() {
             img {
               display: block;
             }
+
+            @media print {
+              html,
+              body {
+                width: 100%;
+                min-height: 100%;
+                overflow: visible !important;
+              }
+
+              .print-page {
+                page-break-inside: avoid;
+              }
+            }
           </style>
         </head>
 
         <body>
-          ${letterHtml}
+          <div class="print-page">
+            <div class="print-copy">
+              ${letterHtml}
+            </div>
+
+            <div class="print-copy">
+              ${letterHtml}
+            </div>
+          </div>
         </body>
       </html>
     `);
@@ -2109,6 +2196,7 @@ export function LetterReviewPage() {
               letterData.attachmentPlace
             }
             reason={letterData.reason}
+            notes={letterData.notes}
             letterType={letterType}
             branchHeadName={
               branchHeadName

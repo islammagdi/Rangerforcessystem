@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import {
   ChevronDown,
@@ -7,82 +7,131 @@ import {
   Trash2,
   ArrowLeftRight,
   Minus,
+  Search,
+  RotateCcw,
 } from "lucide-react";
+
 import { logActivity } from "../../lib/logActivity";
 import { DeleteConfirmDialog } from "../components/dashboard/DeleteConfirmDialog";
 import { supabase } from "../../lib/supabase";
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Helpers
+// ═════════════════════════════════════════════════════════════════════════════
+
 function normalizeDigits(value: string): string {
   const arabicIndicDigits = "٠١٢٣٤٥٦٧٨٩";
   const persianDigits = "۰۱۲۳۴۵۶۷۸۹";
 
   return value.replace(/[٠-٩۰-۹]/g, (digit) => {
     const arabicIndex = arabicIndicDigits.indexOf(digit);
-    if (arabicIndex !== -1) return String(arabicIndex);
+
+    if (arabicIndex !== -1) {
+      return String(arabicIndex);
+    }
 
     const persianIndex = persianDigits.indexOf(digit);
-    if (persianIndex !== -1) return String(persianIndex);
+
+    if (persianIndex !== -1) {
+      return String(persianIndex);
+    }
 
     return digit;
   });
 }
-// ─────────────────────────────────────────────────────────────────────────────
+
+// ═════════════════════════════════════════════════════════════════════════════
 // Types
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
 
-type DistributionStatus = "ملحق" | "منتهي خدمته" | "علي القوة";
+type DistributionStatus =
+  | "ملحق"
+  | "منتهي خدمته"
+  | "علي القوة";
 
-interface SoldierRecord {
+type StatusFilter =
+  | "الكل"
+  | "علي القوة"
+  | "ملحق";
+
+interface RankRow {
   id: string;
-  militaryId: string;
-  rank: string;
-  name: string;
-  unit: string;
-  attachmentPlace: string;
-  status: DistributionStatus;
+  name: string | null;
+  code: string | null;
+}
+
+interface UnitRow {
+  id: string;
+  name: string | null;
+  code: string | null;
+  unit_type?: string | null;
+  parent_unit_id?: string | null;
+  is_active?: boolean | null;
 }
 
 interface PersonnelRow {
   id: string;
-  military_number: string;
-  full_name: string;
+  military_number: string | null;
+  full_name: string | null;
+
+  rank_id: string | null;
+
   personnel_category_id: string | null;
   primary_unit_id: string | null;
   attachment_unit_id: string | null;
   service_status_id: string | null;
 
+  ranks?: RankRow | null;
+
   personnel_categories?: {
     id: string;
-    name: string;
-    code: string;
+    name: string | null;
+    code: string | null;
   } | null;
 
   primary_unit?: {
     id: string;
-    name: string;
-    code: string;
+    name: string | null;
+    code: string | null;
   } | null;
 
   attachment_unit?: {
     id: string;
-    name: string;
-    code: string;
+    name: string | null;
+    code: string | null;
   } | null;
 
   service_statuses?: {
     id: string;
-    name: string;
-    code: string;
+    name: string | null;
+    code: string | null;
   } | null;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+interface SoldierRecord {
+  id: string;
+
+  militaryId: string;
+  rank: string;
+  rankId: string | null;
+
+  name: string;
+
+  unit: string;
+  unitId: string | null;
+
+  attachmentPlace: string;
+
+  status: DistributionStatus;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // Constants
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
 
 const QUERY_BASIS_OPTIONS = [
   "رقم عسكري",
   "الاسم",
-  
 ];
 
 const CATEGORIES = [
@@ -91,20 +140,42 @@ const CATEGORIES = [
   { id: "volunteer", label: "متطوع" },
 ];
 
+const STATUS_FILTER_OPTIONS: StatusFilter[] = [
+  "الكل",
+  "علي القوة",
+  "ملحق",
+];
+
+const RANK_OPTIONS = [
+  "جميع الدرجات",
+  "جندى",
+  "عريف",
+  "رقيب",
+  "رقيب اول",
+  "مساعد",
+  "مساعد اول",
+];
+
 const STATUS_STYLES: Record<
   DistributionStatus,
-  { bg: string; text: string; dot: string }
+  {
+    bg: string;
+    text: string;
+    dot: string;
+  }
 > = {
   ملحق: {
     bg: "#ebfaea",
     text: "#26861d",
     dot: "#35C128",
   },
+
   "منتهي خدمته": {
     bg: "#fce9ea",
     text: "#c5481b",
     dot: "#E37032",
   },
+
   "علي القوة": {
     bg: "#e9f9ff",
     text: "#146d7c",
@@ -112,24 +183,30 @@ const STATUS_STYLES: Record<
   },
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// Status Helpers
+// ═════════════════════════════════════════════════════════════════════════════
 
-function normalizeStatus(value?: string | null): DistributionStatus {
-  if (!value) return "علي القوة";
+function normalizeStatus(
+  value?: string | null
+): DistributionStatus {
+  if (!value) {
+    return "علي القوة";
+  }
+
+  const normalized = value.trim();
 
   if (
-    value === "ملحق" ||
-    value === "قوة الوحدة" ||
-    value === "قوة الوحده"
+    normalized === "ملحق" ||
+    normalized === "قوة الوحدة" ||
+    normalized === "قوة الوحده"
   ) {
     return "ملحق";
   }
 
   if (
-    value === "منتهي خدمته" ||
-    value === "منتهى خدمته"
+    normalized === "منتهي خدمته" ||
+    normalized === "منتهى خدمته"
   ) {
     return "منتهي خدمته";
   }
@@ -137,40 +214,60 @@ function normalizeStatus(value?: string | null): DistributionStatus {
   return "علي القوة";
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// Personnel Mapping
+// ═════════════════════════════════════════════════════════════════════════════
+
 function mapPersonnelToRecord(
   person: PersonnelRow
 ): SoldierRecord {
+  const rankName =
+    person.ranks?.name ??
+    person.ranks?.code ??
+    "";
+
+  const primaryUnitName =
+    person.primary_unit?.name ??
+    person.primary_unit?.code ??
+    "لا يوجد";
+
+  const attachmentUnitName =
+    person.attachment_unit?.name ??
+    person.attachment_unit?.code ??
+    "لا يوجد";
+
   return {
     id: person.id,
-    militaryId: person.military_number,
-    name: person.full_name,
 
-    // نعرض اسم الفئة كـ "درجة" حاليًا إذا لم يكن عندك
-    // عمود rank مستقل في personnel.
-    rank:
-      person.personnel_categories?.name ??
-      person.personnel_categories?.code ??
-      "",
+    militaryId:
+      person.military_number ?? "",
 
-    unit:
-      person.primary_unit?.name ??
-      person.primary_unit?.code ??
-      "لا يوجد",
+    rank: rankName,
+
+    rankId:
+      person.rank_id ?? null,
+
+    name:
+      person.full_name ?? "",
+
+    unit: primaryUnitName,
+
+    unitId:
+      person.primary_unit_id ?? null,
 
     attachmentPlace:
-      person.attachment_unit?.name ??
-      person.attachment_unit?.code ??
-      "لا يوجد",
+      attachmentUnitName,
 
     status: normalizeStatus(
-      person.service_statuses?.name
+      person.service_statuses?.name ??
+        person.service_statuses?.code
     ),
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
 // Radio Card
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
 
 function RadioCard({
   label,
@@ -189,6 +286,7 @@ function RadioCard({
         "flex items-center gap-3 px-4 py-4 rounded-[12px]",
         "border transition-colors text-right",
         "w-full sm:w-[200px] shrink-0",
+
         checked
           ? "border-[#4BFF62] bg-[#f0f2fd]"
           : "border-[#e2e7f0] bg-white hover:border-[#a0aec0]",
@@ -213,9 +311,9 @@ function RadioCard({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
 // Dropdown
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
 
 function Dropdown({
   options,
@@ -237,9 +335,10 @@ function Dropdown({
       >
         <ChevronDown
           size={20}
-          className={`shrink-0 text-[#2d3648] transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
+          className={[
+            "shrink-0 text-[#2d3648] transition-transform",
+            open ? "rotate-180" : "",
+          ].join(" ")}
         />
 
         <span
@@ -267,8 +366,9 @@ function Dropdown({
                 className={[
                   "w-full text-right px-4 py-3",
                   "hover:bg-[#f5f6fb] transition-colors",
+
                   option === value
-                    ? "bg-[#f0f2fd] text-[#4BFF62]"
+                    ? "bg-[#f0f2fd] text-[#168b4f]"
                     : "text-[#2d3648]",
                 ].join(" ")}
                 style={{
@@ -286,9 +386,202 @@ function Dropdown({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// Searchable Unit Dropdown
+// ═════════════════════════════════════════════════════════════════════════════
+
+function SearchableUnitDropdown({
+  units,
+  value,
+  onChange,
+}: {
+  units: UnitRow[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
+
+  const selectedUnit = units.find(
+    (unit) => unit.id === value
+  );
+
+  const filteredUnits = useMemo(() => {
+    const search = searchText
+      .trim()
+      .toLowerCase();
+
+    if (!search) {
+      return units;
+    }
+
+    return units.filter((unit) => {
+      const name = String(
+        unit.name ?? ""
+      ).toLowerCase();
+
+      const code = String(
+        unit.code ?? ""
+      ).toLowerCase();
+
+      return (
+        name.includes(search) ||
+        code.includes(search)
+      );
+    });
+  }, [units, searchText]);
+
+  function selectUnit(unitId: string) {
+    onChange(unitId);
+    setOpen(false);
+    setSearchText("");
+  }
+
+  return (
+    <div className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full h-[54px] bg-white border border-[#e2e7f0] rounded-[8px] flex items-center gap-3 px-3 text-right hover:border-[#a0aec0] transition-colors"
+      >
+        <ChevronDown
+          size={20}
+          className={[
+            "shrink-0 text-[#2d3648]",
+            open ? "rotate-180" : "",
+          ].join(" ")}
+        />
+
+        <span
+          className="flex-1 text-right truncate"
+          style={{
+            fontFamily: "'Almarai', sans-serif",
+            fontSize: "16px",
+            color: "#4a5468",
+          }}
+        >
+          {selectedUnit
+            ? String(
+                selectedUnit.name ??
+                  selectedUnit.code ??
+                  "وحدة"
+              )
+            : "جميع الوحدات"}
+        </span>
+      </button>
+
+      {open && (
+        <div className="absolute z-[60] top-full mt-1 w-full bg-white border border-[#e2e7f0] rounded-[8px] shadow-xl overflow-hidden">
+          <div className="p-2 border-b border-[#e2e7f0]">
+            <div className="relative">
+              <Search
+                size={17}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8b95a8]"
+              />
+
+              <input
+                type="text"
+                value={searchText}
+                onChange={(e) =>
+                  setSearchText(e.target.value)
+                }
+                placeholder="ابحث عن الوحدة..."
+                className="w-full h-[42px] border border-[#e2e7f0] rounded-[7px] pr-9 pl-3 outline-none focus:border-[#4BFF62]"
+                style={{
+                  fontFamily: "'Almarai', sans-serif",
+                  fontSize: "14px",
+                }}
+                dir="rtl"
+                autoFocus
+              />
+            </div>
+          </div>
+
+          <div className="max-h-[260px] overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => selectUnit("")}
+              className={[
+                "w-full text-right px-4 py-3",
+                "hover:bg-[#f5f6fb]",
+                value === ""
+                  ? "bg-[#f0f2fd] text-[#168b4f]"
+                  : "text-[#2d3648]",
+              ].join(" ")}
+              style={{
+                fontFamily: "'Almarai', sans-serif",
+                fontSize: "14px",
+              }}
+            >
+              جميع الوحدات
+            </button>
+
+            {filteredUnits.map((unit) => {
+              const name = String(
+                unit.name ?? ""
+              );
+
+              const code = String(
+                unit.code ?? ""
+              );
+
+              return (
+                <button
+                  key={unit.id}
+                  type="button"
+                  onClick={() =>
+                    selectUnit(unit.id)
+                  }
+                  className={[
+                    "w-full text-right px-4 py-3",
+                    "hover:bg-[#f5f6fb]",
+                    value === unit.id
+                      ? "bg-[#f0f2fd] text-[#168b4f]"
+                      : "text-[#2d3648]",
+                  ].join(" ")}
+                  style={{
+                    fontFamily:
+                      "'Almarai', sans-serif",
+                    fontSize: "14px",
+                  }}
+                >
+                  <div className="flex flex-col gap-1">
+                    <span>
+                      {name || "بدون اسم"}
+                    </span>
+
+                    {code && (
+                      <span className="text-[11px] text-[#8b95a8]">
+                        {code}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+
+            {filteredUnits.length === 0 && (
+              <div
+                className="py-6 text-center text-[#8b95a8]"
+                style={{
+                  fontFamily:
+                    "'Almarai', sans-serif",
+                  fontSize: "13px",
+                }}
+              >
+                لا توجد وحدات مطابقة
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // Status Badge
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
 
 function StatusBadge({
   status,
@@ -300,11 +593,15 @@ function StatusBadge({
   return (
     <span
       className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[16px] whitespace-nowrap"
-      style={{ backgroundColor: style.bg }}
+      style={{
+        backgroundColor: style.bg,
+      }}
     >
       <span
         className="shrink-0 w-2 h-2 rounded-full"
-        style={{ backgroundColor: style.dot }}
+        style={{
+          backgroundColor: style.dot,
+        }}
       />
 
       <span
@@ -321,9 +618,9 @@ function StatusBadge({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
 // Notification Badge
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
 
 function NotifBadge({
   label,
@@ -339,7 +636,9 @@ function NotifBadge({
   return (
     <span
       className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-[16px] whitespace-nowrap"
-      style={{ backgroundColor: bg }}
+      style={{
+        backgroundColor: bg,
+      }}
     >
       <span
         style={{
@@ -354,15 +653,17 @@ function NotifBadge({
 
       <span
         className="shrink-0 w-2 h-2 rounded-full"
-        style={{ backgroundColor: dot }}
+        style={{
+          backgroundColor: dot,
+        }}
       />
     </span>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
 // Sort Arrow
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
 
 function SortArrow() {
   return (
@@ -373,9 +674,9 @@ function SortArrow() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
 // Checkbox
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
 
 function Checkbox({
   checked,
@@ -394,13 +695,17 @@ function Checkbox({
         "w-5 h-5 rounded-[4px] border-2",
         "flex items-center justify-center",
         "transition-colors shrink-0",
+
         checked || indeterminate
           ? "bg-[#4BFF62] border-[#4BFF62]"
           : "bg-white border-[#d4d8fa] hover:border-[#4BFF62]",
       ].join(" ")}
     >
       {indeterminate && !checked ? (
-        <Minus size={10} className="text-white" />
+        <Minus
+          size={10}
+          className="text-white"
+        />
       ) : checked ? (
         <svg
           width="10"
@@ -421,9 +726,9 @@ function Checkbox({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
 // Action Buttons
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
 
 function ActionButtons({
   onDelete,
@@ -439,11 +744,15 @@ function ActionButtons({
         onClick={onDelete}
         title="حذف"
         className="w-[30px] h-[30px] rounded-[4px] flex items-center justify-center hover:opacity-80"
-        style={{ backgroundColor: "#fce8f1" }}
+        style={{
+          backgroundColor: "#fce8f1",
+        }}
       >
         <Trash2
           size={14}
-          style={{ color: "#E3282C" }}
+          style={{
+            color: "#E3282C",
+          }}
         />
       </button>
 
@@ -452,11 +761,15 @@ function ActionButtons({
         onClick={onView}
         title="عرض"
         className="w-[30px] h-[30px] rounded-[4px] flex items-center justify-center hover:opacity-80"
-        style={{ backgroundColor: "#f5f5f5" }}
+        style={{
+          backgroundColor: "#f5f5f5",
+        }}
       >
         <Eye
           size={14}
-          style={{ color: "#2D3648" }}
+          style={{
+            color: "#2D3648",
+          }}
         />
       </button>
 
@@ -464,20 +777,24 @@ function ActionButtons({
         type="button"
         title="تحويل"
         className="w-[40px] h-[30px] rounded-[4px] flex items-center justify-center hover:opacity-80"
-        style={{ backgroundColor: "#f5f5f5" }}
+        style={{
+          backgroundColor: "#f5f5f5",
+        }}
       >
         <ArrowLeftRight
           size={14}
-          style={{ color: "#2D3648" }}
+          style={{
+            color: "#2D3648",
+          }}
         />
       </button>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
 // Results Table
-// ─────────────────────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
 
 function ResultsTable({
   records,
@@ -496,10 +813,13 @@ function ResultsTable({
 }) {
   const allSelected =
     records.length > 0 &&
-    selectedIds.size === records.length;
+    records.every((record) =>
+      selectedIds.has(record.id)
+    );
 
   const someSelected =
-    selectedIds.size > 0 && !allSelected;
+    selectedIds.size > 0 &&
+    !allSelected;
 
   const headerClass =
     "bg-white px-5 py-3 text-right whitespace-nowrap border-b-2 border-[#d4d8fa]";
@@ -527,7 +847,9 @@ function ResultsTable({
       >
         <thead>
           <tr>
-            <th className={`${headerClass} w-12`}>
+            <th
+              className={`${headerClass} w-12`}
+            >
               <div className="flex justify-center">
                 <Checkbox
                   checked={allSelected}
@@ -554,6 +876,7 @@ function ResultsTable({
                   <span style={headerStyle}>
                     {title}
                   </span>
+
                   <SortArrow />
                 </div>
               </th>
@@ -563,7 +886,8 @@ function ResultsTable({
 
         <tbody>
           {records.map((record) => {
-            const selected = selectedIds.has(record.id);
+            const selected =
+              selectedIds.has(record.id);
 
             return (
               <tr
@@ -574,7 +898,9 @@ function ResultsTable({
                     : "hover:bg-[#fafafa]"
                 }
               >
-                <td className={`${cellClass} w-12`}>
+                <td
+                  className={`${cellClass} w-12`}
+                >
                   <div className="flex justify-center">
                     <Checkbox
                       checked={selected}
@@ -593,7 +919,7 @@ function ResultsTable({
 
                 <td className={cellClass}>
                   <span style={cellStyle}>
-                    {record.rank}
+                    {record.rank || "غير محدد"}
                   </span>
                 </td>
 
@@ -645,11 +971,21 @@ function ResultsTable({
 // ═════════════════════════════════════════════════════════════════════════════
 
 export function IndividualQueryPage() {
-   const navigate = useNavigate();
+  const navigate = useNavigate();
 
-  // المستخدم الحالي
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [currentUserName, setCurrentUserName] = useState("غير معروف");
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Current User
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const [currentUserId, setCurrentUserId] =
+    useState<string | null>(null);
+
+  const [currentUserName, setCurrentUserName] =
+    useState("غير معروف");
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Search
+  // ═══════════════════════════════════════════════════════════════════════════
 
   const [selectedCategory, setSelectedCategory] =
     useState("جميع الفئات");
@@ -672,8 +1008,43 @@ export function IndividualQueryPage() {
   const [hasSearched, setHasSearched] =
     useState(false);
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Raw Results
+  // ═══════════════════════════════════════════════════════════════════════════
+
   const [results, setResults] =
     useState<SoldierRecord[]>([]);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Filters
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const [statusFilter, setStatusFilter] =
+    useState<StatusFilter>("الكل");
+
+  const [unitFilter, setUnitFilter] =
+    useState("");
+
+  const [rankFilter, setRankFilter] =
+    useState("جميع الدرجات");
+
+  // ⭐ فلتر الاسم الجديد
+  const [nameFilter, setNameFilter] =
+    useState("");
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Units
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const [units, setUnits] =
+    useState<UnitRow[]>([]);
+
+  const [unitsLoading, setUnitsLoading] =
+    useState(false);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Selection
+  // ═══════════════════════════════════════════════════════════════════════════
 
   const [selectedIds, setSelectedIds] =
     useState<Set<string>>(new Set());
@@ -681,7 +1052,10 @@ export function IndividualQueryPage() {
   const [deleteTargetId, setDeleteTargetId] =
     useState<string | null>(null);
 
-  // تحميل بيانات المستخدم الحالي مرة واحدة
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Load Current User
+  // ═══════════════════════════════════════════════════════════════════════════
+
   useEffect(() => {
     async function loadCurrentUser() {
       const {
@@ -690,7 +1064,10 @@ export function IndividualQueryPage() {
       } = await supabase.auth.getUser();
 
       if (userError) {
-        console.error("Get current user error:", userError);
+        console.error(
+          "Get current user error:",
+          userError
+        );
         return;
       }
 
@@ -710,20 +1087,146 @@ export function IndividualQueryPage() {
         .single();
 
       if (profileError) {
-        console.error("Profile error:", profileError);
+        console.error(
+          "Profile error:",
+          profileError
+        );
       }
 
       setCurrentUserName(
-        profile?.username ?? "غير معروف"
+        profile?.username ??
+          user.user_metadata?.full_name ??
+          user.email ??
+          "غير معروف"
       );
     }
 
     loadCurrentUser();
   }, []);
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Load Units
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  useEffect(() => {
+    async function loadUnits() {
+      setUnitsLoading(true);
+
+      try {
+        const {
+          data,
+          error,
+        } = await supabase
+          .from("units")
+          .select(
+            "id,name,code,unit_type,parent_unit_id,is_active"
+          )
+          .eq("is_active", true)
+          .order("name", {
+            ascending: true,
+          });
+
+        if (error) {
+          throw error;
+        }
+
+        setUnits(
+          (data ?? []) as UnitRow[]
+        );
+      } catch (error) {
+        console.error(
+          "Load units error:",
+          error
+        );
+
+        setUnits([]);
+      } finally {
+        setUnitsLoading(false);
+      }
+    }
+
+    loadUnits();
+  }, []);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Filtered Results
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const filteredResults = useMemo(() => {
+    let filtered = [...results];
+
+    // الحالة
+    if (statusFilter !== "الكل") {
+      filtered = filtered.filter(
+        (record) =>
+          record.status === statusFilter
+      );
+    }
+
+    // الوحدة الأساسية
+    if (unitFilter) {
+      filtered = filtered.filter(
+        (record) =>
+          record.unitId === unitFilter
+      );
+    }
+
+    // الدرجة
+    if (rankFilter !== "جميع الدرجات") {
+      filtered = filtered.filter(
+        (record) =>
+          record.rank.trim() ===
+          rankFilter.trim()
+      );
+    }
+
+    // ⭐ الاسم
+    if (nameFilter.trim()) {
+      const searchName =
+        nameFilter.trim().toLowerCase();
+
+      filtered = filtered.filter(
+        (record) =>
+          record.name
+            .trim()
+            .toLowerCase()
+            .includes(searchName)
+      );
+    }
+
+    return filtered;
+  }, [
+    results,
+    statusFilter,
+    unitFilter,
+    rankFilter,
+    nameFilter,
+  ]);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Reset Filters
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function resetFilters() {
+    setStatusFilter("الكل");
+    setUnitFilter("");
+    setRankFilter("جميع الدرجات");
+
+    // ⭐ تصفير فلتر الاسم
+    setNameFilter("");
+
+    setSelectedIds(
+      new Set(
+        results.map(
+          (record) => record.id
+        )
+      )
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // Search
-  // ─────────────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
 
   async function handleSearch(
     e: React.FormEvent
@@ -741,49 +1244,68 @@ export function IndividualQueryPage() {
     setSearchError("");
     setLoading(true);
     setHasSearched(true);
+
     setResults([]);
     setSelectedIds(new Set());
 
+    // إعادة الفلاتر مع كل بحث جديد
+    setStatusFilter("الكل");
+    setUnitFilter("");
+    setRankFilter("جميع الدرجات");
+    setNameFilter("");
+
     try {
-      /*
-       * الاستعلام الأساسي.
-       *
-       * بنجيب:
-       * personnel
-       * + personnel_categories
-       * + primary unit
-       * + attachment unit
-       * + service status
-       */
-const {
-  data: { user },
-} = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-let userName = "غير معروف";
+      let userName = currentUserName;
 
-if (user) {
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("username")
-    .eq("id", user.id)
-    .single();
+      if (user) {
+        const {
+          data: profile,
+          error: profileError,
+        } = await supabase
+          .from("profiles")
+          .select("username")
+          .eq("id", user.id)
+          .maybeSingle();
 
-  if (profileError) {
-    console.error("Profile error:", profileError);
-  }
+        if (profileError) {
+          console.error(
+            "Profile error:",
+            profileError
+          );
+        }
 
-  userName = profile?.username ?? "غير معروف";
-}
+        userName =
+          profile?.username ??
+          user.user_metadata?.full_name ??
+          user.email ??
+          "غير معروف";
+      }
+
+      // ═════════════════════════════════════════════════════════════════════
+      // Base Query
+      // ═════════════════════════════════════════════════════════════════════
+
       let query = supabase
         .from("personnel")
         .select(`
           id,
           military_number,
           full_name,
+          rank_id,
           personnel_category_id,
           primary_unit_id,
           attachment_unit_id,
           service_status_id,
+
+          ranks (
+            id,
+            name,
+            code
+          ),
 
           personnel_categories (
             id,
@@ -810,28 +1332,28 @@ if (user) {
           )
         `);
 
-      // ─────────────────────────────────────────────────────────────────────
-      // فلتر الفئة
-      // ─────────────────────────────────────────────────────────────────────
+      // ═════════════════════════════════════════════════════════════════════
+      // Category
+      // ═════════════════════════════════════════════════════════════════════
 
-      if (selectedCategory !== "جميع الفئات") {
-        /*
-         * بدل ما نفترض UUID معين للمجند أو المتطوع،
-         * بنجيب الـ ID من personnel_categories حسب الاسم.
-         */
-
+      if (
+        selectedCategory !==
+        "جميع الفئات"
+      ) {
         const categoryName =
           selectedCategory === "مجند"
             ? "مجند"
             : "متطوع";
 
-        const { data: category, error: categoryError } =
-          await supabase
-            .from("personnel_categories")
-            .select("id")
-            .eq("name", categoryName)
-            .eq("is_active", true)
-            .maybeSingle();
+        const {
+          data: category,
+          error: categoryError,
+        } = await supabase
+          .from("personnel_categories")
+          .select("id")
+          .eq("name", categoryName)
+          .eq("is_active", true)
+          .maybeSingle();
 
         if (categoryError) {
           throw categoryError;
@@ -849,115 +1371,113 @@ if (user) {
         );
       }
 
-      // ─────────────────────────────────────────────────────────────────────
-      // أساس الاستعلام
-      // ─────────────────────────────────────────────────────────────────────
+      // ═════════════════════════════════════════════════════════════════════
+      // Search Value
+      // ═════════════════════════════════════════════════════════════════════
 
-  const value = normalizeDigits(queryText.trim());
+      const value = normalizeDigits(
+        queryText.trim()
+      );
 
-if (queryBasis === "رقم عسكري") {
-  query = query.eq(
-    "military_number",
-    value
-  );
-}
+      // ═════════════════════════════════════════════════════════════════════
+      // Military Number
+      // ═════════════════════════════════════════════════════════════════════
 
-      else if (queryBasis === "الاسم") {
+      if (
+        queryBasis === "رقم عسكري"
+      ) {
+        query = query.ilike(
+          "military_number",
+          `%${value}%`
+        );
+      }
+
+      // ═════════════════════════════════════════════════════════════════════
+      // Name Search
+      // ═════════════════════════════════════════════════════════════════════
+
+      else if (
+        queryBasis === "الاسم"
+      ) {
         query = query.ilike(
           "full_name",
           `%${value}%`
         );
       }
 
-      else if (queryBasis === "رقم الوحدة") {
-        /*
-         * البحث في primary_unit_id مباشرة غير ممكن
-         * لو المستخدم يكتب اسم/كود الوحدة.
-         *
-         * لذلك نبحث أولاً في units عن الاسم أو الكود.
-         */
-
-        const { data: units, error: unitsError } =
-          await supabase
-            .from("units")
-            .select("id")
-            .or(
-              `name.ilike.%${value}%,code.ilike.%${value}%`
-            )
-            .eq("is_active", true);
-
-        if (unitsError) {
-          throw unitsError;
-        }
-
-        const unitIds =
-          units?.map((unit) => unit.id) ?? [];
-
-        if (unitIds.length === 0) {
-          setResults([]);
-          setSelectedIds(new Set());
-          return;
-        }
-
-        query = query.in(
-          "primary_unit_id",
-          unitIds
-        );
-      }
-
-      else if (queryBasis === "الرقم القومي") {
-        /*
-         * لو عندك عمود الرقم القومي في personnel
-         * ضعه هنا.
-         *
-         * حاليًا الأعمدة التي أرسلتها لا تحتوي
-         * على national_id، لذلك لن أخترع اسم عمود.
-         */
-
-        setSearchError(
-          "عمود الرقم القومي غير موجود ضمن الأعمدة التي تم إرسالها لجدول personnel."
-        );
-
-        setResults([]);
-        setSelectedIds(new Set());
-        return;
-      }
-
-      // ─────────────────────────────────────────────────────────────────────
+      // ═════════════════════════════════════════════════════════════════════
       // Execute
-      // ─────────────────────────────────────────────────────────────────────
+      // ═════════════════════════════════════════════════════════════════════
 
-      const { data, error } = await query;
+      const {
+        data,
+        error,
+      } = await query;
 
       if (error) {
         throw error;
       }
 
       const records =
-        ((data ?? []) as unknown as PersonnelRow[])
-          .map(mapPersonnelToRecord);
+        (
+          (data ?? []) as unknown as PersonnelRow[]
+        ).map(mapPersonnelToRecord);
 
       setResults(records);
-// تسجيل نجاح الاستعلام في audit_logs
-if (records.length > 0) {
-  await logActivity({
-    userId: user?.id ?? null,
-    userName,
-    actionType: "QUERY",
-    action: "الاستعلام عن بيانات فرد",
-    entity: "personnel",
-    details: JSON.stringify({
-      queryBasis,
-      queryValue: value,
-      category: selectedCategory,
-      resultsCount: records.length,
-      personnelIds: records.map((record) => record.id),
-    }),
-  });
-}
+
+      // تحديد كل النتائج تلقائيًا
       setSelectedIds(
-        new Set(records.map((record) => record.id))
+        new Set(
+          records.map(
+            (record) => record.id
+          )
+        )
       );
+
+      // ═════════════════════════════════════════════════════════════════════
+      // Audit
+      // ═════════════════════════════════════════════════════════════════════
+
+      if (records.length > 0) {
+        try {
+          await logActivity({
+            userId:
+              user?.id ??
+              currentUserId ??
+              null,
+
+            userName,
+
+            actionType: "QUERY",
+
+            action:
+              "الاستعلام عن بيانات فرد",
+
+            entity: "personnel",
+
+            details: JSON.stringify({
+              queryBasis,
+              queryValue: value,
+              category:
+                selectedCategory,
+
+              resultsCount:
+                records.length,
+
+              personnelIds:
+                records.map(
+                  (record) =>
+                    record.id
+                ),
+            }),
+          });
+        } catch (auditError) {
+          console.error(
+            "Audit log error:",
+            auditError
+          );
+        }
+      }
     } catch (error) {
       console.error(
         "Individual query error:",
@@ -975,24 +1495,42 @@ if (records.length > 0) {
     } finally {
       setLoading(false);
     }
-    
   }
-  
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
   // Selection
-  // ─────────────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
 
   function toggleAll() {
     if (
-      results.length > 0 &&
-      selectedIds.size === results.length
+      filteredResults.length > 0 &&
+      filteredResults.every((record) =>
+        selectedIds.has(record.id)
+      )
     ) {
-      setSelectedIds(new Set());
+      setSelectedIds((previous) => {
+        const next = new Set(previous);
+
+        filteredResults.forEach(
+          (record) => {
+            next.delete(record.id);
+          }
+        );
+
+        return next;
+      });
     } else {
-      setSelectedIds(
-        new Set(results.map((r) => r.id))
-      );
+      setSelectedIds((previous) => {
+        const next = new Set(previous);
+
+        filteredResults.forEach(
+          (record) => {
+            next.add(record.id);
+          }
+        );
+
+        return next;
+      });
     }
   }
 
@@ -1010,79 +1548,122 @@ if (records.length > 0) {
     });
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
   // Delete
-  // ─────────────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
 
   function handleDelete(id: string) {
     setDeleteTargetId(id);
   }
 
   async function confirmDelete() {
-  if (!deleteTargetId) return;
-
-  try {
-    // نجيب بيانات الفرد قبل الحذف عشان نسجلها في الـ audit
-    const deletedRecord = results.find(
-      (record) => record.id === deleteTargetId
-    );
-
-    const { error } = await supabase
-      .from("personnel")
-      .delete()
-      .eq("id", deleteTargetId);
-
-    if (error) {
-      throw error;
+    if (!deleteTargetId) {
+      return;
     }
 
-    // تسجيل عملية الحذف
-    await logActivity({
-      userId: currentUserId,
-      userName: currentUserName,
-      actionType: "DELETE",
-      action: "حذف فرد",
-      entity: "personnel",
-      details: JSON.stringify({
-        personnelId: deleteTargetId,
-        militaryNumber: deletedRecord?.militaryId ?? null,
-        fullName: deletedRecord?.name ?? null,
-      }),
-    });
+    try {
+      const deletedRecord =
+        results.find(
+          (record) =>
+            record.id ===
+            deleteTargetId
+        );
 
-    // تحديث الجدول
-    setResults((previous) =>
-      previous.filter(
-        (record) => record.id !== deleteTargetId
-      )
-    );
+      const {
+        error,
+      } = await supabase
+        .from("personnel")
+        .delete()
+        .eq(
+          "id",
+          deleteTargetId
+        );
 
-    setSelectedIds((previous) => {
-      const next = new Set(previous);
-      next.delete(deleteTargetId);
-      return next;
-    });
+      if (error) {
+        throw error;
+      }
 
-  } catch (error) {
-    console.error("Delete personnel error:", error);
-    alert("حدث خطأ أثناء حذف الفرد");
+      try {
+        await logActivity({
+          userId: currentUserId,
+
+          userName:
+            currentUserName,
+
+          actionType: "DELETE",
+
+          action: "حذف فرد",
+
+          entity: "personnel",
+
+          details: JSON.stringify({
+            personnelId:
+              deleteTargetId,
+
+            militaryNumber:
+              deletedRecord?.militaryId ??
+              null,
+
+            fullName:
+              deletedRecord?.name ??
+              null,
+          }),
+        });
+      } catch (auditError) {
+        console.error(
+          "Audit delete error:",
+          auditError
+        );
+      }
+
+      setResults((previous) =>
+        previous.filter(
+          (record) =>
+            record.id !==
+            deleteTargetId
+        )
+      );
+
+      setSelectedIds((previous) => {
+        const next = new Set(previous);
+
+        next.delete(
+          deleteTargetId
+        );
+
+        return next;
+      });
+    } catch (error) {
+      console.error(
+        "Delete personnel error:",
+        error
+      );
+
+      alert(
+        "حدث خطأ أثناء حذف الفرد"
+      );
+    }
+
+    setDeleteTargetId(null);
   }
 
-  setDeleteTargetId(null);
-}
   function cancelDelete() {
     setDeleteTargetId(null);
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
   // View
-  // ─────────────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
 
   function handleView(id: string) {
     navigate(
       `/dashboard/individual-query/soldier/${id}`
     );
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // UI States
+  // ═══════════════════════════════════════════════════════════════════════════
 
   const notFound =
     hasSearched &&
@@ -1095,9 +1676,13 @@ if (records.length > 0) {
     !loading &&
     results.length > 0;
 
-  // ─────────────────────────────────────────────────────────────────────────
+  const filteredNotFound =
+    found &&
+    filteredResults.length === 0;
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // Render
-  // ─────────────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
 
   return (
     <div
@@ -1105,18 +1690,25 @@ if (records.length > 0) {
       dir="rtl"
     >
       <DeleteConfirmDialog
-        open={deleteTargetId !== null}
+        open={
+          deleteTargetId !== null
+        }
         onCancel={cancelDelete}
         onConfirm={confirmDelete}
       />
 
-      {/* Page title */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* Title */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+
       <h1
         className="text-center w-full"
         style={{
-          fontFamily: "'Almarai', sans-serif",
+          fontFamily:
+            "'Almarai', sans-serif",
           fontWeight: 700,
-          fontSize: "clamp(22px, 4vw, 32px)",
+          fontSize:
+            "clamp(22px, 4vw, 32px)",
           color: "#2d3648",
           lineHeight: 1.5,
         }}
@@ -1124,16 +1716,21 @@ if (records.length > 0) {
         الاستعلام عن بيانات فرد
       </h1>
 
-      {/* Search form */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* Search Form */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+
       <form
         onSubmit={handleSearch}
         className="flex flex-col gap-6 items-end"
       >
         {/* Category */}
+
         <div className="flex flex-col gap-3 items-start w-full">
           <p
             style={{
-              fontFamily: "'Almarai', sans-serif",
+              fontFamily:
+                "'Almarai', sans-serif",
               fontWeight: 700,
               fontSize: "18px",
               color: "#2d3648",
@@ -1144,31 +1741,38 @@ if (records.length > 0) {
           </p>
 
           <div className="flex flex-wrap gap-4 justify-start w-full">
-            {CATEGORIES.map((category) => (
-              <RadioCard
-                key={category.id}
-                label={category.label}
-                checked={
-                  selectedCategory ===
-                  category.label
-                }
-                onChange={() =>
-                  setSelectedCategory(
+            {CATEGORIES.map(
+              (category) => (
+                <RadioCard
+                  key={category.id}
+                  label={
                     category.label
-                  )
-                }
-              />
-            ))}
+                  }
+                  checked={
+                    selectedCategory ===
+                    category.label
+                  }
+                  onChange={() =>
+                    setSelectedCategory(
+                      category.label
+                    )
+                  }
+                />
+              )
+            )}
           </div>
         </div>
 
-        {/* Query controls */}
+        {/* Query Controls */}
+
         <div className="flex flex-col sm:flex-row gap-5 w-full items-end">
-          {/* Query basis */}
+          {/* Basis */}
+
           <div className="flex flex-col gap-1.5 flex-1 min-w-0 w-full">
             <label
               style={{
-                fontFamily: "'Almarai', sans-serif",
+                fontFamily:
+                  "'Almarai', sans-serif",
                 fontWeight: 700,
                 fontSize: "16px",
                 color: "#2d3648",
@@ -1180,17 +1784,23 @@ if (records.length > 0) {
             </label>
 
             <Dropdown
-              options={QUERY_BASIS_OPTIONS}
+              options={
+                QUERY_BASIS_OPTIONS
+              }
               value={queryBasis}
-              onChange={setQueryBasis}
+              onChange={
+                setQueryBasis
+              }
             />
           </div>
 
-          {/* Search value */}
+          {/* Search Value */}
+
           <div className="flex flex-col gap-1.5 flex-1 min-w-0 w-full">
             <label
               style={{
-                fontFamily: "'Almarai', sans-serif",
+                fontFamily:
+                  "'Almarai', sans-serif",
                 fontWeight: 700,
                 fontSize: "16px",
                 color: "#2d3648",
@@ -1205,10 +1815,16 @@ if (records.length > 0) {
               type="text"
               value={queryText}
               onChange={(e) => {
-                setQueryText(e.target.value);
+                setQueryText(
+                  e.target.value
+                );
 
-                if (queryTextError) {
-                  setQueryTextError("");
+                if (
+                  queryTextError
+                ) {
+                  setQueryTextError(
+                    ""
+                  );
                 }
 
                 if (searchError) {
@@ -1216,25 +1832,23 @@ if (records.length > 0) {
                 }
               }}
               placeholder={
-                queryBasis === "رقم عسكري"
-                  ? "أدخل الرقم العسكري"
-                  : queryBasis === "الاسم"
-                    ? "أدخل الاسم"
-                    : queryBasis ===
-                        "رقم الوحدة"
-                      ? "أدخل اسم أو كود الوحدة"
-                      : "بيانات الاستعلام"
+                queryBasis ===
+                "رقم عسكري"
+                  ? "أدخل جزء من الرقم العسكري"
+                  : "أدخل الاسم"
               }
               className={[
                 "w-full h-[54px] bg-white border rounded-[8px]",
                 "px-3 text-right outline-none",
                 "focus:border-[#4BFF62] transition-colors",
+
                 queryTextError
                   ? "border-[#ef4444]"
                   : "border-[#e2e7f0]",
               ].join(" ")}
               style={{
-                fontFamily: "'Almarai', sans-serif",
+                fontFamily:
+                  "'Almarai', sans-serif",
                 fontSize: "18px",
                 color: "#4a5468",
               }}
@@ -1245,7 +1859,8 @@ if (records.length > 0) {
               <p
                 className="text-right"
                 style={{
-                  fontFamily: "'Almarai', sans-serif",
+                  fontFamily:
+                    "'Almarai', sans-serif",
                   fontSize: "13px",
                   color: "#ef4444",
                 }}
@@ -1255,7 +1870,8 @@ if (records.length > 0) {
             )}
           </div>
 
-          {/* Search button */}
+          {/* Search Button */}
+
           <button
             type="submit"
             disabled={loading}
@@ -1263,24 +1879,31 @@ if (records.length > 0) {
             style={{
               background:
                 "linear-gradient(to bottom, #00b867, #00522e)",
-              fontFamily: "'Almarai', sans-serif",
+              fontFamily:
+                "'Almarai', sans-serif",
               fontSize: "16px",
               color: "#f5f5f5",
             }}
           >
-            {loading ? "جاري البحث..." : "استعلام"}
+            {loading
+              ? "جاري البحث..."
+              : "استعلام"}
           </button>
         </div>
       </form>
 
-      {/* Error */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* Search Error */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+
       {searchError && (
         <div
           className="w-full rounded-[10px] px-4 py-3"
           style={{
             background: "#fce8f1",
             color: "#90132a",
-            fontFamily: "'Almarai', sans-serif",
+            fontFamily:
+              "'Almarai', sans-serif",
             fontSize: "14px",
           }}
         >
@@ -1288,14 +1911,20 @@ if (records.length > 0) {
         </div>
       )}
 
+      {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* Results */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+
       {hasSearched && (
         <div className="flex flex-col gap-4">
+
           {/* Status */}
+
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p
               style={{
-                fontFamily: "'Almarai', sans-serif",
+                fontFamily:
+                  "'Almarai', sans-serif",
                 fontWeight: 700,
                 fontSize: "14px",
                 color: "#2d3648",
@@ -1327,24 +1956,312 @@ if (records.length > 0) {
             </div>
           </div>
 
-          {/* Table */}
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {/* FILTERS */}
+          {/* ═══════════════════════════════════════════════════════════════ */}
+
           {found && (
-            <ResultsTable
-              records={results}
-              selectedIds={selectedIds}
-              onToggleAll={toggleAll}
-              onToggleRow={toggleRow}
-              onDelete={handleDelete}
-              onView={handleView}
-            />
+            <div className="w-full bg-white border border-[#e2e7f0] rounded-[12px] p-5 shadow-sm">
+
+              <div className="flex flex-col gap-4">
+
+                {/* Filter Header */}
+
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2
+                      style={{
+                        fontFamily:
+                          "'Almarai', sans-serif",
+                        fontWeight: 700,
+                        fontSize: "17px",
+                        color: "#2d3648",
+                      }}
+                    >
+                      تصفية النتائج
+                    </h2>
+
+                    <p
+                      className="mt-1"
+                      style={{
+                        fontFamily:
+                          "'Almarai', sans-serif",
+                        fontSize: "12px",
+                        color: "#8b95a8",
+                      }}
+                    >
+                      الفلاتر تطبق على نتائج الاستعلام الحالية
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={
+                      resetFilters
+                    }
+                    className="flex items-center gap-2 px-4 py-2 rounded-[7px] border border-[#e2e7f0] bg-white hover:bg-[#f7f8fb] transition-colors"
+                    style={{
+                      fontFamily:
+                        "'Almarai', sans-serif",
+                      fontSize: "13px",
+                      color: "#2d3648",
+                    }}
+                  >
+                    <RotateCcw
+                      size={15}
+                    />
+
+                    إعادة تعيين الفلاتر
+                  </button>
+                </div>
+
+                {/* Filter Fields */}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+
+                  {/* ⭐ Name Filter */}
+
+                  <div className="flex flex-col gap-2">
+                    <label
+                      style={{
+                        fontFamily:
+                          "'Almarai', sans-serif",
+                        fontWeight: 700,
+                        fontSize: "14px",
+                        color: "#2d3648",
+                      }}
+                    >
+                      اسم الفرد
+                    </label>
+
+                    <div className="relative">
+                      <Search
+                        size={17}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8b95a8]"
+                      />
+
+                      <input
+                        type="text"
+                        value={nameFilter}
+                        onChange={(e) =>
+                          setNameFilter(
+                            e.target.value
+                          )
+                        }
+                        placeholder="ابحث بالاسم..."
+                        className="w-full h-[54px] bg-white border border-[#e2e7f0] rounded-[8px] pr-10 pl-3 text-right outline-none focus:border-[#4BFF62] transition-colors"
+                        style={{
+                          fontFamily:
+                            "'Almarai', sans-serif",
+                          fontSize: "16px",
+                          color: "#4a5468",
+                        }}
+                        dir="rtl"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Status */}
+
+                  <div className="flex flex-col gap-2">
+                    <label
+                      style={{
+                        fontFamily:
+                          "'Almarai', sans-serif",
+                        fontWeight: 700,
+                        fontSize: "14px",
+                        color: "#2d3648",
+                      }}
+                    >
+                      الحالة
+                    </label>
+
+                    <Dropdown
+                      options={
+                        STATUS_FILTER_OPTIONS
+                      }
+                      value={
+                        statusFilter
+                      }
+                      onChange={(value) =>
+                        setStatusFilter(
+                          value as StatusFilter
+                        )
+                      }
+                    />
+                  </div>
+
+                  {/* Unit */}
+
+                  <div className="flex flex-col gap-2">
+                    <label
+                      style={{
+                        fontFamily:
+                          "'Almarai', sans-serif",
+                        fontWeight: 700,
+                        fontSize: "14px",
+                        color: "#2d3648",
+                      }}
+                    >
+                      الوحدة الأساسية
+                    </label>
+
+                    <SearchableUnitDropdown
+                      units={units}
+                      value={
+                        unitFilter
+                      }
+                      onChange={
+                        setUnitFilter
+                      }
+                    />
+
+                    {unitsLoading && (
+                      <span
+                        style={{
+                          fontFamily:
+                            "'Almarai', sans-serif",
+                          fontSize: "11px",
+                          color: "#8b95a8",
+                        }}
+                      >
+                        جاري تحميل الوحدات...
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Rank */}
+
+                  <div className="flex flex-col gap-2">
+                    <label
+                      style={{
+                        fontFamily:
+                          "'Almarai', sans-serif",
+                        fontWeight: 700,
+                        fontSize: "14px",
+                        color: "#2d3648",
+                      }}
+                    >
+                      الدرجة
+                    </label>
+
+                    <Dropdown
+                      options={
+                        RANK_OPTIONS
+                      }
+                      value={
+                        rankFilter
+                      }
+                      onChange={
+                        setRankFilter
+                      }
+                    />
+                  </div>
+                </div>
+
+                {/* Filter Result Counter */}
+
+                <div className="flex items-center justify-between border-t border-[#eaecf0] pt-3">
+                  <span
+                    style={{
+                      fontFamily:
+                        "'Almarai', sans-serif",
+                      fontSize: "13px",
+                      color: "#717d96",
+                    }}
+                  >
+                    النتائج بعد التصفية
+                  </span>
+
+                  <span
+                    style={{
+                      fontFamily:
+                        "'Almarai', sans-serif",
+                      fontWeight: 700,
+                      fontSize: "14px",
+                      color: "#168b4f",
+                    }}
+                  >
+                    {filteredResults.length}
+                  </span>
+                </div>
+              </div>
+            </div>
           )}
 
-          {/* Empty */}
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {/* Filtered Empty */}
+          {/* ═══════════════════════════════════════════════════════════════ */}
+
+          {filteredNotFound && (
+            <div className="w-full py-12 flex flex-col items-center gap-3 bg-white rounded-[12px] border border-[#e2e7f0]">
+              <p
+                style={{
+                  fontFamily:
+                    "'Almarai', sans-serif",
+                  fontSize: "17px",
+                  color: "#717d96",
+                }}
+              >
+                لا توجد نتائج مطابقة للفلاتر المحددة
+              </p>
+
+              <button
+                type="button"
+                onClick={
+                  resetFilters
+                }
+                className="px-4 py-2 rounded-[7px] bg-[#f0f2fd] text-[#168b4f]"
+                style={{
+                  fontFamily:
+                    "'Almarai', sans-serif",
+                  fontSize: "13px",
+                }}
+              >
+                إعادة تعيين الفلاتر
+              </button>
+            </div>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {/* Table */}
+          {/* ═══════════════════════════════════════════════════════════════ */}
+
+          {found &&
+            filteredResults.length >
+              0 && (
+              <ResultsTable
+                records={
+                  filteredResults
+                }
+                selectedIds={
+                  selectedIds
+                }
+                onToggleAll={
+                  toggleAll
+                }
+                onToggleRow={
+                  toggleRow
+                }
+                onDelete={
+                  handleDelete
+                }
+                onView={
+                  handleView
+                }
+              />
+            )}
+
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {/* Empty Search */}
+          {/* ═══════════════════════════════════════════════════════════════ */}
+
           {notFound && (
             <div className="w-full py-16 flex flex-col items-center gap-3 bg-white rounded-[12px] border border-[#e2e7f0]">
               <p
                 style={{
-                  fontFamily: "'Almarai', sans-serif",
+                  fontFamily:
+                    "'Almarai', sans-serif",
                   fontSize: "18px",
                   color: "#717d96",
                 }}

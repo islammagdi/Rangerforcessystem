@@ -7,13 +7,17 @@ import {
   AlertCircle,
   History,
   FileSpreadsheet,
+  Trash2,
+  AlertTriangle,
+  X,
 } from "lucide-react";
 import * as XLSX from "xlsx";
+
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
 
-// الجداول اللي هيتم تضمينها في كل نسخة احتياطية
+// الجداول التي سيتم تضمينها في كل نسخة احتياطية
 const BACKUP_TABLES = [
   "personnel",
   "letters",
@@ -37,6 +41,10 @@ type BackupLog = {
   status: string;
 };
 
+// =========================================================
+// الحصول على بيانات المستخدم الحالي
+// =========================================================
+
 async function getCurrentUserInfo(): Promise<{
   userId: string | null;
   userName: string;
@@ -46,7 +54,10 @@ async function getCurrentUserInfo(): Promise<{
   } = await supabase.auth.getSession();
 
   if (!session?.user) {
-    return { userId: null, userName: "غير معروف" };
+    return {
+      userId: null,
+      userName: "غير معروف",
+    };
   }
 
   const { data: profile } = await supabase
@@ -68,11 +79,15 @@ async function getCurrentUserInfo(): Promise<{
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return "-";
 
-  if (bytes < 1024) return `${bytes} بايت`;
+  if (bytes < 1024) {
+    return `${bytes} بايت`;
+  }
 
   const kb = bytes / 1024;
 
-  if (kb < 1024) return `${kb.toFixed(1)} كيلوبايت`;
+  if (kb < 1024) {
+    return `${kb.toFixed(1)} كيلوبايت`;
+  }
 
   const mb = kb / 1024;
 
@@ -90,7 +105,15 @@ function formatDate(isoDate: string): string {
   });
 }
 
+// =========================================================
+// الصفحة
+// =========================================================
+
 export function DataBackupPage() {
+  // =========================================================
+  // Backup States
+  // =========================================================
+
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -99,14 +122,27 @@ export function DataBackupPage() {
   const [logs, setLogs] = useState<BackupLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
   const [logsError, setLogsError] = useState("");
+
   const [downloadingId, setDownloadingId] = useState<string | null>(
     null
   );
+
   const [exportingExcel, setExportingExcel] = useState(false);
 
-  // ==========================================
+  // =========================================================
+  // Reset States
+  // =========================================================
+
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState("");
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState("");
+
+  const RESET_CONFIRM_PHRASE = "حذف جميع البيانات";
+
+  // =========================================================
   // تحميل سجل النسخ الاحتياطية
-  // ==========================================
+  // =========================================================
 
   async function loadBackupLogs() {
     setLoadingLogs(true);
@@ -121,7 +157,11 @@ export function DataBackupPage() {
 
     if (fetchError) {
       console.error("Load backup logs error:", fetchError);
-      setLogsError(`حدث خطأ أثناء تحميل سجل النسخ: ${fetchError.message}`);
+
+      setLogsError(
+        `حدث خطأ أثناء تحميل سجل النسخ: ${fetchError.message}`
+      );
+
       setLoadingLogs(false);
       return;
     }
@@ -134,14 +174,15 @@ export function DataBackupPage() {
     loadBackupLogs();
   }, []);
 
-  // ==========================================
-  // إنشاء نسخة احتياطية جديدة
-  // ==========================================
+  // =========================================================
+  // إنشاء نسخة احتياطية
+  // =========================================================
 
   async function handleCreateBackup() {
     setCreating(true);
     setError("");
     setSuccessMsg("");
+    setProgressLabel("");
 
     try {
       const backupData: Record<string, any[]> = {};
@@ -171,20 +212,34 @@ export function DataBackupPage() {
         tables: backupData,
       };
 
-      const jsonString = JSON.stringify(backupPayload, null, 2);
-      const blob = new Blob([jsonString], { type: "application/json" });
+      const jsonString = JSON.stringify(
+        backupPayload,
+        null,
+        2
+      );
+
+      const blob = new Blob([jsonString], {
+        type: "application/json",
+      });
 
       const now = new Date();
+
       const dateFolder = `${now.getFullYear()}-${String(
         now.getMonth() + 1
-      ).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      ).padStart(2, "0")}-${String(
+        now.getDate()
+      ).padStart(2, "0")}`;
 
       const timeLabel = `${String(now.getHours()).padStart(
         2,
         "0"
-      )}${String(now.getMinutes()).padStart(2, "0")}${String(
-        now.getSeconds()
-      ).padStart(2, "0")}`;
+      )}${String(now.getMinutes()).padStart(
+        2,
+        "0"
+      )}${String(now.getSeconds()).padStart(
+        2,
+        "0"
+      )}`;
 
       const filePath = `${dateFolder}/backup-${timeLabel}.json`;
 
@@ -198,10 +253,13 @@ export function DataBackupPage() {
         });
 
       if (uploadError) {
-        throw new Error(`فشل رفع الملف: ${uploadError.message}`);
+        throw new Error(
+          `فشل رفع الملف: ${uploadError.message}`
+        );
       }
 
-      const { userId, userName } = await getCurrentUserInfo();
+      const { userId, userName } =
+        await getCurrentUserInfo();
 
       const { error: logError } = await supabase
         .from("backup_logs")
@@ -216,77 +274,114 @@ export function DataBackupPage() {
         });
 
       if (logError) {
-        console.error("Backup log error:", logError);
+        console.error(
+          "Backup log error:",
+          logError
+        );
       }
 
       setSuccessMsg(
         `تم إنشاء النسخة الاحتياطية بنجاح (${totalRecords} سجل)`
       );
 
-      // تحديث السجل عشان النسخة الجديدة تظهر في الجدول فورًا
       await loadBackupLogs();
     } catch (err: any) {
-      console.error("Backup creation error:", err);
-      setError(err?.message || "حدث خطأ أثناء إنشاء النسخة الاحتياطية");
+      console.error(
+        "Backup creation error:",
+        err
+      );
+
+      setError(
+        err?.message ||
+          "حدث خطأ أثناء إنشاء النسخة الاحتياطية"
+      );
     } finally {
       setCreating(false);
       setProgressLabel("");
     }
   }
-async function handleExportExcel() {
-  setExportingExcel(true);
-  setError("");
-  setSuccessMsg("");
 
-  try {
-    const workbook = XLSX.utils.book_new();
+  // =========================================================
+  // تصدير Excel
+  // =========================================================
 
-    for (const table of BACKUP_TABLES) {
-      const { data, error: fetchError } = await supabase
-        .from(table)
-        .select("*");
+  async function handleExportExcel() {
+    setExportingExcel(true);
+    setError("");
+    setSuccessMsg("");
 
-      if (fetchError) {
-        throw new Error(
-          `فشل جلب بيانات جدول ${table}: ${fetchError.message}`
+    try {
+      const workbook = XLSX.utils.book_new();
+
+      for (const table of BACKUP_TABLES) {
+        const { data, error: fetchError } =
+          await supabase
+            .from(table)
+            .select("*");
+
+        if (fetchError) {
+          throw new Error(
+            `فشل جلب بيانات جدول ${table}: ${fetchError.message}`
+          );
+        }
+
+        const sheet = XLSX.utils.json_to_sheet(
+          data ?? []
+        );
+
+        const sheetName = table.substring(0, 31);
+
+        XLSX.utils.book_append_sheet(
+          workbook,
+          sheet,
+          sheetName
         );
       }
 
-      const sheet = XLSX.utils.json_to_sheet(data ?? []);
+      const now = new Date();
 
-      // اسم الـ sheet لازم يكون أقل من 31 حرف (قيد Excel)
-      const sheetName = table.substring(0, 31);
+      const dateLabel = `${now.getFullYear()}-${String(
+        now.getMonth() + 1
+      ).padStart(2, "0")}-${String(
+        now.getDate()
+      ).padStart(2, "0")}`;
 
-      XLSX.utils.book_append_sheet(workbook, sheet, sheetName);
+      XLSX.writeFile(
+        workbook,
+        `نسخة-احتياطية-${dateLabel}.xlsx`
+      );
+
+      setSuccessMsg(
+        "تم تصدير النسخة الاحتياطية كملف Excel بنجاح"
+      );
+    } catch (err: any) {
+      console.error(
+        "Excel export error:",
+        err
+      );
+
+      setError(
+        err?.message ||
+          "حدث خطأ أثناء تصدير ملف Excel"
+      );
+    } finally {
+      setExportingExcel(false);
     }
-
-    const now = new Date();
-    const dateLabel = `${now.getFullYear()}-${String(
-      now.getMonth() + 1
-    ).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-
-    XLSX.writeFile(workbook, `نسخة-احتياطية-${dateLabel}.xlsx`);
-
-    setSuccessMsg("تم تصدير النسخة الاحتياطية كملف Excel بنجاح");
-  } catch (err: any) {
-    console.error("Excel export error:", err);
-    setError(err?.message || "حدث خطأ أثناء تصدير ملف Excel");
-  } finally {
-    setExportingExcel(false);
   }
-}
-  // ==========================================
-  // تحميل نسخة احتياطية معينة
-  // ==========================================
+
+  // =========================================================
+  // تحميل نسخة احتياطية
+  // =========================================================
 
   async function handleDownload(log: BackupLog) {
     setDownloadingId(log.id);
     setLogsError("");
 
     try {
-      const { data, error: downloadError } = await supabase.storage
-        .from("backups")
-        .download(log.file_path);
+      const { data, error: downloadError } =
+        await supabase.storage
+          .from("backups")
+          .download(log.file_path);
 
       if (downloadError) {
         throw new Error(
@@ -295,31 +390,126 @@ async function handleExportExcel() {
       }
 
       if (!data) {
-        throw new Error("الملف غير موجود على السيرفر");
+        throw new Error(
+          "الملف غير موجود على السيرفر"
+        );
       }
 
-      // إنشاء رابط تحميل مؤقت وتفعيله تلقائيًا
       const url = URL.createObjectURL(data);
+
       const link = document.createElement("a");
 
       link.href = url;
-      link.download = log.file_path.split("/").pop() || "backup.json";
+
+      link.download =
+        log.file_path.split("/").pop() ||
+        "backup.json";
 
       document.body.appendChild(link);
+
       link.click();
+
       document.body.removeChild(link);
 
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      console.error("Download backup error:", err);
-      setLogsError(err?.message || "حدث خطأ أثناء تحميل النسخة الاحتياطية");
+      console.error(
+        "Download backup error:",
+        err
+      );
+
+      setLogsError(
+        err?.message ||
+          "حدث خطأ أثناء تحميل النسخة الاحتياطية"
+      );
     } finally {
       setDownloadingId(null);
     }
   }
 
+  // =========================================================
+  // Reset System
+  // =========================================================
+
+  function openResetModal() {
+    setResetConfirmText("");
+    setResetError("");
+    setShowResetModal(true);
+  }
+
+  function closeResetModal() {
+    if (resetting) return;
+
+    setShowResetModal(false);
+    setResetConfirmText("");
+    setResetError("");
+  }
+
+  async function handleResetSystem() {
+    if (
+      resetConfirmText.trim() !==
+      RESET_CONFIRM_PHRASE
+    ) {
+      setResetError(
+        `يرجى كتابة العبارة "${RESET_CONFIRM_PHRASE}" بالضبط للتأكيد`
+      );
+
+      return;
+    }
+
+    setResetting(true);
+    setResetError("");
+    setError("");
+    setSuccessMsg("");
+
+    try {
+      const { error: rpcError } =
+        await supabase.rpc(
+          "reset_system_data"
+        );
+
+      if (rpcError) {
+        throw new Error(
+          rpcError.message
+        );
+      }
+
+      setShowResetModal(false);
+      setResetConfirmText("");
+
+      setSuccessMsg(
+        "تم حذف جميع بيانات النظام (الأفراد والخطابات) بنجاح، ماعدا حساب الأدمن."
+      );
+
+      await loadBackupLogs();
+    } catch (err: any) {
+      console.error(
+        "Reset system data error:",
+        err
+      );
+
+      setResetError(
+        err?.message ||
+          "حدث خطأ أثناء تنفيذ عملية إعادة تعيين النظام"
+      );
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  // =========================================================
+  // JSX
+  // =========================================================
+
   return (
-    <div className="flex flex-col gap-6 w-full pb-10" dir="rtl">
+    <div
+      className="flex flex-col gap-6 w-full pb-10"
+      dir="rtl"
+    >
+      {/* =================================================
+          العنوان
+      ================================================= */}
+
       <h1
         className="text-center"
         style={{
@@ -332,6 +522,10 @@ async function handleExportExcel() {
         النسخ الاحتياطي للبيانات
       </h1>
 
+      {/* =================================================
+          Error
+      ================================================= */}
+
       {error && (
         <div
           className="w-full rounded-[10px] px-5 py-4 flex items-start gap-2"
@@ -341,10 +535,25 @@ async function handleExportExcel() {
             color: "#991b1b",
           }}
         >
-          <AlertCircle size={18} className="shrink-0 mt-0.5" />
-          <span style={{ ...F, fontSize: 14 }}>{error}</span>
+          <AlertCircle
+            size={18}
+            className="shrink-0 mt-0.5"
+          />
+
+          <span
+            style={{
+              ...F,
+              fontSize: 14,
+            }}
+          >
+            {error}
+          </span>
         </div>
       )}
+
+      {/* =================================================
+          Success
+      ================================================= */}
 
       {successMsg && (
         <div
@@ -361,15 +570,20 @@ async function handleExportExcel() {
       )}
 
       {/* =================================================
-          إنشاء نسخة احتياطية فورية
+          إنشاء نسخة احتياطية
       ================================================= */}
 
       <section className="bg-white rounded-[20px] border border-[#eff0f6] p-6 flex flex-col items-center gap-4">
         <div
           className="w-16 h-16 rounded-full flex items-center justify-center"
-          style={{ background: "#dcfce7" }}
+          style={{
+            background: "#dcfce7",
+          }}
         >
-          <Database size={28} color="#00522E" />
+          <Database
+            size={28}
+            color="#00522E"
+          />
         </div>
 
         <p
@@ -378,11 +592,14 @@ async function handleExportExcel() {
             fontSize: 16,
             color: "#4a5468",
             textAlign: "center",
+            lineHeight: 1.8,
           }}
         >
-          إنشاء نسخة احتياطية فورية من جميع بيانات النظام
+          إنشاء نسخة احتياطية فورية من جميع
+          بيانات النظام
           <br />
-          (الأفراد، الخطابات، دفعات الرديف، سجل العمليات)
+          (الأفراد، الخطابات، دفعات الرديف،
+          سجل العمليات)
         </p>
 
         <button
@@ -391,38 +608,65 @@ async function handleExportExcel() {
           onClick={handleCreateBackup}
           className="h-[54px] px-8 rounded-[8px] flex items-center gap-2 disabled:opacity-60"
           style={{
-            background: "linear-gradient(to bottom,#00b867,#00522e)",
+            background:
+              "linear-gradient(to bottom,#00b867,#00522e)",
           }}
         >
           <RefreshCw
             size={18}
             color="#fff"
-            className={creating ? "animate-spin" : ""}
+            className={
+              creating
+                ? "animate-spin"
+                : ""
+            }
           />
 
-          <span style={{ ...F, fontSize: 16, color: "#fff" }}>
+          <span
+            style={{
+              ...F,
+              fontSize: 16,
+              color: "#fff",
+            }}
+          >
             {creating
-              ? progressLabel || "جاري الإنشاء..."
+              ? progressLabel ||
+                "جاري الإنشاء..."
               : "إنشاء نسخة احتياطية الآن"}
           </span>
         </button>
-        <button
-  type="button"
-  disabled={exportingExcel}
-  onClick={handleExportExcel}
-  className="h-[54px] px-8 rounded-[8px] flex items-center gap-2 border border-[#00522E] disabled:opacity-60"
-  style={{ background: "#fff" }}
->
-  <FileSpreadsheet
-    size={18}
-    color="#00522E"
-    className={exportingExcel ? "animate-pulse" : ""}
-  />
 
-  <span style={{ ...F, fontSize: 16, color: "#00522E" }}>
-    {exportingExcel ? "جاري التصدير..." : "تصدير كملف Excel"}
-  </span>
-</button>
+        <button
+          type="button"
+          disabled={exportingExcel}
+          onClick={handleExportExcel}
+          className="h-[54px] px-8 rounded-[8px] flex items-center gap-2 border border-[#00522E] disabled:opacity-60"
+          style={{
+            background: "#fff",
+          }}
+        >
+          <FileSpreadsheet
+            size={18}
+            color="#00522E"
+            className={
+              exportingExcel
+                ? "animate-pulse"
+                : ""
+            }
+          />
+
+          <span
+            style={{
+              ...F,
+              fontSize: 16,
+              color: "#00522E",
+            }}
+          >
+            {exportingExcel
+              ? "جاري التصدير..."
+              : "تصدير كملف Excel"}
+          </span>
+        </button>
       </section>
 
       {/* =================================================
@@ -432,9 +676,18 @@ async function handleExportExcel() {
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#e2e7f0] flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <History size={18} className="text-[#4a5468]" />
+            <History
+              size={18}
+              className="text-[#4a5468]"
+            />
 
-            <span style={{ ...F, fontSize: 16, color: "#4a5468" }}>
+            <span
+              style={{
+                ...F,
+                fontSize: 16,
+                color: "#4a5468",
+              }}
+            >
               سجل النسخ الاحتياطية
             </span>
           </div>
@@ -444,12 +697,20 @@ async function handleExportExcel() {
             onClick={loadBackupLogs}
             disabled={loadingLogs}
             className="flex items-center gap-2 text-[#00522E] disabled:opacity-50"
-            style={{ ...F, fontSize: 14 }}
+            style={{
+              ...F,
+              fontSize: 14,
+            }}
           >
             <RefreshCw
               size={14}
-              className={loadingLogs ? "animate-spin" : ""}
+              className={
+                loadingLogs
+                  ? "animate-spin"
+                  : ""
+              }
             />
+
             تحديث
           </button>
         </div>
@@ -474,7 +735,14 @@ async function handleExportExcel() {
               size={24}
               className="mx-auto mb-2 text-[#00b867] animate-spin"
             />
-            <p style={{ ...F, fontSize: 14, color: "#717d96" }}>
+
+            <p
+              style={{
+                ...F,
+                fontSize: 14,
+                color: "#717d96",
+              }}
+            >
               جاري تحميل السجل...
             </p>
           </div>
@@ -484,7 +752,14 @@ async function handleExportExcel() {
               size={28}
               className="mx-auto mb-2 text-[#a1aebe]"
             />
-            <p style={{ ...F, fontSize: 14, color: "#a1aebe" }}>
+
+            <p
+              style={{
+                ...F,
+                fontSize: 14,
+                color: "#a1aebe",
+              }}
+            >
               لا توجد نسخ احتياطية مسجلة بعد
             </p>
           </div>
@@ -495,35 +770,55 @@ async function handleExportExcel() {
                 <tr>
                   <th
                     className="px-5 py-3 text-right"
-                    style={{ ...F, fontSize: 13, color: "#717d96" }}
+                    style={{
+                      ...F,
+                      fontSize: 13,
+                      color: "#717d96",
+                    }}
                   >
                     التاريخ
                   </th>
 
                   <th
                     className="px-5 py-3 text-right"
-                    style={{ ...F, fontSize: 13, color: "#717d96" }}
+                    style={{
+                      ...F,
+                      fontSize: 13,
+                      color: "#717d96",
+                    }}
                   >
                     المستخدم
                   </th>
 
                   <th
                     className="px-5 py-3 text-right"
-                    style={{ ...F, fontSize: 13, color: "#717d96" }}
+                    style={{
+                      ...F,
+                      fontSize: 13,
+                      color: "#717d96",
+                    }}
                   >
                     عدد السجلات
                   </th>
 
                   <th
                     className="px-5 py-3 text-right"
-                    style={{ ...F, fontSize: 13, color: "#717d96" }}
+                    style={{
+                      ...F,
+                      fontSize: 13,
+                      color: "#717d96",
+                    }}
                   >
                     حجم الملف
                   </th>
 
                   <th
                     className="px-5 py-3 text-right"
-                    style={{ ...F, fontSize: 13, color: "#717d96" }}
+                    style={{
+                      ...F,
+                      fontSize: 13,
+                      color: "#717d96",
+                    }}
                   >
                     تحميل
                   </th>
@@ -532,45 +827,80 @@ async function handleExportExcel() {
 
               <tbody>
                 {logs.map((log) => (
-                  <tr key={log.id} className="border-t border-[#e2e7f0]">
+                  <tr
+                    key={log.id}
+                    className="border-t border-[#e2e7f0]"
+                  >
                     <td
                       className="px-5 py-3 whitespace-nowrap"
-                      style={{ ...F, fontSize: 13, color: "#2d3648" }}
+                      style={{
+                        ...F,
+                        fontSize: 13,
+                        color: "#2d3648",
+                      }}
                     >
-                      {formatDate(log.created_at)}
+                      {formatDate(
+                        log.created_at
+                      )}
                     </td>
 
                     <td
                       className="px-5 py-3 whitespace-nowrap"
-                      style={{ ...F, fontSize: 13, color: "#2d3648" }}
+                      style={{
+                        ...F,
+                        fontSize: 13,
+                        color: "#2d3648",
+                      }}
                     >
-                      {log.created_by_name || "-"}
+                      {log.created_by_name ||
+                        "-"}
                     </td>
 
                     <td
                       className="px-5 py-3 whitespace-nowrap"
-                      style={{ ...F, fontSize: 13, color: "#2d3648" }}
+                      style={{
+                        ...F,
+                        fontSize: 13,
+                        color: "#2d3648",
+                      }}
                     >
-                      {log.records_count ?? "-"}
+                      {log.records_count ??
+                        "-"}
                     </td>
 
                     <td
                       className="px-5 py-3 whitespace-nowrap"
-                      style={{ ...F, fontSize: 13, color: "#2d3648" }}
+                      style={{
+                        ...F,
+                        fontSize: 13,
+                        color: "#2d3648",
+                      }}
                     >
-                      {formatFileSize(log.file_size_bytes)}
+                      {formatFileSize(
+                        log.file_size_bytes
+                      )}
                     </td>
 
                     <td className="px-5 py-3 whitespace-nowrap">
                       <button
                         type="button"
-                        onClick={() => handleDownload(log)}
-                        disabled={downloadingId === log.id}
+                        onClick={() =>
+                          handleDownload(log)
+                        }
+                        disabled={
+                          downloadingId ===
+                          log.id
+                        }
                         className="flex items-center gap-1.5 text-[#00522E] disabled:opacity-50"
-                        style={{ ...F, fontSize: 13 }}
+                        style={{
+                          ...F,
+                          fontSize: 13,
+                        }}
                       >
                         <Download size={14} />
-                        {downloadingId === log.id
+
+                        {downloadingId ===
+                        log.id
                           ? "جاري التحميل..."
                           : "تحميل"}
                       </button>
@@ -582,6 +912,258 @@ async function handleExportExcel() {
           </div>
         )}
       </section>
+
+      {/* =================================================
+          منطقة الخطر
+      ================================================= */}
+
+      <section
+        className="rounded-[20px] p-6 flex flex-col items-center gap-4"
+        style={{
+          background: "#fef2f2",
+          border: "1px solid #fecaca",
+        }}
+      >
+        <div
+          className="w-16 h-16 rounded-full flex items-center justify-center"
+          style={{
+            background: "#fee2e2",
+          }}
+        >
+          <AlertTriangle
+            size={28}
+            color="#dc2626"
+          />
+        </div>
+
+        <p
+          style={{
+            ...F,
+            fontWeight: 700,
+            fontSize: 17,
+            color: "#991b1b",
+            textAlign: "center",
+          }}
+        >
+          منطقة خطر: إعادة تعيين النظام بالكامل
+        </p>
+
+        <p
+          style={{
+            ...F,
+            fontSize: 14,
+            color: "#7f1d1d",
+            textAlign: "center",
+            lineHeight: 1.8,
+          }}
+        >
+          هذا الإجراء سيحذف نهائيًا جميع
+          الخطابات وجميع الأفراد المسجلين
+          وحساباتهم، ولا يمكن التراجع عنه بعد
+          التنفيذ. يُنصح بشدة بإنشاء نسخة
+          احتياطية قبل المتابعة.
+        </p>
+
+        <button
+          type="button"
+          onClick={openResetModal}
+          className="h-[54px] px-8 rounded-[8px] flex items-center gap-2"
+          style={{
+            background:
+              "linear-gradient(to bottom,#e3282c,#991b1b)",
+          }}
+        >
+          <Trash2
+            size={18}
+            color="#fff"
+          />
+
+          <span
+            style={{
+              ...F,
+              fontSize: 16,
+              color: "#fff",
+            }}
+          >
+            حذف جميع بيانات النظام
+          </span>
+        </button>
+      </section>
+
+      {/* =================================================
+          Reset Confirmation Modal
+      ================================================= */}
+
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div
+            className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
+            dir="rtl"
+          >
+            {/* Header */}
+
+            <div className="flex items-center justify-between px-6 py-5 border-b border-[#e2e7f0]">
+              <div className="flex items-center gap-2">
+                <AlertTriangle
+                  size={20}
+                  className="text-[#dc2626]"
+                />
+
+                <span
+                  style={{
+                    ...F,
+                    fontWeight: 700,
+                    fontSize: 18,
+                    color: "#2d3648",
+                  }}
+                >
+                  تأكيد حذف جميع البيانات
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeResetModal}
+                disabled={resetting}
+                className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center disabled:opacity-50"
+              >
+                <X size={19} />
+              </button>
+            </div>
+
+            {/* Body */}
+
+            <div className="p-6 flex flex-col gap-4">
+              <div
+                className="rounded-xl border border-red-200 bg-red-50 px-4 py-3"
+                style={{
+                  ...F,
+                  fontSize: 13,
+                  color: "#991b1b",
+                  lineHeight: 1.8,
+                }}
+              >
+                ⚠️ هذا الإجراء سيحذف نهائيًا:
+
+                <br />
+
+                • جميع الخطابات ومرفقاتها
+
+                <br />
+
+                • جميع الأفراد المسجلين (ماعدا
+                حساب الأدمن)
+
+                <br />
+
+                • جميع الحسابات المرتبطة بهم
+
+                <br />
+                <br />
+
+                <strong>
+                  لا يمكن التراجع عن هذا الإجراء
+                  بعد التنفيذ.
+                </strong>
+              </div>
+
+              {resetError && (
+                <div
+                  className="rounded-xl border border-red-200 bg-red-50 px-4 py-3"
+                  style={{
+                    ...F,
+                    fontSize: 13,
+                    color: "#b91c1c",
+                  }}
+                >
+                  {resetError}
+                </div>
+              )}
+
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="reset-confirm"
+                  style={{
+                    ...F,
+                    fontSize: 14,
+                    color: "#2d3648",
+                  }}
+                >
+                  للتأكيد، اكتب العبارة التالية
+                  بالضبط:
+                  <strong className="mr-1">
+                    {RESET_CONFIRM_PHRASE}
+                  </strong>
+                </label>
+
+                <input
+                  id="reset-confirm"
+                  type="text"
+                  value={resetConfirmText}
+                  onChange={(e) =>
+                    setResetConfirmText(
+                      e.target.value
+                    )
+                  }
+                  dir="rtl"
+                  disabled={resetting}
+                  className="w-full h-[46px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#dc2626] disabled:opacity-60"
+                  style={{
+                    ...F,
+                    fontSize: 15,
+                    color: "#2d3648",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+
+            <div className="px-6 py-4 border-t border-[#e2e7f0] flex items-center gap-3">
+              <button
+                type="button"
+                onClick={closeResetModal}
+                disabled={resetting}
+                className="px-5 h-11 rounded-xl border border-[#cbd5e1] text-[#475569] hover:bg-gray-50 disabled:opacity-50"
+                style={{
+                  ...F,
+                  fontSize: 14,
+                }}
+              >
+                إلغاء
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResetSystem}
+                disabled={
+                  resetting ||
+                  resetConfirmText.trim() !==
+                    RESET_CONFIRM_PHRASE
+                }
+                className="px-6 h-11 rounded-xl text-white flex items-center gap-2 disabled:opacity-50"
+                style={{
+                  background:
+                    "linear-gradient(to bottom,#e3282c,#991b1b)",
+                  ...F,
+                  fontSize: 14,
+                }}
+              >
+                {resetting && (
+                  <RefreshCw
+                    size={16}
+                    className="animate-spin"
+                  />
+                )}
+
+                {resetting
+                  ? "جاري الحذف..."
+                  : "تأكيد الحذف النهائي"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

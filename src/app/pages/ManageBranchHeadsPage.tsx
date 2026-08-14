@@ -408,14 +408,15 @@ export function ManageBranchHeadsPage() {
                     className="px-5 py-3 text-right"
                     style={{ ...F, fontSize: 13, color: "#717d96" }}
                   >
-                    الاسم
+                    الرتبة
                   </th>
                   <th
                     className="px-5 py-3 text-right"
                     style={{ ...F, fontSize: 13, color: "#717d96" }}
                   >
-                    الرتبة
+                    الاسم
                   </th>
+                  
                   <th
                     className="px-5 py-3 text-right"
                     style={{ ...F, fontSize: 13, color: "#717d96" }}
@@ -446,18 +447,18 @@ export function ManageBranchHeadsPage() {
                       background: head.is_active ? "#f0fdf4" : "transparent",
                     }}
                   >
-                    <td
-                      className="px-5 py-3 whitespace-nowrap"
-                      style={{ ...F, fontSize: 14, color: "#2d3648" }}
-                    >
-                      {head.full_name}
-                    </td>
-
+                   
                     <td
                       className="px-5 py-3 whitespace-nowrap"
                       style={{ ...F, fontSize: 14, color: "#2d3648" }}
                     >
                       {getRankName(head)}
+                    </td>
+ <td
+                      className="px-5 py-3 whitespace-nowrap"
+                      style={{ ...F, fontSize: 14, color: "#2d3648" }}
+                    >
+                      {head.full_name}
                     </td>
 
                     <td

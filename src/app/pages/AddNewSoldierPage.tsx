@@ -615,24 +615,32 @@ function FormInput({
   value,
   onChange,
   error,
+  maxLength,
+  inputMode = "text",
 }: {
   placeholder: string;
   value: string;
   onChange: (value: string) => void;
   error?: string;
+  maxLength?: number;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
 }) {
   return (
     <div className="flex flex-col gap-1 w-full">
       <input
         type="text"
         value={value}
+        maxLength={maxLength}
+        inputMode={inputMode}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         dir="rtl"
         className={[
           "w-full h-[54px] bg-white border rounded-[8px] px-3",
           "text-right outline-none focus:border-[#344736]",
-          error ? "border-[#ef4444]" : "border-[#e2e7f0]",
+          error
+            ? "border-[#ef4444]"
+            : "border-[#e2e7f0]",
         ].join(" ")}
         style={{
           ...F,
@@ -1679,9 +1687,13 @@ export function AddNewSoldierPage() {
   function validate() {
     const e: Record<string, string> = {};
 
-    if (!milId.trim()) {
-      e.milId = "الرقم العسكري مطلوب";
-    }
+   const militaryNumber = milId.trim();
+
+if (!militaryNumber) {
+  e.milId = "الرقم العسكري مطلوب";
+} else if (!/^\d{13}$/.test(militaryNumber)) {
+  e.milId = "الرقم العسكري يجب أن يتكون من 13 رقم بالضبط";
+}
 
     if (!name.trim()) {
       e.name = "الاسم مطلوب";
@@ -2357,20 +2369,28 @@ export function AddNewSoldierPage() {
               <div className="flex flex-col sm:flex-row gap-4">
                 <FieldGroup label="الرقم العسكري">
                   <FormInput
-                    placeholder="ادخل الرقم العسكري"
-                    value={milId}
-                    onChange={(v) => {
-                      setMilId(v);
+  placeholder="ادخل الرقم العسكري"
+  value={milId}
+  maxLength={13}
+  inputMode="numeric"
+  onChange={(v) => {
+    // السماح بالأرقام فقط
+    const numericValue = v.replace(/\D/g, "");
 
-                      setErrors(
-                        (prev) => ({
-                          ...prev,
-                          milId: "",
-                        })
-                      );
-                    }}
-                    error={errors.milId}
-                  />
+    setMilId(numericValue);
+
+    setErrors((prev) => ({
+      ...prev,
+      milId:
+        numericValue.length === 0
+          ? ""
+          : numericValue.length === 13
+            ? ""
+            : "الرقم العسكري يجب أن يتكون من 13 رقم بالضبط",
+    }));
+  }}
+  error={errors.milId}
+/>
                 </FieldGroup>
 
                 <FieldGroup label="الدرجة">
