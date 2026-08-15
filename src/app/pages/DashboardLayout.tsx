@@ -39,6 +39,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/manage-users": "ادارة المستخدمين",
   "/dashboard/activity-log": "سجل العمليات",
   "/dashboard/data-backup": "النسخ الاحتياطي للبيانات",
+  "/dashboard/manage-reserve-batches": "إدارة دفعات الرديف",
 };
 // ============================================================
 // صلاحيات الوصول لكل مسار — نفس الأدوار المستخدمة في Sidebar
@@ -74,6 +75,10 @@ const PATH_ROLE_MAP: { prefix: string; roles: RoleCode[] }[] = [
   { prefix: "/dashboard/data-backup", roles: ["ADMIN"] },
   { prefix: "/dashboard/activity-log", roles: ["ADMIN"] },
   { prefix: "/dashboard/manage-branch-heads", roles: ["ADMIN"] },
+  {
+  prefix: "/dashboard/manage-reserve-batches",
+  roles: ["ADMIN"],
+},
 ];
 
 function isPathAllowed(pathname: string, role: RoleCode): boolean {
@@ -163,6 +168,9 @@ function resolvePageTitle(pathname: string): string {
 }
 if (pathname.includes("/data-backup")) {
   return "النسخ الاحتياطي للبيانات";
+}
+if (pathname.includes("/manage-reserve-batches")) {
+  return "إدارة دفعات الرديف";
 }
 
   // القيمة الافتراضية
@@ -290,6 +298,9 @@ export function DashboardLayout() {
 }
   else if (label === "رؤساء فرع التنظيم") {
   navigate("/dashboard/manage-branch-heads");
+}
+else if (label === "إدارة دفعات الرديف") {
+  navigate("/dashboard/manage-reserve-batches");
 }
   }
 

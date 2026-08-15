@@ -773,11 +773,13 @@ function EndServiceDialog({
 
 function TransferDialog({
   batches,
+  selectedBatchId,
   onCancel,
   onConfirm,
   saving,
 }: {
   batches: ReserveBatch[];
+   selectedBatchId: string;
   onCancel: () => void;
   onConfirm: (
     batchId: string
@@ -787,16 +789,18 @@ function TransferDialog({
   const [targetBatch, setTargetBatch] =
     useState("");
 
-  const options = batches.map(
-    (batch) => ({
-      value: batch.id,
-      label:
-        batch.name ||
-        `دفعة ${formatBatchDate(
-          batch.batch_date
-        )}`,
-    })
-  );
+  const options = batches
+  .filter(
+    (batch) =>
+      batch.is_active &&
+      batch.id !== selectedBatchId
+  )
+  .map((batch) => ({
+    value: batch.id,
+    label:
+      batch.name ||
+      `دفعة ${formatBatchDate(batch.batch_date)}`,
+  }));
 
   const selectedTarget =
     batches.find(
@@ -991,52 +995,46 @@ export function ReserveBatchesPage() {
      ========================================================= */
 
   useEffect(() => {
-    async function loadBatches() {
-      setLoadingBatches(true);
-      setBatchError("");
+ async function loadBatches() {
+  setLoadingBatches(true);
+  setBatchError("");
 
-      const { data, error } =
-        await supabase
-          .from("reserve_batches")
-          .select(
-            "id, batch_date, name, is_active"
-          )
-          .order("batch_date", {
-            ascending: true,
-          });
+  const { data, error } = await supabase
+    .from("reserve_batches")
+    .select("id, batch_date, name, is_active")
+    .eq("is_active", true) // جلب الدفعات النشطة فقط
+    .order("batch_date", {
+      ascending: true,
+    });
 
-      if (error) {
-        setBatchError(
-          `خطأ في قراءة دفعات الرديف: ${error.message}`
-        );
+  if (error) {
+    setBatchError(
+      `خطأ في قراءة دفعات الرديف: ${error.message}`
+    );
+    setBatches([]);
+    setLoadingBatches(false);
+    return;
+  }
 
-        setBatches([]);
-        setLoadingBatches(false);
-        return;
-      }
+  const rows: ReserveBatch[] = (data ?? []).map(
+    (row: any) => ({
+      id: row.id,
+      batch_date: row.batch_date,
+      name: row.name,
+      is_active: row.is_active === true,
+    })
+  );
 
-      const rows: ReserveBatch[] =
-        (data ?? []).map(
-          (row: any) => ({
-            id: row.id,
-            batch_date:
-              row.batch_date,
-            name: row.name,
-            is_active:
-              row.is_active === true,
-          })
-        );
+  setBatches(rows);
 
-      setBatches(rows);
+  if (rows.length > 0) {
+    setSelectedBatch(rows[0].id);
+  } else {
+    setSelectedBatch("");
+  }
 
-      if (rows.length > 0) {
-        setSelectedBatch(
-          rows[0].id
-        );
-      }
-
-      setLoadingBatches(false);
-    }
+  setLoadingBatches(false);
+}
 
     loadBatches();
   }, []);
@@ -2981,6 +2979,7 @@ await logActivity({
       {showTransferDialog && (
         <TransferDialog
           batches={batches}
+          selectedBatchId={selectedBatch}
           onCancel={() => {
             if (!saving) {
               setShowTransferDialog(

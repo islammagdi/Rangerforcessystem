@@ -206,6 +206,19 @@ export function LoginForm() {
 
         return;
       }
+      const {
+  data: { user },
+} = await supabase.auth.getUser();
+
+console.log("Auth User:", user);
+
+const {
+  data: { session },
+} = await supabase.auth.getSession();
+
+console.log("Session:", session);
+console.log("Auth User ID:", user?.id);
+console.log("Session User ID:", session?.user.id);
 
       // ============================================
       // 3. Get Profile
@@ -403,6 +416,7 @@ await logActivity({
   // =====================================================
 
   if (checkingSession) {
+    
     return (
       <div
         dir="rtl"

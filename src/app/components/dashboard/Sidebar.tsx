@@ -423,6 +423,9 @@ export function Sidebar({
 if (pathname.includes("/manage-branch-heads")) {
   return "رؤساء فرع التنظيم";
 }
+if (pathname.includes("/reserve-batches-overview")) {
+  return "إدارة دفعات الرديف";
+}
 
     return "الموقف العام";
   }
@@ -643,6 +646,12 @@ async function handleLogout() {
             "ADMIN",
           ],
         },
+        {
+  icon: <Users size={18} />,
+  label: "إدارة دفعات الرديف",
+  section: "ادارة المنظومة",
+  roles: ["ADMIN"],
+},
 
         {
           icon: (
@@ -689,6 +698,7 @@ async function handleLogout() {
   section: "ادارة المنظومة",
   roles: ["ADMIN"],
 },
+
       ],
       []
     );
