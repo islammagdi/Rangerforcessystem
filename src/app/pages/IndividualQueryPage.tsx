@@ -865,7 +865,7 @@ function ResultsTable({
               "اسم",
               "الوحدة",
               "مكان الالحاق",
-              "حالة التوزيع",
+              "حاله الفرد",
               "الاجراء",
             ].map((title) => (
               <th
@@ -1765,7 +1765,7 @@ export function IndividualQueryPage() {
 
         {/* Query Controls */}
 
-        <div className="flex flex-col sm:flex-row gap-5 w-full items-end">
+        <div className="flex flex-col sm:flex-row gap-5 w-full items-end justify-end">
           {/* Basis */}
 
           <div className="flex flex-col gap-1.5 flex-1 min-w-0 w-full">
@@ -1834,8 +1834,8 @@ export function IndividualQueryPage() {
               placeholder={
                 queryBasis ===
                 "رقم عسكري"
-                  ? "أدخل جزء من الرقم العسكري"
-                  : "أدخل الاسم"
+                  ? "أدخل الرقم العسكري او جزء منه    "
+                  : "أدخل الاسم او جزء منه"
               }
               className={[
                 "w-full h-[54px] bg-white border rounded-[8px]",

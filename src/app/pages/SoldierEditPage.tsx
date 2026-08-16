@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import { ChevronDown, CalendarDays } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { logActivity } from "../../lib/logActivity";
+import { createNotification } from "../../lib/createNotification";
 // ─────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────
@@ -1519,8 +1520,16 @@ function handleCategoryChange(option: Option) {
             dischargeDateIso ? isoToDisplayDate(dischargeDateIso) : "-"
           }`,
         ].join("\n"),
+        
       });
-
+await createNotification({
+        title: "تم تحديث بيانات فرد",
+        body: `تم تحديث بيانات ${soldier.name}`,
+        type: "info",
+        entityType: "personnel",
+        entityId: soldier.id,
+        userName: currentUserName,
+      });   
       // الرجوع لشاشة بيانات الفرد بعد نجاح الحفظ
       navigate(`/dashboard/individual-query/soldier/${soldier.id}`);
     } catch (err) {

@@ -1356,26 +1356,48 @@ export function LetterDetailPage() {
           <style>
             @page {
               size: A4;
-              margin: 10mm;
+              margin: 5mm;
             }
 
             * {
-              box-sizing: border-box;
-
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
+    box-sizing: border-box;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
             }
 
             html,
             body {
-              margin: 0;
-              padding: 0;
-
-              width: 100%;
-              min-height: 100%;
-
-              background: #fff;
+    margin:0;
+    padding:0;
+    width:100%;
+    height:100%;
+    background:#fff;
             }
+
+            .page{
+    width:100%;
+    height:calc(297mm - 10mm); /* ارتفاع A4 بعد خصم الهوامش */
+    display:flex;
+    flex-direction:column;
+}
+
+.copy{
+    flex:1;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    overflow:hidden;
+}
+    .copy img{
+    width:100%;
+    height:100%;
+    object-fit:contain;
+}
+
+.cut-line{
+    border-top:2px solid #fff;
+    margin:2mm 0;
+}
 
             body {
               direction: rtl;
@@ -1396,11 +1418,27 @@ export function LetterDetailPage() {
         </head>
 
         <body>
-          ${
-            isPdf
-              ? `<iframe src="${printUrl}"></iframe>`
-              : `<img src="${printUrl}" alt="معاينة الخطاب" />`
-          }
+${
+  isPdf
+    ? `<iframe src="${printUrl}"></iframe>`
+    : !isVerified
+      ? `
+        <div class="page">
+          <div class="copy">
+            <img src="${printUrl}" alt="نسخة 1" />
+          </div>
+
+          <div class="cut-line"></div>
+
+          <div class="copy">
+            <img src="${printUrl}" alt="نسخة 2" />
+          </div>
+        </div>
+      `
+      : `
+        <img src="${printUrl}" alt="الخطاب الموثق" />
+      `
+}
         </body>
       </html>
     `);

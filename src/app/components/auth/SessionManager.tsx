@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useLocation } from "react-router";
 import { supabase } from "../../../lib/supabase";
 
-const INACTIVITY_TIME = 60 * 60 * 1000; // 5 دقائق
+const INACTIVITY_TIME = 5 * 60 * 1000; // 5 دقائق
 
 export function SessionManager() {
   const location = useLocation();

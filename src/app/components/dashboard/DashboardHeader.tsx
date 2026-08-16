@@ -9,6 +9,7 @@ import {
 import { supabase } from "../../../lib/supabase";
 import imgAvatar from "../../../assets/avatar.png";
 import { Breadcrumbs } from "./Breadcrumbs";
+import { NotificationBell } from "./NotificationBell";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
@@ -780,7 +781,7 @@ export function DashboardHeader({
         ====================================================== */}
 
         <div className="flex items-center gap-3">
-
+          <NotificationBell />
           {/* Avatar + dropdown */}
 
           <div

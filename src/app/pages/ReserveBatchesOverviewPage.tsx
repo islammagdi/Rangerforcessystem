@@ -12,7 +12,7 @@ import {
   Layers,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
-
+import { createNotification } from "../../lib/createNotification";
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
@@ -54,19 +54,15 @@ function parseBatchDate(dateStr: string): Date {
   return new Date(year, month - 1, day);
 }
 
-const MONTH_NAMES = [
-  "يناير",
-  "فبراير",
-  "مارس",
-  "أبريل",
-  "مايو",
-  "يونيو",
-  "يوليو",
-  "أغسطس",
-  "سبتمبر",
-  "أكتوبر",
-  "نوفمبر",
-  "ديسمبر",
+const ALLOWED_MONTHS = [
+  { value: 2, label: "فبراير" },
+  { value: 3, label: "مارس" },
+  { value: 5, label: "مايو" },
+  { value: 6, label: "يونيو" },
+  { value: 8, label: "أغسطس" },
+  { value: 9, label: "سبتمبر" },
+  { value: 11, label: "نوفمبر" },
+  { value: 12, label: "ديسمبر" },
 ];
 
 /* =========================================================
@@ -131,12 +127,12 @@ function AddBatchModal({
   const currentYear = new Date().getFullYear();
 
   const yearOptions = Array.from(
-    { length: 6 },
+    { length: 21 },
     (_, i) => currentYear - 1 + i
   );
 
   const [year, setYear] = useState(currentYear);
-  const [month, setMonth] = useState(new Date().getMonth() + 1);
+const [month, setMonth] = useState(ALLOWED_MONTHS[0].value);
   const [name, setName] = useState("");
 
   const [saving, setSaving] = useState(false);
@@ -149,13 +145,15 @@ function AddBatchModal({
     try {
       const batchDate = `${year}-${String(month).padStart(2, "0")}-01`;
 
-      const { error: insertError } = await supabase
+      const { data: insertedBatch, error: insertError } = await supabase
         .from("reserve_batches")
         .insert({
           batch_date: batchDate,
           name: name.trim() || null,
           is_active: true,
-        });
+        })
+        .select("id")
+        .single();
 
       if (insertError) {
         // خطأ التكرار الشائع لو فيه unique constraint على batch_date
@@ -165,7 +163,21 @@ function AddBatchModal({
 
         throw new Error(insertError.message);
       }
+const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
+      const monthLabel =
+        ALLOWED_MONTHS.find((m) => m.value === month)?.label ?? "";
+
+      await createNotification({
+        title: "تم إنشاء دفعة رديف جديدة",
+        body: `تم إنشاء دفعة ${name.trim() || `${monthLabel} ${year}`}`,
+        type: "success",
+        entityType: "reserve_batch",
+        entityId: insertedBatch?.id,
+        userName: user?.email ?? "مستخدم",
+      });
       onSaved();
       onClose();
     } catch (err: any) {
@@ -254,11 +266,11 @@ function AddBatchModal({
                 className="w-full h-[46px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867] bg-white"
                 style={{ ...F, fontSize: 15, color: "#2d3648" }}
               >
-                {MONTH_NAMES.map((m, idx) => (
-                  <option key={m} value={idx + 1}>
-                    {m}
-                  </option>
-                ))}
+                {ALLOWED_MONTHS.map((m) => (
+  <option key={m.value} value={m.value}>
+    {m.label}
+  </option>
+))}
               </select>
             </div>
           </div>
@@ -273,7 +285,9 @@ function AddBatchModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               dir="rtl"
-              placeholder={`دفعة ${MONTH_NAMES[month - 1]} ${year}`}
+              placeholder={`دفعة ${
+  ALLOWED_MONTHS.find((m) => m.value === month)?.label
+} ${year}`}
               className="w-full h-[46px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867]"
               style={{ ...F, fontSize: 15, color: "#2d3648" }}
             />

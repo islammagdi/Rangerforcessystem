@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { logActivity } from "../../lib/logActivity"; // عدّل المسار حسب مكان الملف عندك
+import { useLocation } from "react-router";
+import { logActivity } from "../../lib/logActivity"; 
+import { createNotification } from "../../lib/createNotification";// عدّل المسار حسب مكان الملف عندك
 import {
   ChevronDown,
   X,
@@ -941,6 +943,10 @@ function SortIcon() {
    ========================================================= */
 
 export function ReserveBatchesPage() {
+  const location = useLocation();
+  const [autoLoadPending, setAutoLoadPending] = useState<boolean>(
+    Boolean((location.state as any)?.batchDate)
+  );
   const [batches, setBatches] =
     useState<ReserveBatch[]>([]);
 
@@ -980,7 +986,8 @@ export function ReserveBatchesPage() {
   // المحمّلين حاليًا في الجدول (مش استعلام منفصل لجدول units).
   const [unitFilter, setUnitFilter] =
     useState("");
-
+const [statusFilter, setStatusFilter] =
+    useState("");
   // ✅ بحث بالرقم العسكري: مطابقة جزئية (includes) مش شرط كتابته كامل.
   const [militarySearch, setMilitarySearch] =
     useState("");
@@ -1025,12 +1032,26 @@ export function ReserveBatchesPage() {
     })
   );
 
-  setBatches(rows);
+ setBatches(rows);
 
-  if (rows.length > 0) {
+  const targetDate = (location.state as any)?.batchDate as
+    | string
+    | undefined;
+
+  const matchedBatch = targetDate
+    ? rows.find((b) => b.batch_date === targetDate)
+    : null;
+
+  if (matchedBatch) {
+    setSelectedBatch(matchedBatch.id);
+  } else if (rows.length > 0) {
     setSelectedBatch(rows[0].id);
   } else {
     setSelectedBatch("");
+  }
+
+  if (!matchedBatch) {
+    setAutoLoadPending(false);
   }
 
   setLoadingBatches(false);
@@ -1043,6 +1064,14 @@ export function ReserveBatchesPage() {
     batches.find(
       (b) => b.id === selectedBatch
     );
+    useEffect(() => {
+    if (!autoLoadPending) return;
+    if (!selectedBatchObject) return;
+
+    setAutoLoadPending(false);
+    loadSoldiers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoLoadPending, selectedBatchObject]);
 
   const batchOptions = batches.map(
     (batch) => ({
@@ -1288,7 +1317,10 @@ await logActivity({
   }),
 });
   }
-
+const statusFilterOptions = [
+    { value: "بالخدمة", label: "بالخدمة" },
+    { value: "منتهي خدمته", label: "منتهي خدمته" },
+  ];
   /* =========================================================
      ✅ قائمة الوحدات لفلتر الجدول
      مبنية من الوحدات الموجودة فعليًا في الأفراد المحمّلين حاليًا
@@ -1318,8 +1350,7 @@ await logActivity({
   /* =========================================================
      ✅ الأفراد بعد تطبيق فلتر الوحدة + بحث الرقم العسكري
      ========================================================= */
-
-  const filteredSoldierData = useMemo(() => {
+const filteredSoldierData = useMemo(() => {
     const searchTerm = militarySearch
       .trim();
 
@@ -1328,6 +1359,13 @@ await logActivity({
         if (
           unitFilter &&
           soldier.unit !== unitFilter
+        ) {
+          return false;
+        }
+
+        if (
+          statusFilter &&
+          soldier.status !== statusFilter
         ) {
           return false;
         }
@@ -1347,6 +1385,7 @@ await logActivity({
   }, [
     soldierData,
     unitFilter,
+    statusFilter,
     militarySearch,
   ]);
 
@@ -1802,6 +1841,17 @@ await logActivity({
     militaryNumbers: selectedPersonnel.map((s) => s.militaryId),
   }),
 });
+await createNotification({
+  title: "تم إنهاء خدمة أفراد",
+  body: `تم إنهاء خدمة ${selectedPersonnel.length} فردًا من دفعة ${
+    selectedBatchObject.name ||
+    formatBatchDate(selectedBatchObject.batch_date)
+  }`,
+  type: "warning",
+  entityType: "reserve_batch",
+  entityId: selectedBatchObject.id,
+  userName,
+});
 
       setShowEndDialog(false);
 
@@ -1927,6 +1977,16 @@ await logActivity({
     resultsCount: transferredSoldiers.length,
     militaryNumbers: transferredSoldiers.map((s) => s.militaryId),
   }),
+});
+await createNotification({
+  title: "تم ترحيل أفراد",
+  body: `تم ترحيل ${transferredSoldiers.length} فردًا إلى ${
+    targetBatch.name || formatBatchDate(targetBatch.batch_date)
+  }`,
+  type: "info",
+  entityType: "reserve_batch",
+  entityId: targetBatch.id,
+  userName,
 });
 
       setShowTransferDialog(false);
@@ -2482,7 +2542,28 @@ await logActivity({
                   }
                 />
               </div>
+{/* فلتر حالة الفرد */}
 
+              <div className="flex flex-col gap-1.5 flex-1 min-w-[220px] max-w-xs">
+                <label
+                  style={{
+                    ...F,
+                    fontSize: 14,
+                    color: "#717d96",
+                  }}
+                >
+                  فلتر حسب حالة الفرد
+                </label>
+
+                <GenericDropdown
+                  value={statusFilter}
+                  options={statusFilterOptions}
+                  onChange={setStatusFilter}
+                  placeholder="كل الحالات"
+                  allowClear
+                  clearLabel="كل الحالات"
+                />
+              </div>
               {/* عدد النتائج بعد الفلترة */}
 
               <div

@@ -45,6 +45,9 @@ export function LoginForm() {
 
   const [submitted, setSubmitted] =
     useState(false);
+    const [showForgotPassword, setShowForgotPassword] = useState(false);
+const [forgotEmail, setForgotEmail] = useState("");
+const [sendingRequest, setSendingRequest] = useState(false);
 
   // مهم: نمنع ظهور LoginForm لحظياً
   // أثناء فحص الـ Session
@@ -410,7 +413,38 @@ await logActivity({
       setLoading(false);
     }
   };
+const handleForgotPassword = async () => {
+  if (!forgotEmail.trim()) {
+    alert("يرجى إدخال البريد الإلكتروني");
+    return;
+  }
 
+  setSendingRequest(true);
+
+  try {
+   const { data, error } = await supabase.functions.invoke(
+  "hyper-action",
+  {
+    body: {
+      email: forgotEmail,
+    },
+  }
+);
+
+console.log(data);
+console.log(error);
+    if (error) throw error;
+
+    alert("تم إرسال طلب إعادة تعيين كلمة المرور إلى مدير النظام.");
+
+    setForgotEmail("");
+    setShowForgotPassword(false);
+  } catch (err: any) {
+    alert(err.message ?? "حدث خطأ أثناء إرسال الطلب");
+  } finally {
+    setSendingRequest(false);
+  }
+};
   // =====================================================
   // أثناء فحص Session
   // =====================================================
@@ -436,10 +470,61 @@ await logActivity({
   // =====================================================
 
   return (
+    
     <div
       dir="rtl"
       className="w-full flex flex-col items-center gap-8"
     >
+      {showForgotPassword && (
+  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div
+      dir="rtl"
+      className="bg-white rounded-xl shadow-xl w-[420px] p-6"
+    >
+      <h2
+        className="text-xl font-bold mb-4 text-center"
+        style={{ fontFamily: "'Almarai', sans-serif" }}
+      >
+        إعادة تعيين كلمة المرور
+      </h2>
+
+      <p
+        className="mb-3 text-gray-600"
+        style={{ fontFamily: "'Almarai', sans-serif" }}
+      >
+        أدخل البريد الإلكتروني المسجل بالنظام.
+      </p>
+
+      <input
+        type="email"
+        value={forgotEmail}
+        onChange={(e) => setForgotEmail(e.target.value)}
+        className="w-full border rounded-lg px-3 py-2 mb-5"
+        placeholder="1233@auth.local"
+      />
+
+      <div className="flex gap-3">
+        <button
+          onClick={handleForgotPassword}
+          disabled={sendingRequest}
+          className="flex-1 bg-green-600 text-white rounded-lg py-2 hover:bg-green-800"
+        >
+          {sendingRequest ? "جارٍ الإرسال..." : "إرسال"}
+        </button>
+
+        <button
+          onClick={() => {
+            setShowForgotPassword(false);
+            setForgotEmail("");
+          }}
+          className="flex-1 border rounded-lg py-2"
+        >
+          إلغاء
+        </button>
+      </div>
+    </div>
+  </div>
+)}
       <div className="flex flex-col items-center gap-5 w-full">
         <EgyptEmblem />
 
@@ -533,6 +618,20 @@ await logActivity({
           >
             تسجيل الدخول
           </LoginButton>
+          
+          <button
+  type="button"
+  onClick={() => setShowForgotPassword(true)}
+  className="text-sm text-[#067647] hover:underline text-center"
+  style={{
+    fontFamily: "'Almarai', sans-serif",
+    fontWeight: "bold",
+    fontSize: "14px",
+    textAlign:"start"
+  }}
+>
+  نسيت كلمة المرور؟
+</button>
         </form>
       )}
     </div>

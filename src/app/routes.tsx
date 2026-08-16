@@ -28,6 +28,7 @@ import ActivityLogPage from "./pages/ActivityLogPage";
 import { DataBackupPage } from "./pages/DataBackupPage";
 import { ManageBranchHeadsPage } from "./pages/ManageBranchHeadsPage";
 import { ReserveBatchesOverviewPage } from "./pages/ReserveBatchesOverviewPage";
+import { AllNotificationsPage } from "./pages/AllNotificationsPage";
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -67,6 +68,7 @@ export const router = createBrowserRouter([
   path: "manage-reserve-batches",
   Component: ReserveBatchesOverviewPage,
 },
+{ path: "notifications", Component: AllNotificationsPage },
       
     ],
   },

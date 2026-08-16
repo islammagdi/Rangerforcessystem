@@ -231,7 +231,7 @@ export function IssueLetterPage() {
         اصدار خطابات
       </h1>
 
-      <div className="flex items-start justify-center gap-0 flex-wrap">
+      <div className="flex items-center justify-center gap-0 flex-wrap">
         <Step
           number="01"
           label="تحديد نوع الخطاب"

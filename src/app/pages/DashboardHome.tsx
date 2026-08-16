@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
-
+import { useSystemAlerts } from "../../hooks/useSystemAlerts";
 import { StatCard } from "../components/dashboard/StatCard";
 import { ProgressCard } from "../components/dashboard/ProgressCard";
 import { DonutChart } from "../components/dashboard/DonutChart";
 import { UnitBarChart } from "../components/dashboard/UnitBarChart";
+import { useDashboardStats } from "../../hooks/useDashboardStats";
+import { useNavigate } from "react-router";
 
 import {
   RankIcon,
@@ -111,10 +113,14 @@ export function DashboardHome() {
   // ============================================================
   // المستخدم الحالي
   // ============================================================
-
+const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loadingUser, setLoadingUser] = useState(true);
-
+const { alerts, loading: loadingAlerts } = useSystemAlerts();
+const { stats: todayStats, loading: loadingTodayStats } = useDashboardStats();
+const [openModal, setOpenModal] = useState<"discharged" | "letters" | null>(
+    null
+  );
 
   // ============================================================
   // بيانات القوة
@@ -1253,7 +1259,159 @@ export function DashboardHome() {
           </div>
         )}
 
+{/* ========================================================
+          تنبيهات النظام (System Alerts)
+      ======================================================== */}
 
+      {!loadingAlerts && alerts.length > 0 && (
+        <div className="flex flex-col gap-3 w-full" dir="rtl">
+          {alerts.map((alert, idx) => {
+            const isClickable = alert.key === "overdue";
+
+            const content = (
+              <>
+                <span
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                  style={{
+                    background:
+                      alert.type === "critical" ? "#e3282c" : "#e37032",
+                  }}
+                />
+
+                <span
+                  style={{
+                    fontFamily: "'Almarai', sans-serif",
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color:
+                      alert.type === "critical" ? "#991b1b" : "#8a6500",
+                  }}
+                >
+                  {alert.text}
+                </span>
+
+                {isClickable && (
+                  <span
+                    style={{
+                      fontFamily: "'Almarai', sans-serif",
+                      fontSize: 12,
+                      color: "#991b1b",
+                      marginRight: "auto",
+                      textDecoration: "underline",
+                    }}
+                  >
+                    عرض الأفراد ←
+                  </span>
+                )}
+              </>
+            );
+
+            const sharedStyle: React.CSSProperties = {
+              background:
+                alert.type === "critical" ? "#fef2f2" : "#fff8e8",
+              border:
+                alert.type === "critical"
+                  ? "1px solid #fecaca"
+                  : "1px solid #f4d58d",
+            };
+
+            if (isClickable) {
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() =>
+                    navigate("/dashboard/reserve-batches", {
+                      state: { batchDate: alert.batchDate },
+                    })
+                  }
+                  className="w-full rounded-[12px] px-5 py-4 flex items-center gap-3 text-right hover:opacity-80 transition-opacity"
+                  style={sharedStyle}
+                >
+                  {content}
+                </button>
+              );
+            }
+
+            return (
+              <div
+                key={idx}
+                className="w-full rounded-[12px] px-5 py-4 flex items-center gap-3"
+                style={sharedStyle}
+              >
+                {content}
+              </div>
+            );
+          })}
+        </div>
+      )}
+{/* ========================================================
+          إحصائيات اليوم (Statistics)
+      ======================================================== */}
+
+      <SectionTitle>إحصائيات اليوم</SectionTitle>
+
+      <div className="flex gap-4 w-full ">
+       <div className="flex-1">
+        <button
+        
+          type="button"
+          onClick={() =>
+            todayStats.dischargedToday > 0 && setOpenModal("discharged")
+          }
+          className="w-full block text-right"
+          style={{
+            cursor:
+              todayStats.dischargedToday > 0 ? "pointer" : "default",
+          }}
+        >
+          <StatCard
+            icon={<PeopleIcon />}
+            value={
+              loadingTodayStats
+                ? "..."
+                : formatNumber(todayStats.dischargedToday)
+            }
+            label="تم إنهاء خدمتهم اليوم"
+          />
+        </button>
+
+       </div>
+       <div className="flex-1">
+         <button
+          type="button"
+          onClick={() =>
+            todayStats.lettersToday > 0 && setOpenModal("letters")
+          }
+          className="w-full block text-right"
+          style={{
+            cursor: todayStats.lettersToday > 0 ? "pointer" : "default",
+          }}
+        >
+          <StatCard
+            icon={<IdCardIcon />}
+            value={
+              loadingTodayStats
+                ? "..."
+                : formatNumber(todayStats.lettersToday)
+            }
+            label="خطابات صادرة اليوم"
+          />
+        </button>
+       </div>
+
+        <div className="flex-1">
+          <StatCard
+          icon={<PersonCheckIcon />}
+          value={
+            loadingTodayStats
+              ? "..."
+              : formatNumber(todayStats.activitiesToday)
+          }
+          label="عملياتك اليوم"
+        />
+        </div>
+      </div>
       {/* ========================================================
           1. الموقف العام للقوة
       ======================================================== */}
@@ -1261,6 +1419,7 @@ export function DashboardHome() {
       <SectionTitle>
         الموقف العام للقوة الحالية
       </SectionTitle>
+
 
 
       {loadingStats ? (
@@ -1519,7 +1678,152 @@ export function DashboardHome() {
        
 
       </div>
+{/* ========================================================
+          Modal: تفاصيل الأفراد اللي اتنهت خدمتهم اليوم
+      ======================================================== */}
 
+      {openModal === "discharged" && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999]"
+          onClick={() => setOpenModal(null)}
+        >
+          <div
+            dir="rtl"
+            className="bg-white rounded-xl p-6 w-[420px] max-w-[95vw] max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2
+              style={{
+                fontFamily: "'Almarai', sans-serif",
+                fontSize: 18,
+                fontWeight: 700,
+                marginBottom: 15,
+              }}
+            >
+              الأفراد اللي اتنهت خدمتهم اليوم (
+              {todayStats.dischargedList.length})
+            </h2>
+
+            <div className="overflow-y-auto flex-1 flex flex-col gap-2">
+              {todayStats.dischargedList.map((person) => (
+                <button
+                  key={person.id}
+                  type="button"
+                  onClick={() =>
+                    navigate(
+                      `/dashboard/individual-query/soldier/${person.id}`
+                    )
+                  }
+                  className="w-full text-right px-3 py-2.5 rounded-lg hover:bg-[#f5f6fb] border border-[#eff0f6] transition-colors"
+                  style={{ fontFamily: "'Almarai', sans-serif" }}
+                >
+                  <span
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: "#2d3648",
+                    }}
+                  >
+                    {person.full_name}
+                  </span>
+
+                  {person.military_number && (
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: "#717d96",
+                        marginRight: 8,
+                      }}
+                    >
+                      ({person.military_number})
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <button
+              className="mt-4 px-4 py-2 rounded-lg border self-start"
+              style={{ fontFamily: "'Almarai', sans-serif" }}
+              onClick={() => setOpenModal(null)}
+            >
+              إغلاق
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          Modal: تفاصيل الخطابات الصادرة اليوم
+      ======================================================== */}
+
+      {openModal === "letters" && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999]"
+          onClick={() => setOpenModal(null)}
+        >
+          <div
+            dir="rtl"
+            className="bg-white rounded-xl p-6 w-[420px] max-w-[95vw] max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2
+              style={{
+                fontFamily: "'Almarai', sans-serif",
+                fontSize: 18,
+                fontWeight: 700,
+                marginBottom: 15,
+              }}
+            >
+              الخطابات الصادرة اليوم ({todayStats.lettersList.length})
+            </h2>
+
+            <div className="overflow-y-auto flex-1 flex flex-col gap-2">
+              {todayStats.lettersList.map((letter) => (
+                <button
+                  key={letter.id}
+                  type="button"
+                  onClick={() =>
+                    navigate(`/dashboard/letters-archive/${letter.id}`)
+                  }
+                  className="w-full text-right px-3 py-2.5 rounded-lg hover:bg-[#f5f6fb] border border-[#eff0f6] transition-colors"
+                  style={{ fontFamily: "'Almarai', sans-serif" }}
+                >
+                  <span
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: "#2d3648",
+                    }}
+                  >
+                    خطاب رقم {letter.letter_number}
+                  </span>
+
+                  {letter.letter_type_name && (
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: "#717d96",
+                        marginRight: 8,
+                      }}
+                    >
+                      ({letter.letter_type_name})
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <button
+              className="mt-4 px-4 py-2 rounded-lg border self-start"
+              style={{ fontFamily: "'Almarai', sans-serif" }}
+              onClick={() => setOpenModal(null)}
+            >
+              إغلاق
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

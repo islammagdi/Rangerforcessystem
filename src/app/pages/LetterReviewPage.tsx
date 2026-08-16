@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router";
 import { Download, Printer } from "lucide-react";
 import type { CSSProperties } from "react";
 import html2canvas from "html2canvas-pro";
-
+import { createNotification } from "../../lib/createNotification";
 import { supabase } from "../../lib/supabase";
 import imgEagle from "figma:asset/af406d517dfa4e5b22e9993bd61d8e4e002646b6.png";
 
@@ -1601,6 +1601,18 @@ export function LetterReviewPage() {
           auditError
         );
       }
+      /* -----------------------------------------------
+         Notification (جديد)
+      ----------------------------------------------- */
+
+      await createNotification({
+        title: "تم إصدار خطاب",
+        body: `تم إصدار خطاب ${letterTypeRow.name} رقم ${newLetter.letter_number}`,
+        type: "success",
+        entityType: "letter",
+        entityId: newLetter.id,
+        userName: profile?.username ?? "غير معروف",
+      });
 
       /* -----------------------------------------------
          Preview

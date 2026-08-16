@@ -45,7 +45,12 @@ interface ServiceStatus {
   code: string | null;
   is_active: boolean;
 }
-
+interface ReserveBatch {
+  id: string;
+  name: string | null;
+  batch_date: string;
+  is_active: boolean;
+}
 interface PersonnelCategory {
   id: string;
   name: string;
@@ -107,7 +112,11 @@ const REQUIRED_EXCEL_COLUMNS = [
 ];
 
 const PERSONNEL_TABLE_NAME = "personnel";
-
+// ✅ نفس المعرّف المستخدم في صفحة دفعات الرديف (ReserveBatchesPage.tsx)
+// لحالة "منتهي خدمته" — بنستخدمه هنا عشان نتأكد إننا بنقارن بنفس
+// الحالة الصحيحة في قاعدة البيانات.
+const DISCHARGED_STATUS_ID =
+  "ac8ddfa3-1578-455b-9b6a-b056260fcb1f";
 function normalizeExcelHeader(value: unknown): string {
   return String(value ?? "")
     .trim()
@@ -115,7 +124,8 @@ function normalizeExcelHeader(value: unknown): string {
     .replace(/ة/g, "ه")
     .replace(/أ/g, "ا")
     .replace(/إ/g, "ا")
-    .replace(/آ/g, "ا");
+    .replace(/آ/g, "ا")
+    .replace(/ى/g, "ي"); // ✅ توحيد الألف المقصورة مع الياء
 }
 
 function normalizeExcelValue(value: unknown): string {
@@ -1105,7 +1115,7 @@ export function AddNewSoldierPage() {
   const [milId, setMilId] = useState("");
   const [rank, setRank] = useState("");
   const [name, setName] = useState("");
-  const [discharge, setDischarge] = useState("");
+ const [dischargeBatchId, setDischargeBatchId] = useState("");
   const [unit, setUnit] = useState("");
   const [status, setStatus] = useState("");
   const [attachment, setAttachment] = useState("");
@@ -1123,11 +1133,13 @@ export function AddNewSoldierPage() {
   // Database state
   // ----------------------------------------------------------
 
-  const [ranks, setRanks] = useState<Rank[]>([]);
+ const [ranks, setRanks] = useState<Rank[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [statuses, setStatuses] = useState<ServiceStatus[]>([]);
   const [categories, setCategories] =
     useState<PersonnelCategory[]>([]);
+  const [reserveBatches, setReserveBatches] =
+    useState<ReserveBatch[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1152,6 +1164,7 @@ export function AddNewSoldierPage() {
         unitsResult,
         statusesResult,
         categoriesResult,
+        reserveBatchesResult,
       ] = await Promise.all([
         supabase
           .from("ranks")
@@ -1178,6 +1191,12 @@ export function AddNewSoldierPage() {
           .select("id,name,code,is_active")
           .eq("is_active", true)
           .order("name", { ascending: true }),
+
+        supabase
+          .from("reserve_batches")
+          .select("id,name,batch_date,is_active")
+          .eq("is_active", true)
+          .order("batch_date", { ascending: true }),
       ]);
 
       if (ranksResult.error) {
@@ -1196,10 +1215,15 @@ export function AddNewSoldierPage() {
         throw categoriesResult.error;
       }
 
+      if (reserveBatchesResult.error) {
+        throw reserveBatchesResult.error;
+      }
+
       setRanks(ranksResult.data ?? []);
       setUnits(unitsResult.data ?? []);
       setStatuses(statusesResult.data ?? []);
       setCategories(categoriesResult.data ?? []);
+      setReserveBatches(reserveBatchesResult.data ?? []);
 
       const attachedStatus = (
         statusesResult.data ?? []
@@ -1321,7 +1345,137 @@ export function AddNewSoldierPage() {
   const selectedStatus = statuses.find(
     (s) => s.id === status
   );
+// ==========================================================
+  // حالة "منتهي خدمته"
+  // ==========================================================
 
+  function isDischargedStatusRecord(
+    s: ServiceStatus | undefined
+  ): boolean {
+    if (!s) return false;
+
+    return (
+      s.id === DISCHARGED_STATUS_ID ||
+      normalizeExcelHeader(s.name) ===
+        normalizeExcelHeader("منتهي خدمته")
+    );
+  }
+
+  const dischargedStatusRecord = useMemo(
+    () => statuses.find(isDischargedStatusRecord),
+    [statuses]
+  );
+
+  const isDischargedStatus =
+    isDischargedStatusRecord(selectedStatus);
+
+  // ==========================================================
+  // دفعات الرديف (تاريخ التسريح)
+  // ==========================================================
+
+  function isBatchDateInPast(
+    batchDate: string
+  ): boolean {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const [year, month, day] = batchDate
+      .split("-")
+      .map(Number);
+
+    const parsed = new Date(
+      year,
+      month - 1,
+      day
+    );
+
+    return parsed < today;
+  }
+
+  const selectedDischargeBatch =
+    reserveBatches.find(
+      (b) => b.id === dischargeBatchId
+    );
+
+  function formatBatchLabel(
+    batch: ReserveBatch
+  ): string {
+    if (batch.name) {
+      return batch.name;
+    }
+
+    const [year, month, day] =
+      batch.batch_date.split("-");
+
+    return `${day}/${month}/${year}`;
+  }
+
+  // ✅ القائمة المعروضة في الدروب داون بتتفلتر حسب موقف الفرد:
+  // لو الموقف "منتهي خدمته" تظهر الدفعات الماضية فقط، ولو أي
+  // موقف آخر تظهر الدفعات القادمة فقط — عشان يستحيل يختار
+  // تركيبة غلط من الأساس.
+  const filteredReserveBatchOptions = useMemo(() => {
+    return reserveBatches
+      .filter((batch) => {
+        const isPast = isBatchDateInPast(
+          batch.batch_date
+        );
+
+        if (isDischargedStatus) {
+          return isPast;
+        }
+
+        if (status) {
+          return !isPast;
+        }
+
+        return true;
+      })
+      .map((batch) => ({
+        value: batch.id,
+        label: formatBatchLabel(batch),
+      }));
+  }, [reserveBatches, isDischargedStatus, status]);
+
+  // ✅ لو اختار المستخدم دفعة ماضية، نحدد موقف الفرد تلقائيًا
+  // على "منتهي خدمته"
+  useEffect(() => {
+    if (!selectedDischargeBatch) return;
+
+    const isPast = isBatchDateInPast(
+      selectedDischargeBatch.batch_date
+    );
+
+    if (
+      isPast &&
+      dischargedStatusRecord &&
+      status !== dischargedStatusRecord.id
+    ) {
+      setStatus(dischargedStatusRecord.id);
+      setAttachment("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dischargeBatchId]);
+
+  // ✅ لو اتغير موقف الفرد وأصبحت الدفعة المختارة قبل كده غير
+  // متاحة لهذا الموقف الجديد، بنلغي اختيارها عشان يختار دفعة
+  // مطابقة صح
+  useEffect(() => {
+    if (!selectedDischargeBatch) return;
+
+    const isPast = isBatchDateInPast(
+      selectedDischargeBatch.batch_date
+    );
+
+    if (isDischargedStatus && !isPast) {
+      setDischargeBatchId("");
+    }
+
+    if (!isDischargedStatus && status && isPast) {
+      setDischargeBatchId("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
   // ==========================================================
   // Attachment
   // ==========================================================
@@ -1570,13 +1724,66 @@ export function AddNewSoldierPage() {
         }
       }
 
-      if (
+     if (
         isConscriptCategory &&
         !row.discharge_date
       ) {
         errors.push(
           'تاريخ التسريح مطلوب لفئة "مجند"'
         );
+      }
+
+      // ✅ التحقق من إن التاريخ فعلاً دفعة رديف موجودة في قاعدة
+      // البيانات + التحقق من التطابق بين الموقف الخدمي والتاريخ
+      // (نفس منطق الفرد الواحد)
+      if (
+        isConscriptCategory &&
+        row.discharge_date
+      ) {
+        const matchedBatch =
+          reserveBatches.find(
+            (b) =>
+              b.batch_date ===
+              row.discharge_date
+          );
+    console.log("DEBUG ROW:", {
+          military_number: row.military_number,
+          discharge_date: row.discharge_date,
+          matchedStatus_name: matchedStatus?.name,
+          matchedStatus_id: matchedStatus?.id,
+          matchedBatch: matchedBatch,
+        });
+        if (!matchedBatch) {
+          errors.push(
+            `تاريخ التسريح "${row.discharge_date}" لا يطابق أي دفعة رديف مسجلة في قاعدة البيانات`
+          );
+        } else {
+          const isPast =
+            isBatchDateInPast(
+              matchedBatch.batch_date
+            );
+
+          const isDischargedRow =
+            isDischargedStatusRecord(
+              matchedStatus
+            );
+
+          if (isDischargedRow && !isPast) {
+            errors.push(
+              'موقف الفرد "منتهي خدمته" يتطلب اختيار دفعة رديف ماضية وليست قادمة'
+            );
+          }
+
+          if (
+            !isDischargedRow &&
+            matchedStatus &&
+            isPast
+          ) {
+            errors.push(
+              "دفعة الرديف المختارة ماضية، وهذا يتطلب أن يكون موقف الفرد \"منتهي خدمته\""
+            );
+          }
+        }
       }
 
       const requiresAttachment =
@@ -1619,11 +1826,12 @@ export function AddNewSoldierPage() {
           matchedAttachmentUnit?.id ?? null,
       };
     },
-    [
+   [
       rankLookup,
       categoryLookup,
       unitLookup,
       statusLookup,
+      reserveBatches,
     ]
   );
 
@@ -1647,7 +1855,7 @@ export function AddNewSoldierPage() {
     });
 
     if (value === "متطوع") {
-      setDischarge("");
+      setDischargeBatchId("");
     }
   }
 
@@ -1716,11 +1924,30 @@ if (!militaryNumber) {
         "لم يتم العثور على فئة الفرد في قاعدة البيانات";
     }
 
-    if (
+   if (
       category === "مجند" &&
-      !discharge
+      !dischargeBatchId
     ) {
-      e.discharge = "تاريخ التسريح مطلوب";
+      e.discharge = "دفعة الرديف (تاريخ التسريح) مطلوبة";
+    }
+
+    if (
+      dischargeBatchId &&
+      selectedDischargeBatch
+    ) {
+      const isPast = isBatchDateInPast(
+        selectedDischargeBatch.batch_date
+      );
+
+      if (isDischargedStatus && !isPast) {
+        e.discharge =
+          "موقف الفرد (منتهي خدمته) يتطلب اختيار دفعة رديف ماضية";
+      }
+
+      if (!isDischargedStatus && status && isPast) {
+        e.discharge =
+          "موقف الفرد المختار يتطلب اختيار دفعة رديف قادمة وليست ماضية";
+      }
     }
 
     if (
@@ -1770,10 +1997,11 @@ if (!militaryNumber) {
           isAttachmentEnabled
             ? attachment
             : null,
-        discharge_date:
+       discharge_date:
           category === "متطوع"
             ? null
-            : discharge || null,
+            : selectedDischargeBatch?.batch_date ??
+              null,
         is_active: true,
       };
 
@@ -2452,13 +2680,17 @@ if (!militaryNumber) {
               {category === "مجند" && (
                 <div className="flex flex-col sm:flex-row gap-4">
                   <FieldGroup
-                    label="تاريخ التسريح"
+                    label="دفعة الرديف (تاريخ التسريح)"
                     labelColor="#415844"
                   >
-                    <DateInput
-                      value={discharge}
+                    <FormDropdown
+                      placeholder="اختر دفعة الرديف"
+                      options={
+                        filteredReserveBatchOptions
+                      }
+                      value={dischargeBatchId}
                       onChange={(v) => {
-                        setDischarge(v);
+                        setDischargeBatchId(v);
 
                         setErrors(
                           (prev) => ({
@@ -2471,6 +2703,20 @@ if (!militaryNumber) {
                         errors.discharge
                       }
                     />
+
+                    {filteredReserveBatchOptions.length ===
+                      0 && (
+                      <p
+                        style={{
+                          ...F,
+                          fontSize: 13,
+                          color: "#ef4444",
+                        }}
+                      >
+                        لا توجد دفعات رديف متاحة مطابقة لموقف
+                        الفرد المختار
+                      </p>
+                    )}
                   </FieldGroup>
 
                   <div className="flex-1 hidden sm:block" />
