@@ -132,7 +132,7 @@ function AddBatchModal({
   );
 
   const [year, setYear] = useState(currentYear);
-const [month, setMonth] = useState(ALLOWED_MONTHS[0].value);
+  const [month, setMonth] = useState(ALLOWED_MONTHS[0].value);
   const [name, setName] = useState("");
 
   const [saving, setSaving] = useState(false);
@@ -163,7 +163,7 @@ const [month, setMonth] = useState(ALLOWED_MONTHS[0].value);
 
         throw new Error(insertError.message);
       }
-const {
+      const {
         data: { user },
       } = await supabase.auth.getUser();
 
@@ -267,10 +267,10 @@ const {
                 style={{ ...F, fontSize: 15, color: "#2d3648" }}
               >
                 {ALLOWED_MONTHS.map((m) => (
-  <option key={m.value} value={m.value}>
-    {m.label}
-  </option>
-))}
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -286,8 +286,8 @@ const {
               onChange={(e) => setName(e.target.value)}
               dir="rtl"
               placeholder={`دفعة ${
-  ALLOWED_MONTHS.find((m) => m.value === month)?.label
-} ${year}`}
+                ALLOWED_MONTHS.find((m) => m.value === month)?.label
+              } ${year}`}
               className="w-full h-[46px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867]"
               style={{ ...F, fontSize: 15, color: "#2d3648" }}
             />
@@ -351,6 +351,15 @@ export function ReserveBatchesOverviewPage() {
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  // ✅ فلاتر جدول الدفعات
+  const [batchFilter, setBatchFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "active" | "inactive"
+  >("all");
+  const [countSort, setCountSort] = useState<"none" | "desc" | "asc">(
+    "none"
+  );
 
   useEffect(() => {
     loadData();
@@ -447,70 +456,103 @@ export function ReserveBatchesOverviewPage() {
   }, [batches]);
 
   // ---------------------------------------------------------
+  // ✅ الدفعات بعد تطبيق الفلاتر الثلاثة (الدفعة المحددة، الحالة،
+  // ترتيب عدد الجنود) — كل فلتر شغال بشكل مستقل ويقدر يتجمع مع
+  // الباقي في نفس الوقت
+  // ---------------------------------------------------------
+
+  const filteredBatches = useMemo(() => {
+    let list = batches;
+
+    if (batchFilter !== "all") {
+      list = list.filter((b) => b.id === batchFilter);
+    }
+
+    if (statusFilter !== "all") {
+      list = list.filter((b) =>
+        statusFilter === "active" ? b.is_active : !b.is_active
+      );
+    }
+
+    if (countSort !== "none") {
+      list = [...list].sort((a, b) => {
+        const countA = soldierCounts[a.batch_date] ?? 0;
+        const countB = soldierCounts[b.batch_date] ?? 0;
+
+        return countSort === "desc"
+          ? countB - countA
+          : countA - countB;
+      });
+    }
+
+    return list;
+  }, [batches, soldierCounts, batchFilter, statusFilter, countSort]);
+
+  // ---------------------------------------------------------
   // تفعيل / إلغاء تفعيل دفعة
   // ---------------------------------------------------------
 
   async function handleToggleActive(batch: ReserveBatch) {
-  const action = batch.is_active ? "إلغاء تفعيل" : "إعادة تنشيط";
+    const action = batch.is_active ? "إلغاء تفعيل" : "إعادة تنشيط";
 
-  const confirmed = window.confirm(
-    `هل تريد ${action} دفعة "${getBatchLabel(batch)}"؟`
-  );
+    const confirmed = window.confirm(
+      `هل تريد ${action} دفعة "${getBatchLabel(batch)}"؟`
+    );
 
-  if (!confirmed) return;
+    if (!confirmed) return;
 
-  setTogglingId(batch.id);
-  setError("");
+    setTogglingId(batch.id);
+    setError("");
 
-  try {
-    const { data, error } = await supabase
-      .from("reserve_batches")
-      .update({
-        is_active: !batch.is_active,
-      })
-      .eq("id", batch.id)
-      .select();
+    try {
+      const { data, error } = await supabase
+        .from("reserve_batches")
+        .update({
+          is_active: !batch.is_active,
+        })
+        .eq("id", batch.id)
+        .select();
 
-    console.log("========== UPDATE RESULT ==========");
-    console.log("Before:", batch);
-    console.log("Updated Data:", data);
-    console.log("Error:", error);
+      console.log("========== UPDATE RESULT ==========");
+      console.log("Before:", batch);
+      console.log("Updated Data:", data);
+      console.log("Error:", error);
 
-    if (error) throw error;
+      if (error) throw error;
 
-    if (!data || data.length === 0) {
-      throw new Error(
-        "لم يتم تحديث أي سجل. غالباً توجد RLS Policy أو Trigger يمنع التعديل."
+      if (!data || data.length === 0) {
+        throw new Error(
+          "لم يتم تحديث أي سجل. غالباً توجد RLS Policy أو Trigger يمنع التعديل."
+        );
+      }
+
+      // تحديث الواجهة مباشرة
+      setBatches((prev) =>
+        prev.map((b) =>
+          b.id === batch.id
+            ? {
+                ...b,
+                is_active: !b.is_active,
+              }
+            : b
+        )
       );
+
+      setSuccessMsg(
+        `تم ${action} دفعة "${getBatchLabel(batch)}" بنجاح`
+      );
+
+      setTimeout(() => setSuccessMsg(""), 3000);
+
+      // إعادة تحميل البيانات من قاعدة البيانات للتأكد
+      await loadData();
+    } catch (err: any) {
+      console.error("Toggle batch active error:", err);
+      setError(err?.message || "حدث خطأ أثناء تحديث حالة الدفعة");
+    } finally {
+      setTogglingId(null);
     }
-
-    // تحديث الواجهة مباشرة
-    setBatches((prev) =>
-      prev.map((b) =>
-        b.id === batch.id
-          ? {
-              ...b,
-              is_active: !b.is_active,
-            }
-          : b
-      )
-    );
-
-    setSuccessMsg(
-      `تم ${action} دفعة "${getBatchLabel(batch)}" بنجاح`
-    );
-
-    setTimeout(() => setSuccessMsg(""), 3000);
-
-    // إعادة تحميل البيانات من قاعدة البيانات للتأكد
-    await loadData();
-  } catch (err: any) {
-    console.error("Toggle batch active error:", err);
-    setError(err?.message || "حدث خطأ أثناء تحديث حالة الدفعة");
-  } finally {
-    setTogglingId(null);
   }
-}
 
   const thClass =
     "px-5 py-3 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]";
@@ -659,10 +701,112 @@ export function ReserveBatchesOverviewPage() {
               </span>
             </div>
 
+            {/* =============================================
+                الفلاتر
+            ============================================= */}
+
+            {batches.length > 0 && (
+              <div className="flex flex-wrap items-end gap-3 px-6 py-4 border-b border-[#e2e7f0]">
+                {/* فلتر الدفعة */}
+
+                <div className="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+                  <label
+                    style={{ ...F, fontSize: 13, color: "#717d96" }}
+                  >
+                    الدفعة
+                  </label>
+
+                  <select
+                    value={batchFilter}
+                    onChange={(e) => setBatchFilter(e.target.value)}
+                    dir="rtl"
+                    className="w-full h-[44px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867] bg-white"
+                    style={{ ...F, fontSize: 14, color: "#2d3648" }}
+                  >
+                    <option value="all">كل الدفعات</option>
+                    {batches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {getBatchLabel(b)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* فلتر الحالة */}
+
+                <div className="flex flex-col gap-1.5 flex-1 min-w-[160px]">
+                  <label
+                    style={{ ...F, fontSize: 13, color: "#717d96" }}
+                  >
+                    الحالة
+                  </label>
+
+                  <select
+                    value={statusFilter}
+                    onChange={(e) =>
+                      setStatusFilter(
+                        e.target.value as "all" | "active" | "inactive"
+                      )
+                    }
+                    dir="rtl"
+                    className="w-full h-[44px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867] bg-white"
+                    style={{ ...F, fontSize: 14, color: "#2d3648" }}
+                  >
+                    <option value="all">الكل</option>
+                    <option value="active">نشطة</option>
+                    <option value="inactive">غير نشطة</option>
+                  </select>
+                </div>
+
+                {/* فلتر عدد الجنود */}
+
+                <div className="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+                  <label
+                    style={{ ...F, fontSize: 13, color: "#717d96" }}
+                  >
+                    ترتيب حسب عدد الجنود
+                  </label>
+
+                  <select
+                    value={countSort}
+                    onChange={(e) =>
+                      setCountSort(
+                        e.target.value as "none" | "desc" | "asc"
+                      )
+                    }
+                    dir="rtl"
+                    className="w-full h-[44px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867] bg-white"
+                    style={{ ...F, fontSize: 14, color: "#2d3648" }}
+                  >
+                    <option value="none">الكل (بدون ترتيب)</option>
+                    <option value="desc">الأكثر عددًا أولاً</option>
+                    <option value="asc">الأقل عددًا أولاً</option>
+                  </select>
+                </div>
+
+                {/* عدد النتائج بعد الفلترة */}
+
+                <div className="flex items-center h-[44px] px-1" dir="rtl">
+                  <span
+                    style={{ ...F, fontSize: 13, color: "#717d96" }}
+                  >
+                    عدد النتائج:{" "}
+                    {filteredBatches.length.toLocaleString("ar-EG")}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {batches.length === 0 ? (
               <div className="py-16 text-center">
                 <p style={{ ...F, fontSize: 14, color: "#a1aebe" }}>
                   لا توجد دفعات رديف مسجلة بعد
+                </p>
+              </div>
+            ) : filteredBatches.length === 0 ? (
+              <div className="py-16 text-center">
+                <p style={{ ...F, fontSize: 14, color: "#a1aebe" }}>
+                  لا توجد دفعات مطابقة للفلاتر المحددة
                 </p>
               </div>
             ) : (
@@ -713,17 +857,18 @@ export function ReserveBatchesOverviewPage() {
                   </thead>
 
                   <tbody>
-                    {batches.map((batch, idx) => {
-                     const isPast =
-  parseBatchDate(batch.batch_date) < getTodayMidnight();
+                    {filteredBatches.map((batch, idx) => {
+                      const isPast =
+                        parseBatchDate(batch.batch_date) <
+                        getTodayMidnight();
 
                       const isNext =
                         stats.nextBatch?.id === batch.id;
-console.log(
-  batch.id,
-  batch.is_active,
-  typeof batch.is_active
-);
+                      console.log(
+                        batch.id,
+                        batch.is_active,
+                        typeof batch.is_active
+                      );
                       return (
                         <tr
                           key={batch.id}

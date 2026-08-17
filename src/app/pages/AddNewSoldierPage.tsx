@@ -110,7 +110,18 @@ const REQUIRED_EXCEL_COLUMNS = [
   "تاريخ التسريح",
   "جهه الالحاق",
 ];
+// ✅ نقسّم أي مصفوفة كبيرة لدفعات صغيرة — مهم عشان نتجنب تجاوز
+// الحد الأقصى لطول الـ URL لما نستخدم .in() باستعلام فيه آلاف
+// القيم دفعة واحدة (بيسبب فشل شبكة عام صعب تشخيصه)
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
 
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+
+  return chunks;
+}
 const PERSONNEL_TABLE_NAME = "personnel";
 // ✅ نفس المعرّف المستخدم في صفحة دفعات الرديف (ReserveBatchesPage.tsx)
 // لحالة "منتهي خدمته" — بنستخدمه هنا عشان نتأكد إننا بنقارن بنفس
@@ -2330,42 +2341,36 @@ if (!militaryNumber) {
       let existingMilitaryNumbers =
         new Set<string>();
 
-      if (
-        uniqueMilitaryNumbers.length >
-        0
-      ) {
-        const {
-          data: existingData,
-          error: existingError,
-        } = await supabase
-          .from(
-            PERSONNEL_TABLE_NAME
-          )
-          .select(
-            "military_number"
-          )
-          .in(
-            "military_number",
-            uniqueMilitaryNumbers
-          );
+      if (uniqueMilitaryNumbers.length > 0) {
+        // ✅ نقسّم الأرقام لدفعات من 200 عشان نتجنب تجاوز الحد
+        // الأقصى لطول الـ URL — مهم جدًا مع ملفات فيها آلاف الصفوف
+        const numberChunks = chunkArray(
+          uniqueMilitaryNumbers,
+          200
+        );
 
-        if (existingError) {
-          throw existingError;
+        const chunkResults = await Promise.all(
+          numberChunks.map((chunk) =>
+            supabase
+              .from(PERSONNEL_TABLE_NAME)
+              .select("military_number")
+              .in("military_number", chunk)
+          )
+        );
+
+        for (const result of chunkResults) {
+          if (result.error) {
+            throw result.error;
+          }
+
+          (result.data ?? []).forEach(
+            (item: { military_number: unknown }) => {
+              existingMilitaryNumbers.add(
+                String(item.military_number)
+              );
+            }
+          );
         }
-
-        existingMilitaryNumbers =
-          new Set(
-            (
-              existingData ?? []
-            ).map(
-              (item: {
-                military_number: unknown;
-              }) =>
-                String(
-                  item.military_number
-                )
-            )
-          );
       }
 
       const classifiedRows =
