@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from "react";
-import { useLocation } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import {
   ChevronDown,
   KeyRound,
   ImagePlus,
   X,
+  BookOpen,
 } from "lucide-react";
 import { supabase } from "../../../lib/supabase";
 import imgAvatar from "../../../assets/avatar.png";
@@ -614,6 +615,7 @@ export function DashboardHeader({
 }: DashboardHeaderProps) {
 
   const location = useLocation();
+  const navigate = useNavigate();
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
@@ -840,7 +842,32 @@ export function DashboardHeader({
                     تغيير كلمة المرور
                   </span>
                 </button>
+<div className="h-px bg-[#eff0f6]" />
 
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDropdownOpen(false);
+                    navigate("/dashboard/user-guide");
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#f5f6fb] transition-colors text-right"
+                >
+                  <BookOpen
+                    size={16}
+                    style={{ color: "#5B795F" }}
+                    className="shrink-0"
+                  />
+
+                  <span
+                    style={{
+                      ...F,
+                      fontSize: 14,
+                      color: "#2d3648",
+                    }}
+                  >
+                    دليل استخدام المنظومة
+                  </span>
+                </button>
                 <div className="h-px bg-[#eff0f6]" />
 
                 <button

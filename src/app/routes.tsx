@@ -29,6 +29,7 @@ import { DataBackupPage } from "./pages/DataBackupPage";
 import { ManageBranchHeadsPage } from "./pages/ManageBranchHeadsPage";
 import { ReserveBatchesOverviewPage } from "./pages/ReserveBatchesOverviewPage";
 import { AllNotificationsPage } from "./pages/AllNotificationsPage";
+import { UserGuidePage } from "./pages/UserGuidePage";
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -69,6 +70,7 @@ export const router = createBrowserRouter([
   Component: ReserveBatchesOverviewPage,
 },
 { path: "notifications", Component: AllNotificationsPage },
+{ path: "user-guide", Component: UserGuidePage },
       
     ],
   },

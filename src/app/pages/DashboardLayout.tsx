@@ -41,6 +41,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/data-backup": "النسخ الاحتياطي للبيانات",
   "/dashboard/manage-reserve-batches": "إدارة دفعات الرديف",
   "/dashboard/notifications": "جميع الإشعارات",
+  "/dashboard/user-guide": "دليل استخدام المنظومة",
 };
 // ============================================================
 // صلاحيات الوصول لكل مسار — نفس الأدوار المستخدمة في Sidebar
@@ -81,6 +82,7 @@ const PATH_ROLE_MAP: { prefix: string; roles: RoleCode[] }[] = [
   roles: ["ADMIN"],
 },
 { prefix: "/dashboard/notifications", roles: ALL_ROLES },
+{ prefix: "/dashboard/user-guide", roles: ALL_ROLES },
 ];
 
 function isPathAllowed(pathname: string, role: RoleCode): boolean {
