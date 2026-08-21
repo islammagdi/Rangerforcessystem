@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 export interface SystemAlert {
   type: "critical" | "warning";
   text: string;
-  key: "overdue" | "incomplete";
+  key: "overdue" | "incomplete" | "undocumented-letters";
   batchDate?: string | null;
 }
 
@@ -32,7 +32,10 @@ export function useSystemAlerts() {
         .or(
           "primary_unit_id.is.null,military_number.is.null,rank_id.is.null"
         );
-
+      const undocumentedLettersResult = await supabase
+        .from("letters")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "UNDOCUMENTED");
       const result: SystemAlert[] = [];
 
       if (overdueResult.count) {
@@ -51,7 +54,13 @@ export function useSystemAlerts() {
           key: "incomplete",
         });
       }
-
+      if (undocumentedLettersResult.count) {
+        result.push({
+          type: "warning",
+          text: `يوجد ${undocumentedLettersResult.count} خطاب غير موثّق — يجب رفع النسخة الموقّعة`,
+          key: "undocumented-letters",
+        });
+      }
       setAlerts(result);
       setLoading(false);
     }

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useLocation } from "react-router";
 import {
   Search,
   Calendar,
@@ -470,12 +470,14 @@ function LettersTable({
 function GeneralArchiveTab({
   onView,
   onPrint,
+  initialStatusFilter = "",
 }: {
   onView: (id: string) => void;
   onPrint: (id: string) => void;
+  initialStatusFilter?: string;
 }) {
   const [searchText, setSearchText] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
+  const [filterStatus, setFilterStatus] = useState(initialStatusFilter);
   const [filterType, setFilterType] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -1414,11 +1416,23 @@ function IndividualTab({
 
 export function LettersArchivePage() {
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const [tab, setTab] =
-    useState<
-      "general" | "individual"
-    >("general");
+  // ✅ لو جاي من تنبيه "خطابات غير موثقة" في الداشبورد،
+  // بيبعت statusFilter = "UNDOCUMENTED"، وهنا بنحوّلها
+  // للقيمة العربي اللي فلتر الحالة شغال بيها فعليًا
+  const incomingStatusFilter = (
+    location.state as { statusFilter?: string } | null
+  )?.statusFilter;
+
+  const initialStatusFilter =
+    incomingStatusFilter === "UNDOCUMENTED"
+      ? "غير موثق"
+      : incomingStatusFilter === "DOCUMENTED"
+      ? "موثق"
+      : "";
+
+  const [tab, setTab] = useState<"general" | "individual">("general");
 
   function handleView(id: string) {
     navigate(
@@ -1518,10 +1532,11 @@ export function LettersArchivePage() {
         </div>
       </div>
 
-      {tab === "general" ? (
+         {tab === "general" ? (
         <GeneralArchiveTab
           onView={handleView}
           onPrint={handlePrint}
+          initialStatusFilter={initialStatusFilter}
         />
       ) : (
         <IndividualTab

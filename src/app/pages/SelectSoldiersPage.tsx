@@ -306,8 +306,9 @@ export function SelectSoldiersPage() {
   const [militaryNumber, setMilitaryNumber] = useState("");
   const [soldiers, setSoldiers] = useState<SoldierData[]>([]);
   const [errorType, setErrorType] = useState<
-    "not-found" | "duplicate" | "empty" | "database" | null
+    "not-found" | "duplicate" | "empty" | "database" | "undocumented-letter" | null
   >(null);
+  const [pendingLetterNumber, setPendingLetterNumber] = useState<string | null>(null);
 
   const [searching, setSearching] = useState(false);
 
@@ -375,8 +376,42 @@ async function handleAdd() {
       return;
     }
 
-    if (data.is_active === false) {
+        if (data.is_active === false) {
       setErrorType("not-found");
+      return;
+    }
+
+    // ✅ منع إضافة فرد عليه خطاب سابق لسه "غير موثّق"
+    // لازم يتوثّق الأول قبل ما نقدر نصدر خطاب جديد ليه
+    const {
+      data: pendingLetters,
+      error: pendingError,
+    } = await supabase
+      .from("letter_personnel")
+      .select("letter_id, letters!inner(letter_number, status)")
+      .eq("personnel_id", data.id)
+      .eq("letters.status", "UNDOCUMENTED");
+
+    if (pendingError) {
+      console.error(pendingError);
+      setErrorType("database");
+      return;
+    }
+
+    if (pendingLetters && pendingLetters.length > 0) {
+      const firstPending = pendingLetters[0] as any;
+
+      const letterRecord = Array.isArray(firstPending.letters)
+        ? firstPending.letters[0]
+        : firstPending.letters;
+
+      setPendingLetterNumber(
+        letterRecord?.letter_number != null
+          ? String(letterRecord.letter_number)
+          : null
+      );
+
+      setErrorType("undocumented-letter");
       return;
     }
 
@@ -401,10 +436,10 @@ async function handleAdd() {
       rank: rank?.name ?? "غير محدد",
       rankId: data.rank_id,
       unit: primaryUnit?.name ?? "غير محدد",
-      unitId: primaryUnit?.id ?? data.primary_unit_id,
+      unitId: primaryUnit?.id ?? data.primary_unit,
       attachmentUnit: attachmentUnit?.name ?? "",
       attachmentUnitId:
-        attachmentUnit?.id ?? data.attachment_unit_id ?? null,
+        attachmentUnit?.id ?? data.attachment_unit ?? null,
       dischargeDate: data.discharge_date,
     };
 
@@ -457,7 +492,8 @@ async function handleAdd() {
   const hasError =
     errorType === "not-found" ||
     errorType === "duplicate" ||
-    errorType === "database";
+    errorType === "database"||
+     errorType === "undocumented-letter";;
 
   return (
     <div
@@ -595,6 +631,44 @@ async function handleAdd() {
             >
               هذا الرقم العسكري مضاف بالفعل.
             </p>
+          </div>
+        )}
+                {errorType === "undocumented-letter" && (
+          <div
+            className="flex items-start gap-3 px-4 py-3 rounded-[10px]"
+            style={{
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+            }}
+          >
+            <AlertCircle color="#ef4444" />
+
+            <div>
+              <p
+                style={{
+                  ...F,
+                  fontWeight: 700,
+                  color: "#991b1b",
+                }}
+              >
+                لا يمكن إضافة هذا الفرد
+              </p>
+
+              <p
+                style={{
+                  ...F,
+                  fontSize: 13,
+                  color: "#b91c1c",
+                }}
+              >
+                عنده خطاب سابق
+                {pendingLetterNumber
+                  ? ` رقم ${pendingLetterNumber} `
+                  : " "}
+                لسه غير موثّق. يجب رفع النسخة الموقّعة منه أولًا قبل إصدار
+                خطاب جديد لنفس الفرد.
+              </p>
+            </div>
           </div>
         )}
 

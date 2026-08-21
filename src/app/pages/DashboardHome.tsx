@@ -1266,7 +1266,9 @@ const [openModal, setOpenModal] = useState<"discharged" | "letters" | null>(
       {!loadingAlerts && alerts.length > 0 && (
         <div className="flex flex-col gap-3 w-full" dir="rtl">
           {alerts.map((alert, idx) => {
-            const isClickable = alert.key === "overdue";
+                        const isClickable =
+              alert.key === "overdue" ||
+              alert.key === "undocumented-letters";
 
             const content = (
               <>
@@ -1320,11 +1322,18 @@ const [openModal, setOpenModal] = useState<"discharged" | "letters" | null>(
                 <button
                   key={idx}
                   type="button"
-                  onClick={() =>
+                                    onClick={() => {
+                    if (alert.key === "undocumented-letters") {
+                      navigate("/dashboard/letters-archive", {
+                        state: { statusFilter: "UNDOCUMENTED" },
+                      });
+                      return;
+                    }
+
                     navigate("/dashboard/reserve-batches", {
                       state: { batchDate: alert.batchDate },
-                    })
-                  }
+                    });
+                  }}
                   className="w-full rounded-[12px] px-5 py-4 flex items-center gap-3 text-right hover:opacity-80 transition-opacity"
                   style={sharedStyle}
                 >

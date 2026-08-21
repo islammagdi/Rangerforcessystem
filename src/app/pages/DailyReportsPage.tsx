@@ -1646,7 +1646,6 @@ const rows = people
 // Report 4
 // يومية عددية بخوارج وحدة
 // ============================================================
-
 function UnitOutsidersReport({
   people,
   config,
@@ -1666,13 +1665,13 @@ function UnitOutsidersReport({
   );
 
   const grouped = new Map<
-  string,
-  {
-    unit: Unit;
-    soldiers: number;
-    nco: number;
-  }
->();
+    string,
+    {
+      unit: Unit;
+      soldiers: number;
+      nco: number;
+    }
+  >();
 
   attachedPeople.forEach((person) => {
     const attachmentUnit =
@@ -1716,143 +1715,394 @@ function UnitOutsidersReport({
     });
   });
 
-  const rows = Array.from(
+  const columns = Array.from(
     grouped.values()
   );
 
-  const totalSoldiers =
-    rows.reduce(
-      (sum, row) =>
-        sum + row.soldiers,
-      0
-    );
+  const totalSoldiers = columns.reduce(
+    (sum, col) => sum + col.soldiers,
+    0
+  );
 
-  const totalNco =
-    rows.reduce(
-      (sum, row) =>
-        sum + row.nco,
-      0
-    );
+  const totalNco = columns.reduce(
+    (sum, col) => sum + col.nco,
+    0
+  );
 
-  const total =
-    totalSoldiers + totalNco;
+  // ✅ القيم الفعلية لكل عمود، بعد تطبيق فلتر الفئة
+  // (جنود / ضباط صف / الكل) بنفس منطق الجدول القديم
+  const ncoValues = columns.map((col) =>
+    config.category === "جنود" ? 0 : col.nco
+  );
+
+  const soldierValues = columns.map(
+    (col) =>
+      config.category === "ضباط صف"
+        ? 0
+        : col.soldiers
+  );
+
+  const ncoRowTotal =
+    config.category === "جنود"
+      ? 0
+      : totalNco;
+
+  const soldierRowTotal =
+    config.category === "ضباط صف"
+      ? 0
+      : totalSoldiers;
+
+  // ✅ كل وحدات الإلحاق دلوقتي في صف واحد (مفيش تقسيم لمجموعات)
+  // مع تقليل عرض كل عمود لأقل ما يمكن، لأن أسماء الوحدات
+  // ملفوفة عموديًا (writing-mode) فمحتاجة مساحة أفقية ضيقة جدًا بس.
+  const tableColumns = columns.map((col, idx) => ({
+    unit: col.unit,
+    ncoValue: ncoValues[idx],
+    soldierValue: soldierValues[idx],
+  }));
 
   return (
     <ReportTableWrapper>
-      <table className="w-full min-w-[650px] border-collapse">
-        <thead>
-          <tr>
-            <th
-              className={`${TH_CLASS} text-center`}
+      <div className="overflow-x-auto">
+        <div className="flex flex-col gap-4">
+          {tableColumns.length === 0 ? (
+            <table className="w-full min-w-[300px] border-collapse">
+              <thead>
+                <tr>
+                  <th
+                    className={`${TH_CLASS} text-center`}
+                  >
+                    <TableText bold>
+                      اماكن الألحاق
+                    </TableText>
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                <EmptyRow colSpan={1} />
+              </tbody>
+            </table>
+          ) : (
+            <table
+              className="w-full border-collapse"
+              style={{
+                tableLayout: "fixed",
+              }}
             >
-              <TableText bold>
-                مكان الإلحاق
-              </TableText>
-            </th>
+              <thead>
+                <tr>
+                  <th
+                    colSpan={
+                      tableColumns.length + 2
+                    }
+                    className={`${TH_CLASS} text-center`}
+                  >
+                    <TableText bold>
+                      اماكن الألحاق
+                    </TableText>
+                  </th>
+                </tr>
 
-            <th
-              className={`${TH_CLASS} text-center`}
-            >
-              <TableText bold>
-                جنود
-              </TableText>
-            </th>
+                {/* ✅ رؤوس الأعمدة ملفوفة بزاوية 90 درجة
+                    لتوفير مساحة أفقية كبيرة، مع عرض مضغوط لكل عمود */}
+                <tr>
+                  <th
+                    className={`${TH_CLASS} text-center`}
+                    style={{
+                      width: 22,
+                      height: 130,
+                      padding: 2,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        height: "100%",
+                      }}
+                    >
+                      <div
+                        style={{
+                          writingMode: "vertical-rl",
+                          transform: "rotate(180deg)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <TableText bold>
+                          البيان
+                        </TableText>
+                      </div>
+                    </div>
+                  </th>
 
-            <th
-              className={`${TH_CLASS} text-center`}
-            >
-              <TableText bold>
-                ضباط صف
-              </TableText>
-            </th>
+                  {tableColumns.map(
+                    (col) => (
+                      <th
+                        key={
+                          col.unit.id
+                        }
+                        className={`${TH_CLASS} text-center`}
+                        style={{
+                          width: 22,
+                          height: 130,
+                          padding: 2,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display:
+                              "flex",
+                            alignItems:
+                              "center",
+                            justifyContent:
+                              "center",
+                            height:
+                              "100%",
+                          }}
+                        >
+                          <div
+                            style={{
+                              writingMode:
+                                "vertical-rl",
+                              transform:
+                                "rotate(180deg)",
+                              whiteSpace:
+                                "nowrap",
+                            }}
+                          >
+                            <TableText bold>
+                              {
+                                col
+                                  .unit
+                                  .name
+                              }
+                            </TableText>
+                          </div>
+                        </div>
+                      </th>
+                    )
+                  )}
 
-            <th
-              className={`${TH_CLASS} text-center`}
-            >
-              <TableText bold>
-                الإجمالي
-              </TableText>
-            </th>
-          </tr>
-        </thead>
+                  <th
+                    className={`${TH_CLASS} text-center`}
+                    style={{
+                      width: 22,
+                      height: 130,
+                      padding: 2,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        height: "100%",
+                      }}
+                    >
+                      <div
+                        style={{
+                          writingMode: "vertical-rl",
+                          transform: "rotate(180deg)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <TableText bold>
+                          الاجمالي
+                        </TableText>
+                      </div>
+                    </div>
+                  </th>
+                </tr>
+              </thead>
 
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.unit.id}>
-              <td className={TH_CLASS}>
-                <TableText>
-                  {row.unit.name}
-                </TableText>
-              </td>
+              <tbody>
+                {/* صف ضباط صف */}
+                <tr>
+                  <td
+                    className={
+                      TH_CLASS
+                    }
+                    style={{
+                      width: 22,
+                      padding: 2,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          writingMode: "vertical-rl",
+                          transform: "rotate(180deg)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <TableText bold>
+                         ر.ع
+                        </TableText>
+                      </div>
+                    </div>
+                  </td>
 
-              <td className={TD_CLASS}>
-                <TableText>
-                  {config.category ===
-                  "ضباط صف"
-                    ? 0
-                    : row.soldiers}
-                </TableText>
-              </td>
+                  {tableColumns.map(
+                    (col) => (
+                      <td
+                        key={
+                          col.unit.id
+                        }
+                        className={`${TD_CLASS} text-center`}
+                      >
+                        <TableText>
+                          {
+                            col.ncoValue
+                          }
+                        </TableText>
+                      </td>
+                    )
+                  )}
 
-              <td className={TD_CLASS}>
-                <TableText>
-                  {config.category ===
-                  "جنود"
-                    ? 0
-                    : row.nco}
-                </TableText>
-              </td>
+                  <td
+                    className={`${TD_CLASS} text-center`}
+                  >
+                    <TableText bold>
+                      {
+                        ncoRowTotal
+                      }
+                    </TableText>
+                  </td>
+                </tr>
 
-              <td className={TD_CLASS}>
-                <TableText>
-                  {row.soldiers +
-                    row.nco}
-                </TableText>
-              </td>
-            </tr>
-          ))}
+                {/* صف مجند */}
+                <tr>
+                  <td
+                    className={
+                      TH_CLASS
+                    }
+                    style={{
+                      width: 22,
+                      padding: 2,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          writingMode: "vertical-rl",
+                          transform: "rotate(180deg)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <TableText bold>
+                          مجند
+                        </TableText>
+                      </div>
+                    </div>
+                  </td>
 
-          {rows.length === 0 && (
-            <EmptyRow colSpan={4} />
+                  {tableColumns.map(
+                    (col) => (
+                      <td
+                        key={
+                          col.unit.id
+                        }
+                        className={`${TD_CLASS} text-center`}
+                      >
+                        <TableText>
+                          {
+                            col.soldierValue
+                          }
+                        </TableText>
+                      </td>
+                    )
+                  )}
+
+                  <td
+                    className={`${TD_CLASS} text-center`}
+                  >
+                    <TableText bold>
+                      {
+                        soldierRowTotal
+                      }
+                    </TableText>
+                  </td>
+                </tr>
+
+                {/* صف اجمالي */}
+                <tr className="bg-[#f7f9fc]">
+                  <td
+                    className={
+                      TH_CLASS
+                    }
+                    style={{
+                      width: 22,
+                      padding: 2,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          writingMode: "vertical-rl",
+                          transform: "rotate(180deg)",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <TableText bold>
+                          اجمالي
+                        </TableText>
+                      </div>
+                    </div>
+                  </td>
+
+                  {tableColumns.map(
+                    (col) => (
+                      <td
+                        key={
+                          col.unit.id
+                        }
+                        className={`${TD_CLASS} text-center`}
+                      >
+                        <TableText bold>
+                          {col.ncoValue +
+                            col.soldierValue}
+                        </TableText>
+                      </td>
+                    )
+                  )}
+
+                  <td
+                    className={`${TD_CLASS} text-center`}
+                  >
+                    <TableText bold>
+                      {ncoRowTotal +
+                        soldierRowTotal}
+                    </TableText>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           )}
-
-          <tr className="bg-[#f7f9fc]">
-            <td className={TH_CLASS}>
-              <TableText bold>
-                إجمالي
-              </TableText>
-            </td>
-
-            <td className={TD_CLASS}>
-              <TableText bold>
-                {config.category ===
-                "ضباط صف"
-                  ? 0
-                  : totalSoldiers}
-              </TableText>
-            </td>
-
-            <td className={TD_CLASS}>
-              <TableText bold>
-                {config.category ===
-                "جنود"
-                  ? 0
-                  : totalNco}
-              </TableText>
-            </td>
-
-            <td className={TD_CLASS}>
-              <TableText bold>
-                {total}
-              </TableText>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+        </div>
+      </div>
     </ReportTableWrapper>
   );
 }
-
 // ============================================================
 // Report 5
 // كشف الأفراد الملحقين على وحدة
@@ -1961,6 +2211,12 @@ const rows = people
     تاريخ التسريح
   </TableText>
 </th>
+
+            <th className={`${TH_CLASS} text-center`}>
+              <TableText bold>
+                ملاحظات
+              </TableText>
+            </th>
           </tr>
         </thead>
 
@@ -2004,11 +2260,15 @@ const rows = people
       : formatDate(person.discharge_date)}
   </TableText>
 </td>
+
+              <td className={TD_CLASS}>
+                <TableText></TableText>
+              </td>
             </tr>
           ))}
 
           {rows.length === 0 && (
-            <EmptyRow colSpan={6} />
+            <EmptyRow colSpan={7} />
           )}
         </tbody>
       </table>

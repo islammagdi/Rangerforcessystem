@@ -55,14 +55,14 @@ function parseBatchDate(dateStr: string): Date {
 }
 
 const ALLOWED_MONTHS = [
-  { value: 2, label: "فبراير" },
-  { value: 3, label: "مارس" },
-  { value: 5, label: "مايو" },
-  { value: 6, label: "يونيو" },
-  { value: 8, label: "أغسطس" },
-  { value: 9, label: "سبتمبر" },
-  { value: 11, label: "نوفمبر" },
-  { value: 12, label: "ديسمبر" },
+  { value: 2, label: "فبراير-2" },
+  { value: 3, label: "مارس-3" },
+  { value: 5, label: "مايو-5" },
+  { value: 6, label: "يونيو-6" },
+  { value: 8, label: "أغسطس-8" },
+  { value: 9, label: "سبتمبر-9" },
+  { value: 11, label: "نوفمبر-11" },
+  { value: 12, label: "ديسمبر-12" },
 ];
 
 /* =========================================================
@@ -127,8 +127,8 @@ function AddBatchModal({
   const currentYear = new Date().getFullYear();
 
   const yearOptions = Array.from(
-    { length: 21 },
-    (_, i) => currentYear - 1 + i
+    { length: 7 },
+    (_, i) => currentYear  + i
   );
 
   const [year, setYear] = useState(currentYear);

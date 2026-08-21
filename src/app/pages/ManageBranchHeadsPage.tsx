@@ -560,20 +560,7 @@
                   </div>
                 )}
 
-                <div className="flex flex-col gap-1.5">
-                  <label style={{ ...F, fontSize: 14, color: "#2d3648" }}>
-                    اسم رئيس الفرع
-                  </label>
-                  <input
-                    type="text"
-                    value={newFullName}
-                    onChange={(e) => setNewFullName(e.target.value)}
-                    dir="rtl"
-                    className="w-full h-[46px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867]"
-                    style={{ ...F, fontSize: 15, color: "#2d3648" }}
-                  />
-                </div>
-
+             
                 <div className="flex flex-col gap-1.5">
                   <label style={{ ...F, fontSize: 14, color: "#2d3648" }}>
                     الرتبة
@@ -593,6 +580,20 @@
                     ))}
                   </select>
                 </div>
+                   <div className="flex flex-col gap-1.5">
+                  <label style={{ ...F, fontSize: 14, color: "#2d3648" }}>
+                    اسم رئيس الفرع
+                  </label>
+                  <input
+                    type="text"
+                    value={newFullName}
+                    onChange={(e) => setNewFullName(e.target.value)}
+                    dir="rtl"
+                    className="w-full h-[46px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867]"
+                    style={{ ...F, fontSize: 15, color: "#2d3648" }}
+                  />
+                </div>
+
               </div>
 
               <div className="px-6 py-4 border-t border-[#e2e7f0] flex items-center gap-3">
