@@ -1813,6 +1813,7 @@ function UnitOutsidersReport({
                       width: 22,
                       height: 130,
                       padding: 2,
+                      
                     }}
                   >
                     <div
@@ -1848,6 +1849,7 @@ function UnitOutsidersReport({
                           width: 22,
                           height: 130,
                           padding: 2,
+                          backgroundColor: "#ffffff", // ✅ خلفية بيضاء بدل الرمادي
                         }}
                       >
                         <div

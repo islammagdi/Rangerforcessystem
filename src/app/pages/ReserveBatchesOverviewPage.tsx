@@ -495,6 +495,25 @@ export function ReserveBatchesOverviewPage() {
   async function handleToggleActive(batch: ReserveBatch) {
     const action = batch.is_active ? "إلغاء تفعيل" : "إعادة تنشيط";
 
+    // ✅ منع إلغاء تفعيل دفعة لسه فيها أفراد "بالخدمة" لم تُنهَ
+    // إجراءات تسريحهم بعد. الفحص بيطبّق بس عند "إلغاء التفعيل"
+    // (مش عند "إعادة التنشيط")، وبيعتمد على نفس القيمة المعروضة
+    // في عمود "عدد الجنود" (soldierCounts) عشان يكون متطابق تمامًا
+    // مع اللي شايفه المستخدم في الجدول.
+    if (batch.is_active) {
+      const activeSoldiersCount = soldierCounts[batch.batch_date] ?? 0;
+
+      if (activeSoldiersCount > 0) {
+        setError(
+          `لا يمكن إلغاء تفعيل دفعة "${getBatchLabel(
+            batch
+          )}" — يوجد بها ${activeSoldiersCount} فردًا لا يزالون بالخدمة. يجب إنهاء إجراءات تسريح جميع أفراد الدفعة أولًا من صفحة "دفعات الرديف".`
+        );
+
+        return;
+      }
+    }
+
     const confirmed = window.confirm(
       `هل تريد ${action} دفعة "${getBatchLabel(batch)}"؟`
     );
