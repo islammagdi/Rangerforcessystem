@@ -223,6 +223,7 @@ function UploadArea({
       "application/pdf",
       "image/jpeg",
       "image/png",
+      'application/pdf'
     ];
 
     if (!allowedTypes.includes(f.type)) {

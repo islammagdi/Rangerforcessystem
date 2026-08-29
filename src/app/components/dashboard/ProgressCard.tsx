@@ -73,30 +73,7 @@ export function ProgressCard({
       </div>
 
       {/* Progress bar */}
-      <div className="flex flex-col gap-1">
-        {percentLabel && (
-          <span
-            style={{
-              color: "#717d96",
-              fontFamily: "'Almarai', sans-serif",
-              fontWeight: 700,
-              fontSize: "12px",
-            }}
-          >
-            {percentLabel}
-          </span>
-        )}
-        <div className="w-full h-[15px] bg-[#f5f5f5] rounded-full overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{
-              width: `${clampedPct}%`,
-              background:
-                "linear-gradient(to bottom, #00b867, #00522e)",
-            }}
-          />
-        </div>
-      </div>
+  
     </div>
   );
 }

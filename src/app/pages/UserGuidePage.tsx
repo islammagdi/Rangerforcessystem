@@ -757,6 +757,25 @@ const GUIDE_SECTIONS: GuideSection[] = [
       },
     ],
   },
+   {
+    id: "system-dev",
+    group: "المستخدمون",
+    title: 'مصمم المنظومة',
+    content: [
+      {
+        type: "p",
+        text:'صمم هذه المنظومة ',
+      },
+      {
+        type: "list",
+        items: [
+          'جندى / اسلام مجدى عبدالستار',
+         'دفعة رديف: 01/03/2025',
+         'رقم هاتف: 01140187813'
+        ],
+      },
+    ],
+  },
 ];
 
 const GROUPS = Array.from(new Set(GUIDE_SECTIONS.map((s) => s.group)));

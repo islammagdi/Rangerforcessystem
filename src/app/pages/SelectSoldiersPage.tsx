@@ -306,7 +306,13 @@ export function SelectSoldiersPage() {
   const [militaryNumber, setMilitaryNumber] = useState("");
   const [soldiers, setSoldiers] = useState<SoldierData[]>([]);
   const [errorType, setErrorType] = useState<
-    "not-found" | "duplicate" | "empty" | "database" | "undocumented-letter" | null
+    | "not-found"
+    | "duplicate"
+    | "empty"
+    | "database"
+    | "undocumented-letter"
+    | "not-attached"
+    | null
   >(null);
   const [pendingLetterNumber, setPendingLetterNumber] = useState<string | null>(null);
 
@@ -335,7 +341,7 @@ async function handleAdd() {
     setSearching(true);
     setErrorType(null);
 
-    const { data, error } = await supabase
+        const { data, error } = await supabase
       .from("personnel")
       .select(`
         id,
@@ -344,6 +350,7 @@ async function handleAdd() {
         rank_id,
         discharge_date,
         is_active,
+        service_status_id,
 
         rank:ranks!personnel_rank_id_fkey(
           id,
@@ -358,6 +365,12 @@ async function handleAdd() {
         attachment_unit:units!personnel_attachment_unit_id_fkey(
           id,
           name
+        ),
+
+        service_status:service_statuses!personnel_service_status_id_fkey(
+          id,
+          name,
+          code
         )
       `)
       .eq("military_number", trimmed)
@@ -380,7 +393,32 @@ async function handleAdd() {
       setErrorType("not-found");
       return;
     }
+        if (data.is_active === false) {
+      setErrorType("not-found");
+      return;
+    }
 
+    // ✅ التحقق الجديد: خطاب "إنهاء إلحاق" لازم يكون للفرد
+    // ملحق فعليًا (مش على قوة وحدته الأساسية)
+    if (letterType === "end-attachment") {
+      const statusRecord = Array.isArray(
+        data.service_status
+      )
+        ? data.service_status[0]
+        : data.service_status;
+
+      const isAttached =
+        statusRecord?.code?.toUpperCase() ===
+          "ATTACHED" ||
+        statusRecord?.name === "ملحق علي القوة";
+
+      if (!isAttached) {
+        setErrorType("not-attached");
+        return;
+      }
+    }
+
+    // ✅ منع إضافة فرد عليه خطاب سابق لسه "غير موثّق"
     // ✅ منع إضافة فرد عليه خطاب سابق لسه "غير موثّق"
     // لازم يتوثّق الأول قبل ما نقدر نصدر خطاب جديد ليه
     const {
@@ -489,11 +527,12 @@ async function handleAdd() {
       ? "اصدار خطاب إنهاء إلحاق"
       : "اصدار خطاب إلحاق";
 
-  const hasError =
+    const hasError =
     errorType === "not-found" ||
     errorType === "duplicate" ||
-    errorType === "database"||
-     errorType === "undocumented-letter";;
+    errorType === "database" ||
+    errorType === "undocumented-letter" ||
+    errorType === "not-attached";
 
   return (
     <div
@@ -661,17 +700,50 @@ async function handleAdd() {
                   color: "#b91c1c",
                 }}
               >
-                عنده خطاب سابق
+               هذا الفرد لديه خطاب سابق
                 {pendingLetterNumber
-                  ? ` رقم ${pendingLetterNumber} `
+                  ? ` برقم ${pendingLetterNumber} `
                   : " "}
-                لسه غير موثّق. يجب رفع النسخة الموقّعة منه أولًا قبل إصدار
+                 غير موثّق. يجب توثيق الخطاب السابق أولًا قبل إصدار
                 خطاب جديد لنفس الفرد.
               </p>
             </div>
           </div>
         )}
+        {errorType === "not-attached" && (
+          <div
+            className="flex items-start gap-3 px-4 py-3 rounded-[10px]"
+            style={{
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+            }}
+          >
+            <AlertCircle color="#ef4444" />
 
+            <div>
+              <p
+                style={{
+                  ...F,
+                  fontWeight: 700,
+                  color: "#991b1b",
+                }}
+              >
+        الفرد غير مُلحق
+              </p>
+
+              <p
+                style={{
+                  ...F,
+                  fontSize: 13,
+                  color: "#b91c1c",
+                }}
+              >
+               لا يمكن إصدار خطاب إنهاء إلحاق لفرد غير مُلحق.
+
+              </p>
+            </div>
+          </div>
+        )}
         {errorType === "empty" && (
           <div
             className="px-4 py-3 rounded-[10px]"

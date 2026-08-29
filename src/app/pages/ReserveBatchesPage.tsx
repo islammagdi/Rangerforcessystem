@@ -634,34 +634,14 @@ function ProgressCard({
         <div
           className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center"
           style={{
-            background: "#dcfce7",
+            background: "#dcfce7e4",
           }}
         >
           {icon}
         </div>
       </div>
 
-      <div className="mt-3 w-full bg-[#eff0f6] rounded-full h-2">
-        <div
-          className="h-2 rounded-full"
-          style={{
-            width: `${pct}%`,
-            background:
-              "linear-gradient(to right, #00b867, #00522e)",
-          }}
-        />
-      </div>
-
-      <p
-        className="mt-1 text-right"
-        style={{
-          ...F,
-          fontSize: 11,
-          color: "#a1aebe",
-        }}
-      >
-        {pct}%
-      </p>
+ 
     </div>
   );
 }
@@ -2412,7 +2392,7 @@ await createNotification({
                 icon={
                   <AlertTriangle
                     size={20}
-                    color="#e3282c"
+                    color="#3eb712"
                   />
                 }
                 label="كارنيه تالف"
@@ -2436,7 +2416,7 @@ await createNotification({
                 icon={
                   <AlertTriangle
                     size={20}
-                    color="#e3282c"
+                    color="#3eb712"
                   />
                 }
                 label="رخصة تالفة"
@@ -2651,8 +2631,37 @@ await createNotification({
               >
                 طباعة الكشف
               </button>
-            </div>
+                   {/* =================================================
+                SAVE
+                ================================================= */}
 
+       
+            </div>
+     <div className="flex justify-between mt-4 no-print w-full gap-3 items-center">
+       <h2
+          className="text-right"
+          style={{ ...F, fontWeight: 700, fontSize: 24, color: "#2d3648" }}
+        >
+         افراد دفعة الرديف
+        </h2>
+              <button
+                type="button"
+                onClick={
+                  handleSaveChanges
+                }
+                disabled={saving}
+                className="h-[44px] px-6 rounded-[8px] border border-[#e2e7f0] bg-white disabled:opacity-50"
+                style={{
+                  ...F,
+                  fontSize: 15,
+                  color: "#2d3648",
+                }}
+              >
+                {saving
+                  ? "جاري الحفظ..."
+                  : "حفظ التعديلات"}
+              </button>
+            </div>
             {/* =================================================
                 TABLE
                 ================================================= */}
@@ -3006,29 +3015,7 @@ await createNotification({
               </table>
             </div>
 
-            {/* =================================================
-                SAVE
-                ================================================= */}
-
-            <div className="flex justify-end mt-4 no-print">
-              <button
-                type="button"
-                onClick={
-                  handleSaveChanges
-                }
-                disabled={saving}
-                className="h-[44px] px-6 rounded-[8px] border border-[#e2e7f0] bg-white disabled:opacity-50"
-                style={{
-                  ...F,
-                  fontSize: 15,
-                  color: "#2d3648",
-                }}
-              >
-                {saving
-                  ? "جاري الحفظ..."
-                  : "حفظ التعديلات"}
-              </button>
-            </div>
+       
 
           </div>
         )}

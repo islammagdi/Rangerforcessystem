@@ -852,7 +852,29 @@ const [notes, setNotes] = useState("");
       e.soldiers = "يجب اختيار فرد واحد على الأقل";
     }
 
+        // ✅ التحقق الجديد: لو الخطاب "إلحاق" (مش إنهاء إلحاق)، نتأكد إن
+    // مفيش فرد وحدة إلحاقه المختارة (سواء العامة أو المُعدَّلة له
+    // شخصيًا من الجدول) هي نفسها وحدته الأساسية.
+    if (!isEndAttachment && localSoldiers.length > 0) {
+      const invalidSoldierNames = localSoldiers
+        .filter((soldier) => {
+          const chosenAttachmentUnitName =
+            getAttachmentUnit(soldier);
+
+          return (
+            chosenAttachmentUnitName &&
+            chosenAttachmentUnitName === soldier.unit
+          );
+        })
+        .map((soldier) => soldier.name);
+
+      if (invalidSoldierNames.length > 0) {
+        e.attachmentPlace ='لا يمكن إلحاق الفرد بنفس وحدته الأساسية يرجي تغيير الوحدة.';
+      }
+    }
+
     return e;
+  
   }
 
   // ─────────────────────────────────────────────────────────

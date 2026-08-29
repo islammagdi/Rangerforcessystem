@@ -353,20 +353,7 @@ export function IssueLetterPage() {
         )}
 
         {/* Selected info */}
-        {selected && (
-          <div
-            className="w-full rounded-[8px] px-4 py-3"
-            style={{
-              ...F,
-              background: "#f0fdf4",
-              border: "1px solid #bbf7d0",
-              color: "#166534",
-              textAlign: "right",
-            }}
-          >
-            تم اختيار: <strong>{selected.name}</strong>
-          </div>
-        )}
+  
 
         {/* Next */}
         <button

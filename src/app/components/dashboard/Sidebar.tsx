@@ -17,7 +17,7 @@ import {
   ChevronRight,
   LogOut,
 } from "lucide-react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { supabase } from "../../../lib/supabase";
 
 
@@ -46,7 +46,28 @@ interface NavDef {
   roles: RoleCode[];
 }
 
+// =====================================================
+// Label → Route Path Map
+// =====================================================
 
+const LABEL_TO_PATH: Record<string, string> = {
+  "الموقف العام": "/dashboard",
+  "الاستعلام عن فرد": "/dashboard/individual-query",
+  "اضافة قوة جديدة": "/dashboard/add-soldier",
+  "بيان الوحدات": "/dashboard/units-report",
+  "إصدار خطاب": "/dashboard/issue-letter",
+  "سجل الخطابات": "/dashboard/letters-archive",
+  "اليوميات": "/dashboard/daily-reports",
+  "دفعات الرديف": "/dashboard/reserve-batches",
+  "ادارة الوحدات": "/dashboard/manage-units",
+  "إدارة دفعات الرديف": "/dashboard/manage-reserve-batches",
+  "ادارة المستخدمين": "/dashboard/manage-users",
+  "النسخ الاحتياطي للبيانات": "/dashboard/data-backup",
+  "سجل العمليات": "/dashboard/activity-log",
+  "رؤساء فرع التنظيم": "/dashboard/manage-branch-heads",
+"الأرشيف - صادر": "/dashboard/archive/outgoing",
+"الأرشيف - وارد": "/dashboard/archive/incoming",
+};
 // =====================================================
 // Logo
 // =====================================================
@@ -208,13 +229,14 @@ interface SidebarProps {
 // =====================================================
 // Sidebar
 // =====================================================
-
 export function Sidebar({
   collapsed,
   onToggle,
   onNavSelect,
   activePath,
 }: SidebarProps) {
+  const navigate = useNavigate();
+
   const [loggingOut, setLoggingOut] =
     useState(false);
 
@@ -426,6 +448,13 @@ if (pathname.includes("/manage-branch-heads")) {
 if (pathname.includes("/reserve-batches-overview")) {
   return "إدارة دفعات الرديف";
 }
+if (pathname.includes("/archive/outgoing")) {
+  return "الأرشيف - صادر";
+}
+
+if (pathname.includes("/archive/incoming")) {
+  return "الأرشيف - وارد";
+}
 
     return "الموقف العام";
   }
@@ -439,8 +468,13 @@ if (pathname.includes("/reserve-batches-overview")) {
     label: string
   ) {
     onNavSelect?.(label);
-  }
 
+    const path = LABEL_TO_PATH[label];
+
+    if (path) {
+      navigate(path);
+    }
+  }
 
   // ===================================================
   // Logout
@@ -698,6 +732,19 @@ async function handleLogout() {
   section: "ادارة المنظومة",
   roles: ["ADMIN"],
 },
+{
+  icon: <FolderOpen size={18} />,
+  label: "الأرشيف - صادر",
+  section: "الأرشيف",
+roles: ["ADMIN", "ARCHIVE_OFFICER",'USER'],
+},
+
+{
+  icon: <FolderOpen size={18} />,
+  label: "الأرشيف - وارد",
+  section: "الأرشيف",
+  roles: ["ADMIN", "ARCHIVE_OFFICER",'USER'],
+},
 
       ],
       []
@@ -730,12 +777,13 @@ async function handleLogout() {
   // Group By Section
   // ===================================================
 
-  const sections = [
-    "الافراد",
-    "الخطابات",
-    "اليوميات",
-    "ادارة المنظومة",
-  ];
+ const sections = [
+  "الافراد",
+  "الخطابات",
+  "الأرشيف",
+  "اليوميات",
+  "ادارة المنظومة",
+];
 
 
   function getSectionItems(
@@ -852,7 +900,7 @@ async function handleLogout() {
         textDecoration: "none",
       }}
     >
-      منظومة الخوارج
+     منظومة الافراد
     </Link>
 
     <LogoIcon />

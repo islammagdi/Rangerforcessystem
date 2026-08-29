@@ -7,22 +7,7 @@ function SoldiersIllustration({
 }: {
   variant: "desktop" | "mobile";
 }) {
-  if (variant === "mobile") {
-    return (
-      <div
-        className="w-full rounded-2xl overflow-hidden shadow-sm"
-        style={{ height: "200px" }}
-      >
-        <img
-          src={soldiersImg}
-          alt="قوات الصاعقة المصرية"
-          className="w-full h-full object-cover"
-          style={{ objectPosition: "50% 28%" }}
-          draggable={false}
-        />
-      </div>
-    );
-  }
+
 
   return (
     <div

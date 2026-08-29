@@ -56,8 +56,8 @@ export function useSystemAlerts() {
       }
       if (undocumentedLettersResult.count) {
         result.push({
-          type: "warning",
-          text: `يوجد ${undocumentedLettersResult.count} خطاب غير موثّق — يجب رفع النسخة الموقّعة`,
+          type: "critical",
+          text: `  يوجد ${undocumentedLettersResult.count} خطاب غير موثّق — يجب رفع النسخة الموقّعة --- يرجي توثيقهم خلال 48 ساعه من تاريخ الانشاء منعاً للالغاء التلقائي`,
           key: "undocumented-letters",
         });
       }

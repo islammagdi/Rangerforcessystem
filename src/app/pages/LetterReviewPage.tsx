@@ -1246,7 +1246,48 @@ export function LetterReviewPage() {
       );
       return;
     }
+    if (!soldiers.length) {
+      setError("لا يوجد أفراد في الخطاب.");
+      return;
+    }
 
+    if (!state?.letterTypeId) {
+      setError(
+        "نوع الخطاب غير موجود. ارجع واختر نوع الخطاب مرة أخرى."
+      );
+      return;
+    }
+
+    // ✅ التحقق الجديد: لو الخطاب "إلحاق" (مش إنهاء إلحاق)، نتأكد إن
+    // مفيش فرد وحدة إلحاقه المختارة هي نفسها وحدته الأساسية —
+    // لأن ده منطقيًا غير مسموح (الفرد أصلاً موجود في وحدته دي).
+    if (letterType !== "end-attachment") {
+      const invalidSoldiers = soldiers.filter((soldier) => {
+        const chosenAttachmentUnitId =
+          soldier.attachmentUnitId ??
+          letterData.attachmentUnitId;
+
+        return (
+          chosenAttachmentUnitId &&
+          chosenAttachmentUnitId === soldier.unitId
+        );
+      });
+
+      if (invalidSoldiers.length > 0) {
+        const names = invalidSoldiers
+          .map((s) => s.name)
+          .join("، ");
+
+        setError(
+          `لا يمكن إلحاق الفرد بنفس وحدته الأساسية. يرجى تعديل جهة الإلحاق للأفراد التاليين: ${names}`
+        );
+        return;
+      }
+    }
+
+    setSaving(true);
+    setError("");
+    setPreviewWarning("");
     setSaving(true);
     setError("");
     setPreviewWarning("");

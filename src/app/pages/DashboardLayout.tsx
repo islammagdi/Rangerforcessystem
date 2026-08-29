@@ -42,6 +42,8 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/manage-reserve-batches": "إدارة دفعات الرديف",
   "/dashboard/notifications": "جميع الإشعارات",
   "/dashboard/user-guide": "دليل استخدام المنظومة",
+  "/dashboard/archive/outgoing": "الأرشيف / صادر",
+  "/dashboard/archive/incoming": "الأرشيف / وارد",
 };
 // ============================================================
 // صلاحيات الوصول لكل مسار — نفس الأدوار المستخدمة في Sidebar
@@ -83,6 +85,11 @@ const PATH_ROLE_MAP: { prefix: string; roles: RoleCode[] }[] = [
 },
 { prefix: "/dashboard/notifications", roles: ALL_ROLES },
 { prefix: "/dashboard/user-guide", roles: ALL_ROLES },
+
+{
+  prefix: "/dashboard/archive",
+   roles: ["ADMIN", "ARCHIVE_OFFICER",'USER'],
+},
 ];
 
 function isPathAllowed(pathname: string, role: RoleCode): boolean {
@@ -176,7 +183,13 @@ if (pathname.includes("/data-backup")) {
 if (pathname.includes("/manage-reserve-batches")) {
   return "إدارة دفعات الرديف";
 }
+if (pathname.includes("/archive/outgoing")) {
+  return "الأرشيف / صادر";
+}
 
+if (pathname.includes("/archive/incoming")) {
+  return "الأرشيف / وارد";
+}
   // القيمة الافتراضية
   return "الموقف العام";
 }
@@ -305,6 +318,13 @@ export function DashboardLayout() {
 }
 else if (label === "إدارة دفعات الرديف") {
   navigate("/dashboard/manage-reserve-batches");
+}
+else if (label === "صادر") {
+  navigate("/dashboard/archive/outgoing");
+}
+
+else if (label === "وارد") {
+  navigate("/dashboard/archive/incoming");
 }
   }
 

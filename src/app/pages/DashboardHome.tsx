@@ -1130,32 +1130,7 @@ const [openModal, setOpenModal] = useState<"discharged" | "letters" | null>(
                <div className="w-full h-px bg-[#eff0f6] my-2" />
             <div className="flex flex-wrap gap-8 items-center">
 
-              {/* اسم المستخدم */}
-
-              <div>
-
-                <p
-                  className="text-gray-500 text-sm mb-1"
-                  style={{
-                    fontFamily:
-                      "'Almarai', sans-serif",
-                  }}
-                >
-                  اسم المستخدم
-                </p>
-
-                <p
-                  className="font-bold text-[#344736]"
-                  style={{
-                    fontFamily:
-                      "'Almarai', sans-serif",
-                  }}
-                >
-                  {currentUser.username ||
-                    "غير محدد"}
-                </p>
-
-              </div>
+        
 
 
               {currentUser.personnel && (

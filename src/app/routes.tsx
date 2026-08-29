@@ -30,6 +30,13 @@ import { ManageBranchHeadsPage } from "./pages/ManageBranchHeadsPage";
 import { ReserveBatchesOverviewPage } from "./pages/ReserveBatchesOverviewPage";
 import { AllNotificationsPage } from "./pages/AllNotificationsPage";
 import { UserGuidePage } from "./pages/UserGuidePage";
+import { ArchiveOutgoingPage } from "./pages/ArchiveOutgoingPage";
+import { ArchiveIncomingPage } from "./pages/ArchiveIncomingPage";
+import { ArchiveOutgoingNewPage } from "./pages/ArchiveOutgoingNewPage";
+import { ArchiveOutgoingDetailPage } from "./pages/ArchiveOutgoingDetailPage";
+import { ArchiveIncomingNewPage } from "./pages/ArchiveIncomingNewPage";
+import { ArchiveIncomingDetailPage } from "./pages/ArchiveIncomingDetailPage";
+
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -71,7 +78,12 @@ export const router = createBrowserRouter([
 },
 { path: "notifications", Component: AllNotificationsPage },
 { path: "user-guide", Component: UserGuidePage },
-      
+{ path: "archive/outgoing", Component: ArchiveOutgoingPage },
+{ path: "archive/incoming", Component: ArchiveIncomingPage },
+      { path: "archive/outgoing/new", Component: ArchiveOutgoingNewPage },
+      { path: "archive/outgoing/:id", Component: ArchiveOutgoingDetailPage },
+          { path: "archive/incoming/new", Component: ArchiveIncomingNewPage },
+          { path: "archive/incoming/:id", Component: ArchiveIncomingDetailPage },
     ],
   },
 ]);
