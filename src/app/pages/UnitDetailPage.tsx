@@ -14,6 +14,16 @@ import { ArrowDownUp, Building2 } from "lucide-react";
 
 import svgPaths from "../../imports/بيانالوحداتالموقفالعامبيانوحده-1/svg-bswzreobyg";
 import { supabase } from "../../lib/supabase";
+import {
+  isCountedInUnitStrength,
+  isOutsideOwnUnit,
+  isAttachedStatus,
+  isConscriptCategory,
+  isVolunteerCategory,
+  type StatusLike,
+  type CategoryLike,
+  type PersonnelLike,
+} from "../../lib/personnelRules";
 
 // ─────────────────────────────────────────────────────────────
 // Shared style
@@ -38,17 +48,11 @@ interface DbUnit {
   is_active: boolean;
 }
 
-interface DbPersonnelRow {
+interface DbPersonnelRow extends PersonnelLike {
   id: string;
   military_number: string;
   full_name: string;
   rank_id: string | null;
-  personnel_category_id: string | null;
-  service_status_id: string | null;
-  primary_unit_id: string | null;
-  attachment_unit_id: string | null;
-  is_active: boolean;
-  discharge_date: string | null;
 }
 
 interface DbRank {
@@ -285,19 +289,19 @@ function IconGroup() {
 function getStatusBadgeStyle(
   status: DbServiceStatus | undefined
 ) {
-  const code = status?.code?.toUpperCase() ?? "";
   const name = status?.name ?? "";
 
-  if (
-    code === "ATTACHED" ||
-    name === "ملحق علي القوة"
-  ) {
+  // ⬅️ استخدام isAttachedStatus الموحدة (lib/personnelRules)
+  //    بدل تكرار الشرط محليًا
+  if (isAttachedStatus(status)) {
     return {
       bg: "#e9f9ff",
       dot: "#29BBD4",
       text: "#146d7c",
     };
   }
+
+  const code = status?.code?.toUpperCase() ?? "";
 
   if (
     code === "LEAVE" ||
@@ -1200,49 +1204,6 @@ function isMainUnitType(
   );
 }
 
-function isConscriptCategory(
-  cat: DbPersonnelCategory | undefined
-): boolean {
-  if (!cat) return false;
-
-  const code =
-    cat.code?.toUpperCase() ?? "";
-
-  return (
-    cat.name === "مجند" ||
-    code === "CONSCRIPT" ||
-    code === "SOLDIER"
-  );
-}
-
-function isVolunteerCategory(
-  cat: DbPersonnelCategory | undefined
-): boolean {
-  if (!cat) return false;
-
-  const code =
-    cat.code?.toUpperCase() ?? "";
-
-  return (
-    cat.name === "متطوع" ||
-    code === "VOLUNTEER"
-  );
-}
-
-function isAttachedStatus(
-  status: DbServiceStatus | undefined
-): boolean {
-  if (!status) return false;
-
-  const code =
-    status.code?.toUpperCase() ?? "";
-
-  return (
-    code === "ATTACHED" ||
-    status.name === "ملحق علي القوة"
-  );
-}
-
 // ترتيب المتطوعين
 const VOLUNTEER_RANK_ORDER = [
   "مساعد اول",
@@ -1386,6 +1347,10 @@ export function UnitDetailPage() {
           unitRow.unit_type
         );
 
+      // ⬅️ ملاحظة: نجيب الأفراد بنفس شرط is_active=true كما كان،
+      //    لكن التصنيف النهائي لمن يُحسب ضمن "القوة" أو "الخوارج"
+      //    بقى بالكامل عبر lib/personnelRules (isCountedInUnitStrength /
+      //    isOutsideOwnUnit) بدل الاعتماد فقط على شرط الاستعلام.
       const [
         personnelResult,
         ranksResult,
@@ -1455,7 +1420,8 @@ export function UnitDetailPage() {
       setUnit(unitRow);
 
       setUnitPersonnel(
-        personnelResult.data ?? []
+        (personnelResult.data ??
+          []) as DbPersonnelRow[]
       );
 
       setRanks(
@@ -1521,11 +1487,10 @@ export function UnitDetailPage() {
   }, [ranks]);
 
   const categoryById = useMemo(() => {
-    const map =
-      new Map<
-        string,
-        DbPersonnelCategory
-      >();
+    const map = new Map<
+      string,
+      CategoryLike
+    >();
 
     categories.forEach((c) =>
       map.set(c.id, c)
@@ -1535,11 +1500,10 @@ export function UnitDetailPage() {
   }, [categories]);
 
   const statusById = useMemo(() => {
-    const map =
-      new Map<
-        string,
-        DbServiceStatus
-      >();
+    const map = new Map<
+      string,
+      StatusLike
+    >();
 
     statuses.forEach((s) =>
       map.set(s.id, s)
@@ -1551,6 +1515,44 @@ export function UnitDetailPage() {
   const isMain = isMainUnitType(
     unit?.unit_type ?? null
   );
+
+  // ─────────────────────────────────────
+  // الأفراد الذين يُحسبون فعليًا لهذه الصفحة
+  // (نفس المجموعة المستخدمة في الإحصائيات وفي الجدول —
+  //  حتى لا يختلف عدد صفوف الجدول عن رقم الكارت)
+  // ─────────────────────────────────────
+  //
+  // - للوحدة الرئيسية: من يتحقق فيه isCountedInUnitStrength
+  //   (قوة الوحدة أو ملحق + نشط + وحدته الأساسية هي هذه الوحدة)
+  // - للوحدة الإدارية: من يتحقق فيه isOutsideOwnUnit
+  //   (فعليًا "ملحق" هنا من وحدة أساسية أخرى)
+  //
+  // ─────────────────────────────────────
+
+  const roster = useMemo<
+    DbPersonnelRow[]
+  >(() => {
+    if (!unit) return [];
+
+    if (isMain) {
+      return unitPersonnel.filter((p) =>
+        isCountedInUnitStrength(
+          p,
+          unit.id,
+          statusById
+        )
+      );
+    }
+
+    return unitPersonnel.filter((p) =>
+      isOutsideOwnUnit(p, statusById)
+    );
+  }, [
+    unit,
+    unitPersonnel,
+    isMain,
+    statusById,
+  ]);
 
   // ─────────────────────────────────────
   // Sorted personnel
@@ -1565,7 +1567,7 @@ export function UnitDetailPage() {
   // ─────────────────────────────────────
 
   const sortedPersonnel = useMemo(() => {
-    return [...unitPersonnel].sort(
+    return [...roster].sort(
       (a, b) => {
         const catA =
           categoryById.get(
@@ -1663,7 +1665,7 @@ export function UnitDetailPage() {
       }
     );
   }, [
-    unitPersonnel,
+    roster,
     categoryById,
     rankById,
   ]);
@@ -1671,13 +1673,19 @@ export function UnitDetailPage() {
   // ─────────────────────────────────────
   // Computed statistics
   // ─────────────────────────────────────
+  //
+  // ⬅️ كل الأرقام هنا مبنية من roster (نفس المجموعة المعروضة
+  //    في الجدول أسفل الصفحة)، وباستخدام نفس دوال lib/personnelRules
+  //    المستخدمة في UnitSoldiersPage و UnitBarChart.
+  //
+  // ─────────────────────────────────────
 
   const computed = useMemo(() => {
     const strengthCount =
-      unitPersonnel.length;
+      roster.length;
 
     const soldiers =
-      unitPersonnel.filter((p) =>
+      roster.filter((p) =>
         isConscriptCategory(
           categoryById.get(
             p.personnel_category_id ?? ""
@@ -1686,7 +1694,7 @@ export function UnitDetailPage() {
       );
 
     const ncos =
-      unitPersonnel.filter((p) =>
+      roster.filter((p) =>
         isVolunteerCategory(
           categoryById.get(
             p.personnel_category_id ?? ""
@@ -1694,12 +1702,13 @@ export function UnitDetailPage() {
         )
       );
 
+    // الخوارج (للوحدة الرئيسية فقط):
+    // جزء من roster نفسه (لأن roster هنا = القوة كاملة)
     const khawarijList = isMain
-      ? unitPersonnel.filter((p) =>
-          isAttachedStatus(
-            statusById.get(
-              p.service_status_id ?? ""
-            )
+      ? roster.filter((p) =>
+          isOutsideOwnUnit(
+            p,
+            statusById
           )
         )
       : [];
@@ -1707,10 +1716,9 @@ export function UnitDetailPage() {
     const soldiersKhawarijCount =
       isMain
         ? soldiers.filter((p) =>
-            isAttachedStatus(
-              statusById.get(
-                p.service_status_id ?? ""
-              )
+            isOutsideOwnUnit(
+              p,
+              statusById
             )
           ).length
         : 0;
@@ -1718,10 +1726,9 @@ export function UnitDetailPage() {
     const ncosKhawarijCount =
       isMain
         ? ncos.filter((p) =>
-            isAttachedStatus(
-              statusById.get(
-                p.service_status_id ?? ""
-              )
+            isOutsideOwnUnit(
+              p,
+              statusById
             )
           ).length
         : 0;
@@ -1775,11 +1782,12 @@ export function UnitDetailPage() {
     ];
 
     // توزيع الأفراد حسب الوحدة الأصلية
+    // (roster هنا للوحدة الإدارية = فقط من تحقق فيهم isOutsideOwnUnit)
     const sourceUnitsCountMap =
       new Map<string, number>();
 
     if (!isMain) {
-      unitPersonnel.forEach((p) => {
+      roster.forEach((p) => {
         const sourceUnitId =
           p.primary_unit_id;
 
@@ -1828,6 +1836,10 @@ export function UnitDetailPage() {
 
       khawarijCount,
 
+      soldiersKhawarijCount,
+
+      ncosKhawarijCount,
+
       khawarijPct,
 
       chartData,
@@ -1848,7 +1860,7 @@ export function UnitDetailPage() {
       sourceUnitsDistribution,
     };
   }, [
-    unitPersonnel,
+    roster,
     categoryById,
     statusById,
     isMain,
@@ -1979,15 +1991,6 @@ export function UnitDetailPage() {
             ),
           icon: <IconSoldiers />,
         },
-
-        {
-          label: "اجمالي الخوارج",
-          value:
-            computed.khawarijCount.toLocaleString(
-              "ar-EG"
-            ),
-          icon: <IconKhawarij />,
-        },
       ]
     : [
         {
@@ -2032,7 +2035,36 @@ export function UnitDetailPage() {
           ),
         },
       ];
+  const KHAWARIJ_STATS = isMain
+    ? [
+        {
+          label: "اجمالي الخوارج",
+          value:
+            computed.khawarijCount.toLocaleString(
+              "ar-EG"
+            ),
+          icon: <IconKhawarij />,
+        },
 
+        {
+          label: "اجمالي خوارج المتطوعين",
+          value:
+            computed.ncosKhawarijCount.toLocaleString(
+              "ar-EG"
+            ),
+          icon: <IconKhawarij />,
+        },
+
+        {
+          label: "اجمالي خوارج الجنود",
+          value:
+            computed.soldiersKhawarijCount.toLocaleString(
+              "ar-EG"
+            ),
+          icon: <IconKhawarij />,
+        },
+      ]
+    : [];
   // ─────────────────────────────────────
   // Render
   // ─────────────────────────────────────
@@ -2113,7 +2145,7 @@ export function UnitDetailPage() {
           </button>
         </div>
 
-        <div className="flex flex-wrap gap-4 w-full">
+             <div className="flex flex-wrap gap-4 w-full">
           {STATS.map((s) => (
             <div
               key={s.label}
@@ -2151,6 +2183,47 @@ export function UnitDetailPage() {
             </div>
           ))}
         </div>
+
+        {isMain && (
+          <div className="flex flex-wrap gap-4 w-full">
+            {KHAWARIJ_STATS.map((s) => (
+              <div
+                key={s.label}
+                className="flex-1 min-w-[120px] bg-white rounded-[16px] border border-[#eff0f6] px-6 py-4 flex items-center gap-3 justify-between"
+              >
+                <div className="flex flex-col items-start gap-2">
+                  <span
+                    style={{
+                      ...F,
+                      fontWeight: 700,
+                      fontSize: 24,
+                      color: "#2d3648",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {s.value}
+                  </span>
+
+                  <span
+                    style={{
+                      ...F,
+                      fontSize: 14,
+                      color: "#717d96",
+                      whiteSpace:
+                        "nowrap",
+                    }}
+                  >
+                    {s.label}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-center shrink-0">
+                  {s.icon}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Charts */}

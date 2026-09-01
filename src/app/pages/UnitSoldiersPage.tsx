@@ -2,6 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import svgPaths from "../../imports/بيانالوحداتالموقفالعامافرادالوحده/svg-gyw4yomx83";
 import { supabase } from "../../lib/supabase";
+import {
+  isOutsideOwnUnit,
+  isVolunteerCategory,
+  isConscriptCategory,
+  computeUnitStrengthStats,
+  type StatusLike,
+  type CategoryLike,
+} from "../../lib/personnelRules";
 
 // ─── Shared style ─────────────────────────────────────────────────────────────
 
@@ -29,6 +37,9 @@ interface SoldierRow {
   status: "داخل الوحده" | "خارج الوحده";
   attachment: string;
   dischargeDate: string;
+  // مبنيّة من lib/personnelRules — مصدر واحد لتعريف "متطوع"/"مجند"
+  isVolunteer: boolean;
+  isConscript: boolean;
 }
 
 interface UnitMeta {
@@ -250,15 +261,6 @@ const VOLUNTEER_RANK_ORDER = [
   "عريف",
 ];
 
-function isVolunteerRow(
-  row: SoldierRow
-): boolean {
-  return (
-    row.serviceType.includes("متطوع") &&
-    !row.serviceType.includes("مجند")
-  );
-}
-
 function getVolunteerRankIndex(
   rank: string
 ): number {
@@ -276,37 +278,20 @@ function sortSoldierRows(
   rows: SoldierRow[]
 ): SoldierRow[] {
   return [...rows].sort((a, b) => {
-    const aIsVolunteer =
-      isVolunteerRow(a);
-
-    const bIsVolunteer =
-      isVolunteerRow(b);
-
-    if (
-      aIsVolunteer &&
-      !bIsVolunteer
-    ) {
+    // ترتيب المتطوعين أولاً — يعتمد على row.isVolunteer
+    // المبني من lib/personnelRules (تطابق تام لاسم الفئة)
+    if (a.isVolunteer && !b.isVolunteer) {
       return -1;
     }
 
-    if (
-      !aIsVolunteer &&
-      bIsVolunteer
-    ) {
+    if (!a.isVolunteer && b.isVolunteer) {
       return 1;
     }
 
-    if (
-      aIsVolunteer &&
-      bIsVolunteer
-    ) {
+    if (a.isVolunteer && b.isVolunteer) {
       return (
-        getVolunteerRankIndex(
-          a.rank
-        ) -
-        getVolunteerRankIndex(
-          b.rank
-        )
+        getVolunteerRankIndex(a.rank) -
+        getVolunteerRankIndex(b.rank)
       );
     }
 
@@ -321,7 +306,7 @@ function formatDischargeDate(
   row: SoldierRow,
   rawDate: string | null
 ): string {
-  if (isVolunteerRow(row)) {
+  if (row.isVolunteer) {
     return "لا يوجد";
   }
 
@@ -673,6 +658,9 @@ export function UnitSoldiersPage() {
       }
 
       // 2) الأفراد
+      // ⬅️ مهم: is_active=true دايمًا شرط أساسي (حسب القاعدة الموحدة
+      //    في lib/personnelRules) — بدونها كانت بتدخل أفراد غير نشطين
+      //    في الحسابات وتسبب اختلاف الأرقام عن باقي الصفحات.
       const {
         data: personnelData,
         error: personnelError,
@@ -690,9 +678,8 @@ export function UnitSoldiersPage() {
           is_active,
           discharge_date
         `)
-        .or(
-          `primary_unit_id.eq.${unitId},attachment_unit_id.eq.${unitId}`
-        )
+        .eq("primary_unit_id", unitId)
+        .eq("is_active", true)
         .order("full_name", {
           ascending: true,
         });
@@ -732,6 +719,8 @@ export function UnitSoldiersPage() {
       }
 
       // 4) تصنيفات الأفراد
+      // ⬅️ نجيب code كمان (مش الاسم بس) عشان نستخدم
+      //    isVolunteerCategory / isConscriptCategory الموحدة
       const categoryIds = [
         ...new Set(
           personnel
@@ -751,7 +740,7 @@ export function UnitSoldiersPage() {
           error,
         } = await supabase
           .from("personnel_categories")
-          .select("id, name")
+          .select("id, name, code")
           .in(
             "id",
             categoryIds
@@ -763,6 +752,30 @@ export function UnitSoldiersPage() {
 
         categories = data ?? [];
       }
+
+      // 4.5) حالات الخدمة
+      // ⬅️ جديد: لم تكن هذه الصفحة تجيب الحالات إطلاقًا من قبل،
+      //    وكانت تحدد "داخل/خارج الوحدة" بمقارنة أرقام الوحدات فقط
+      //    بدل الاعتماد على service_status_id الفعلي.
+      const {
+        data: statusesData,
+        error: statusesError,
+      } = await supabase
+        .from("service_statuses")
+        .select("id, name, code");
+
+      if (statusesError) {
+        throw statusesError;
+      }
+
+      const statusById = new Map<
+        string,
+        StatusLike
+      >(
+        (statusesData ?? []).map(
+          (s: any) => [s.id, s]
+        )
+      );
 
       // 5) كل الوحدات المرتبطة بالأفراد
       const attachmentUnitIds = [
@@ -823,10 +836,22 @@ export function UnitSoldiersPage() {
         ])
       );
 
+      // اسم الفئة (للعرض فقط)
       const categoryMap = new Map(
         categories.map((category) => [
           category.id,
           category.name,
+        ])
+      );
+
+      // كائن الفئة الكامل (للتصنيف عبر lib/personnelRules)
+      const categoryById = new Map<
+        string,
+        CategoryLike
+      >(
+        categories.map((category) => [
+          category.id,
+          category,
         ])
       );
 
@@ -900,6 +925,9 @@ export function UnitSoldiersPage() {
       );
 
       // 7) تحويل البيانات
+      // ⬅️ حالة "داخل/خارج الوحدة" بقت مبنية من isOutsideOwnUnit
+      //    (نفس الدالة المستخدمة في UnitDetailPage و UnitBarChart)
+      //    بدل مقارنة أرقام الوحدات يدويًا.
       const rows: SoldierRow[] =
         personnel.map((person) => {
           const isOwnUnit =
@@ -910,12 +938,27 @@ export function UnitSoldiersPage() {
             person.attachment_unit_id ===
             unitId;
 
-          const isInside =
-            (isOwnUnit &&
-              (!person.attachment_unit_id ||
-                person.attachment_unit_id ===
-                  unitId)) ||
-            isAttachedHere;
+          const isOutside =
+            isOutsideOwnUnit(
+              person,
+              statusById
+            );
+
+          const category =
+            categoryById.get(
+              person.personnel_category_id ??
+                ""
+            );
+
+          const isVolunteer =
+            isVolunteerCategory(
+              category
+            );
+
+          const isConscript =
+            isConscriptCategory(
+              category
+            );
 
           let attachment =
             "لا يوجد";
@@ -970,13 +1013,16 @@ export function UnitSoldiersPage() {
                 ) ??
                 "غير محدد",
 
-              status: isInside
-                ? "داخل الوحده"
-                : "خارج الوحده",
+              status: isOutside
+                ? "خارج الوحده"
+                : "داخل الوحده",
 
               attachment,
 
               dischargeDate: "",
+
+              isVolunteer,
+              isConscript,
             };
 
           return {
@@ -990,33 +1036,16 @@ export function UnitSoldiersPage() {
         });
 
       // 8) الإحصائيات
-      const soldiers =
-        rows.filter(
-          (row) =>
-            row.rank.includes(
-              "جندي"
-            ) ||
-            row.serviceType.includes(
-              "مجند"
-            )
-        ).length;
-
-      const khawarij =
-        rows.filter(
-          (row) =>
-            row.status ===
-            "خارج الوحده"
-        ).length;
-
-      const nco =
-        rows.length - soldiers;
-
-      const remaining =
-        rows.filter(
-          (row) =>
-            row.status ===
-            "داخل الوحده"
-        ).length;
+      // ⬅️ بدل الحساب اليدوي (كان بيعتمد على نص الرتبة/نوع الخدمة)،
+      //    بقينا بنستخدم computeUnitStrengthStats الموحدة، فبتطابق
+      //    تمامًا نفس الأرقام في UnitDetailPage و UnitBarChart.
+      const stats =
+        computeUnitStrengthStats(
+          personnel,
+          unitId,
+          statusById,
+          categoryById
+        );
 
       setUnit({
         id: unitData.id,
@@ -1024,11 +1053,11 @@ export function UnitSoldiersPage() {
         isMain: isMainUnitType(
           unitData.unit_type
         ),
-        total: rows.length,
-        soldiers,
-        nco,
-        khawarij,
-        remaining,
+        total: stats.total,
+        soldiers: stats.soldiers,
+        nco: stats.nco,
+        khawarij: stats.khawarij,
+        remaining: stats.remaining,
         rows: sortSoldierRows(
           rows
         ),
@@ -1082,23 +1111,15 @@ export function UnitSoldiersPage() {
             : row.primaryUnitId ===
               primaryUnitFilter;
 
+        // ⬅️ فلتر الرتبة بقى معتمد على row.isConscript/row.isVolunteer
+        //    (نفس تعريف lib/personnelRules) بدل مقارنة النصوص
         const matchRank =
           rankFilter === "all"
             ? true
             : rankFilter ===
                 "soldiers"
-              ? row.rank.includes(
-                  "جندي"
-                ) ||
-                row.serviceType.includes(
-                  "مجند"
-                )
-              : !row.rank.includes(
-                  "جندي"
-                ) &&
-                !row.serviceType.includes(
-                  "مجند"
-                );
+              ? row.isConscript
+              : row.isVolunteer;
 
         const normalizedSearch =
           search.trim();

@@ -90,6 +90,11 @@ const PATH_ROLE_MAP: { prefix: string; roles: RoleCode[] }[] = [
   prefix: "/dashboard/archive",
    roles: ["ADMIN", "ARCHIVE_OFFICER",'USER'],
 },
+  {
+    prefix: "/dashboard/training-recommendations",
+    roles: ALL_ROLES,
+  },
+
 ];
 
 function isPathAllowed(pathname: string, role: RoleCode): boolean {

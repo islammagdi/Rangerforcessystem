@@ -44,7 +44,39 @@ const toArabicDigits = (
     return "٠١٢٣٤٥٦٧٨٩"[Number(digit)];
   });
 };
+const renderTextWithDates = (
+  text: string
+): React.ReactNode[] => {
+  const parts = text.split(
+    /(\d{1,4}[\/\-]\d{1,2}[\/\-]\d{1,4})/g
+  );
 
+  return parts.map((part, index) => {
+    const isDate =
+      /^\d{1,4}[\/\-]\d{1,2}[\/\-]\d{1,4}$/.test(part);
+
+    if (isDate) {
+      return (
+        <span
+          key={index}
+          style={{
+            direction: "ltr",
+            unicodeBidi: "isolate",
+            display: "inline-block",
+          }}
+        >
+          {toArabicDigits(part)}
+        </span>
+      );
+    }
+
+    return (
+      <span key={index}>
+        {toArabicDigits(part)}
+      </span>
+    );
+  });
+};
 const getRelationObject = <T,>(
   value: T | T[] | null | undefined
 ): T | null => {
@@ -768,9 +800,7 @@ const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
                 الفرد المذكور اسمه بعد بمهامته
                 وملبوساته الأميرية وذلك بعد انتهاء
                 عمله (مأمورية تدريبية){" "}
-                {toArabicDigits(
-                  reason || "أوامر قيادة"
-                )}{" "}
+                {renderTextWithDates(reason || "أوامر قيادة")}{" "}
                 وبياناته كالتالي:
               </>
             ) : (
@@ -783,9 +813,7 @@ const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
                 الفرد المذكور اسمه بعد بمهامته
                 وملبوساته الأميرية وذلك للعمل
                 (مأمورية تدريبية) طرفكم{" "}
-                {toArabicDigits(
-                  reason || "أوامر قيادة"
-                )}{" "}
+                {renderTextWithDates(reason || "أوامر قيادة")}{" "}
                 بالمكان الموضح قرينه وبياناته
                 كالتالي:
               </>
@@ -800,9 +828,7 @@ const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
               الأفراد المذكورة أسمائهم بعد
               بمهامتهم وملبوساتهم الأميرية وذلك
               بعد انتهاء عملهم (مأمورية تدريبية){" "}
-              {toArabicDigits(
-                reason || "أوامر قيادة"
-              )}{" "}
+              {renderTextWithDates(reason || "أوامر قيادة")}{" "}
               وبياناتهم كالتالي:
             </>
           ) : (
@@ -815,9 +841,7 @@ const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
               الأفراد المذكورة أسمائهم بعد
               بمهامتهم وملبوساتهم الأميرية وذلك
               للعمل (مأمورية تدريبية) طرفكم{" "}
-              {toArabicDigits(
-                reason || "أوامر قيادة"
-              )}{" "}
+              {renderTextWithDates(reason || "أوامر قيادة")}{" "}
               بالأماكن الموضحة قرين كلا منهم
               وبياناتهم كالتالي:
             </>
@@ -970,57 +994,56 @@ const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
   </div>
 )}
 
-        {/* Signature */}
-        <div
-          className="signature-block"
-          style={{
-            ...PF,
-            fontSize: 14,
-            marginTop: 28,
-            width: "fit-content",
-            maxWidth: "100%",
-            marginLeft: 0,
-            marginRight: "auto",
-            direction: "rtl",
-            textAlign: "justify",
-            textAlignLast: "right",
-          }}
-        >
-          <p
-            style={{
-              margin: 0,
-              fontWeight: 700,
-              whiteSpace: "pre",
-            }}
-          >
-            {"التوقيع (                             )"}
-          </p>
+       {/* Signature */}
+<div
+  className="signature-block"
+  style={{
+    ...PF,
+    fontSize: 14,
+    marginTop: 28,
+    width: "fit-content",
+    maxWidth: "100%",
+    marginLeft: 0,
+    marginRight: "auto",
+    direction: "rtl",
+    textAlign: "justify",
+    textAlignLast: "justify",   // كانت "right"
+  }}
+>
+  <p
+    style={{
+      margin: 0,
+      fontWeight: 700,
+      whiteSpace: "pre",
+    }}
+  >
+    {"التوقيع (                             )"}
+  </p>
 
-          <p
-            style={{
-              margin: "6px 0 0",
-              fontWeight: 700,
-            }}
-          >
-            {toArabicDigits(
-              branchHeadRank || "جاري تحميل الرتبة"
-            )}{" "}
-            /{" "}
-            {toArabicDigits(
-              branchHeadName || "جاري تحميل الاسم"
-            )}
-          </p>
+  <p
+    style={{
+      margin: "6px 0 0",
+      fontWeight: 700,
+    }}
+  >
+    {toArabicDigits(
+      branchHeadRank || "جاري تحميل الرتبة"
+    )}{" "}
+    /{" "}
+    {toArabicDigits(
+      branchHeadName || "جاري تحميل الاسم"
+    )}
+  </p>
 
-          <p
-            style={{
-              margin: "4px 0 0",
-              fontWeight: 700,
-              
-            }}
-          >
-            رئـــيس فـــرع التنظيــــم والاداره
-          </p>
-        </div>
+  <p
+    style={{
+      margin: "4px 0 0",
+      fontWeight: 700,
+    }}
+  >
+    رئيــــس فــــرع التنظيــــم والاداره
+  </p>
+</div>
       </div>
 
       <style>

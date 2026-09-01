@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
+import {
+  computeKhawarijByUnit,
+  type StatusLike,
+} from "../../../lib/personnelRules";
 
 interface ChartData {
   name: string;
@@ -128,19 +132,24 @@ export function UnitBarChart() {
       setLoading(true);
 
       // ============================================================
-      // 1. جلب حالة ATTACHED
+      // 1. جلب كل حالات الخدمة (لبناء statusById)
+      //
+      // ⬅️ بدل جلب حالة ATTACHED فقط، نجيب كل الحالات ونستخدم
+      //    نفس دالة isOutsideOwnUnit الموحدة (lib/personnelRules)
+      //    اللي بتستخدمها UnitDetailPage و UnitSoldiersPage —
+      //    فيتطابق تعريف "الخارج" هنا مع باقي الصفحات تمامًا.
       // ============================================================
 
-      const { data: statuses, error: statusesError } =
-        await supabase
-          .from("service_statuses")
-          .select("id, code")
-          .eq("code", "ATTACHED")
-          .single();
+      const {
+        data: statusesData,
+        error: statusesError,
+      } = await supabase
+        .from("service_statuses")
+        .select("id, name, code");
 
       if (statusesError) {
         console.error(
-          "خطأ في جلب حالة ATTACHED:",
+          "خطأ في جلب حالات الخدمة:",
           statusesError
         );
 
@@ -148,82 +157,103 @@ export function UnitBarChart() {
         return;
       }
 
-      if (!statuses) {
-        console.error(
-          "لم يتم العثور على حالة ATTACHED"
-        );
-
-        setChartData([]);
-        return;
-      }
-
-      const attachedStatusId = statuses.id;
+      const statusById = new Map<
+        string,
+        StatusLike
+      >(
+        (statusesData ?? []).map(
+          (s: any) => [s.id, s]
+        )
+      );
 
       // ============================================================
-      // 2. جلب الأفراد الموجودين كخوارج فقط
+      // 2. جلب كل الأفراد النشطين مع وحدتهم الأساسية
       //
-      // الخوارج = ATTACHED فقط
-      //
-      // OUTSIDE_FORCE لا يدخل
-      // DISCHARGED لا يدخل
-      // UNIT_FORCE لا يدخل
+      // ⬅️ لازم نجيب attachment_unit_id و primary_unit_id صراحةً
+      //    حتى تستطيع isOutsideOwnUnit التأكد من الشروط الأربعة
+      //    كاملة (is_active + الحالة "ملحق" + وجود attachment_unit_id
+      //    + وجود primary_unit_id)، بدل الاكتفاء بفلترة الحالة فقط
+      //    زي ما كان يحصل قبل كده (وده كان يسمح بمرور بيانات غير
+      //    مكتملة ضمن العدّ).
       // ============================================================
 
-      const { data, error } = await supabase
-        .from("personnel")
-        .select(`
-          id,
-          service_status_id,
-          primary_unit_id,
-          units:primary_unit_id (
-            id,
-            name
-          )
-        `)
-        .eq("service_status_id", attachedStatusId)
-        .eq("is_active", true);
+      const PAGE_SIZE = 1000;
+let personnel: any[] = [];
+let from = 0;
 
-      if (error) {
-        console.error(
-          "خطأ في تحميل بيانات الوحدات:",
-          error
-        );
+while (true) {
+  const { data, error } = await supabase
+    .from("personnel")
+    .select(`
+      id,
+      service_status_id,
+      primary_unit_id,
+      attachment_unit_id,
+      is_active,
+      units:primary_unit_id (
+        id,
+        name
+      )
+    `)
+    .eq("is_active", true)
+    .range(from, from + PAGE_SIZE - 1);
 
-        setChartData([]);
-        return;
-      }
+  if (error) {
+    console.error(
+      "خطأ في تحميل بيانات الوحدات:",
+      error
+    );
 
-      const personnel = data ?? [];
+    setChartData([]);
+    return;
+  }
+
+  const batch = data ?? [];
+  personnel = personnel.concat(batch);
+
+  if (batch.length < PAGE_SIZE) {
+    // وصلنا لآخر صفحة (عدد الصفوف الراجعة أقل من حجم الصفحة)
+    break;
+  }
+
+  from += PAGE_SIZE;
+}
 
       // ============================================================
-      // 3. تجميع الخوارج حسب الوحدة الأساسية
+      // 3. خريطة اسم الوحدة الأساسية (من الـ join)
       // ============================================================
 
-      const grouped = new Map<string, number>();
+      const unitNameById = new Map<string, string>();
 
       personnel.forEach((person: any) => {
-        const unitName =
-          person.units?.name || "بدون وحدة";
-
-        grouped.set(
-          unitName,
-          (grouped.get(unitName) || 0) + 1
-        );
+        if (
+          person.primary_unit_id &&
+          person.units?.name
+        ) {
+          unitNameById.set(
+            person.primary_unit_id,
+            person.units.name
+          );
+        }
       });
 
       // ============================================================
-      // 4. تحويل البيانات للرسم
+      // 4. تجميع الخوارج حسب الوحدة الأساسية — بنفس تعريف
+      //    isOutsideOwnUnit الموحد، ثم أعلى 7 وحدات فقط.
       // ============================================================
 
-      const result: ChartData[] = Array.from(
-        grouped.entries()
-      )
-        .map(([name, value]) => ({
-          name,
-          value,
-        }))
-        .sort((a, b) => b.value - a.value)
-        .slice(0, 7);
+      const distribution = computeKhawarijByUnit(
+        personnel as any,
+        statusById,
+        unitNameById
+      );
+
+      const result: ChartData[] = distribution
+        .slice(0, 7)
+        .map((row) => ({
+          name: row.unitName,
+          value: row.count,
+        }));
 
       setChartData(result);
 

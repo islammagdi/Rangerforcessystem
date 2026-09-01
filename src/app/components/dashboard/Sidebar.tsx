@@ -16,11 +16,14 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { supabase } from "../../../lib/supabase";
-
-
+import { FileText } from "lucide-react";
+import { FileDown } from "lucide-react";
+import { FileUp } from "lucide-react";
+import { SquareX } from "lucide-react";
 // =====================================================
 // Types
 // =====================================================
@@ -65,8 +68,9 @@ const LABEL_TO_PATH: Record<string, string> = {
   "النسخ الاحتياطي للبيانات": "/dashboard/data-backup",
   "سجل العمليات": "/dashboard/activity-log",
   "رؤساء فرع التنظيم": "/dashboard/manage-branch-heads",
-"الأرشيف - صادر": "/dashboard/archive/outgoing",
-"الأرشيف - وارد": "/dashboard/archive/incoming",
+"الفاكسات - الصادر": "/dashboard/archive/outgoing",
+"الفاكسات - الوارد": "/dashboard/archive/incoming",
+"كشوف التوصيات": "/dashboard/training-recommendations",
 };
 // =====================================================
 // Logo
@@ -455,6 +459,9 @@ if (pathname.includes("/archive/outgoing")) {
 if (pathname.includes("/archive/incoming")) {
   return "الأرشيف - وارد";
 }
+if (pathname.includes("/training-recommendations")) {
+  return "كشوف التوصيات";
+}
 
     return "الموقف العام";
   }
@@ -615,6 +622,8 @@ async function handleLogout() {
             "PERSONNEL_OFFICER",
           ],
         },
+        
+         
 
         {
           icon: (
@@ -629,7 +638,18 @@ async function handleLogout() {
             "ARCHIVE_OFFICER",
           ],
         },
-
+     {
+   
+  icon: <FileSpreadsheet size={18} />,
+  label: "كشوف التوصيات",
+  section: "الخطابات",
+  roles: [
+    "ADMIN",
+    "PERSONNEL_OFFICER",
+    "ARCHIVE_OFFICER",
+    "USER",
+  ],
+},
 
         // -------------------------------
         // اليوميات
@@ -637,7 +657,7 @@ async function handleLogout() {
 
         {
           icon: (
-            <CalendarDays
+            <FileText
               size={18}
             />
           ),
@@ -733,17 +753,17 @@ async function handleLogout() {
   roles: ["ADMIN"],
 },
 {
-  icon: <FolderOpen size={18} />,
-  label: "الأرشيف - صادر",
+  icon: <FileUp size={18} />,
+  label: "الفاكسات - الصادر",
   section: "الأرشيف",
-roles: ["ADMIN", "ARCHIVE_OFFICER",'USER'],
+  roles: ["ADMIN", "ARCHIVE_OFFICER", "USER"],
 },
 
 {
-  icon: <FolderOpen size={18} />,
-  label: "الأرشيف - وارد",
+  icon: <FileDown size={18} />,
+  label: "الفاكسات - الوارد",
   section: "الأرشيف",
-  roles: ["ADMIN", "ARCHIVE_OFFICER",'USER'],
+  roles: ["ADMIN", "ARCHIVE_OFFICER", "USER"],
 },
 
       ],
