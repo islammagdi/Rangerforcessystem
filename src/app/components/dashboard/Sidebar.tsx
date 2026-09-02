@@ -362,6 +362,15 @@ export function Sidebar({
   // ===================================================
   // Active Label
   // ===================================================
+  //
+  // ⬅️ الفيكس: بدل قايمة if/includes يدوية منفصلة عن LABEL_TO_PATH
+  //    (وده اللي كان بيسبب اختلاف الأسامي زي "الأرشيف - صادر" بدل
+  //    "الفاكسات - الصادر"، وتطابق ناقص زي "/backup" بدل "data-backup"،
+  //    وتصادم بين "دفعات الرديف" و"إدارة دفعات الرديف")، بقينا
+  //    بندوّر مباشرة جوه LABEL_TO_PATH نفسها عن أقرب مسار مطابق.
+  //    بالطريقة دي، الاسم اللي بيتلوّن في الشريط الجانبي بييجي
+  //    دايمًا من نفس المصدر اللي بيحدد الروابط، فمستحيل يحصل
+  //    اختلاف بينهم تاني.
 
   function getActiveLabel(
     pathname?: string
@@ -370,98 +379,37 @@ export function Sidebar({
       return "الموقف العام";
     }
 
-    if (pathname === "/dashboard") {
-      return "الموقف العام";
+    // تطابق تام أولاً (أدق حالة)
+    const exactMatch = Object.entries(
+      LABEL_TO_PATH
+    ).find(
+      ([, path]) => path === pathname
+    );
+
+    if (exactMatch) {
+      return exactMatch[0];
     }
 
-    if (
-      pathname.includes(
-        "/individual-query"
+    // تطابق جزئي (مثلاً صفحة تفاصيل تحت
+    // مسار رئيسي، زي .../individual-query/soldier/123)
+    // بنختار أطول مسار متطابق عشان نتجنب
+    // تصادم بين مسارين متشابهين في الاسم
+    const partialMatches = Object.entries(
+      LABEL_TO_PATH
+    )
+      .filter(
+        ([, path]) =>
+          path !== "/dashboard" &&
+          pathname.startsWith(path)
       )
-    ) {
-      return "الاستعلام عن فرد";
-    }
+      .sort(
+        (a, b) =>
+          b[1].length - a[1].length
+      );
 
-    if (
-      pathname.includes("/add-soldier")
-    ) {
-      return "اضافة قوة جديدة";
+    if (partialMatches.length > 0) {
+      return partialMatches[0][0];
     }
-
-    if (
-      pathname.includes("/units-report")
-    ) {
-      return "بيان الوحدات";
-    }
-
-    if (
-      pathname.includes("/issue-letter")
-    ) {
-      return "إصدار خطاب";
-    }
-
-    if (
-      pathname.includes(
-        "/letters-archive"
-      )
-    ) {
-      return "سجل الخطابات";
-    }
-
-    if (
-      pathname.includes("/daily-reports")
-    ) {
-      return "اليوميات";
-    }
-
-    if (
-      pathname.includes("/reserve-batches")
-    ) {
-      return "دفعات الرديف";
-    }
-
-    if (
-      pathname.includes("/manage-units")
-    ) {
-      return "ادارة الوحدات";
-    }
-
-    if (
-      pathname.includes("/manage-users")
-    ) {
-      return "ادارة المستخدمين";
-    }
-
-    if (
-      pathname.includes("/backup")
-    ) {
-      return "النسخ الاحتياطي للبيانات";
-    }
-
-    if (
-      pathname.includes("/activity-log")
-    ) {
-      return "سجل العمليات";
-    }
-    if (pathname.includes("/backup")) {
-  return "النسخ الاحتياطي للبيانات";
-}
-if (pathname.includes("/manage-branch-heads")) {
-  return "رؤساء فرع التنظيم";
-}
-if (pathname.includes("/reserve-batches-overview")) {
-  return "إدارة دفعات الرديف";
-}
-if (pathname.includes("/archive/outgoing")) {
-  return "الأرشيف - صادر";
-}
-
-if (pathname.includes("/archive/incoming")) {
-  return "الأرشيف - وارد";
-}
-if (pathname.includes("/training-recommendations")) {
-  return "كشوف التوصيات";
-}
 
     return "الموقف العام";
   }

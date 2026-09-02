@@ -714,57 +714,7 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
         </div>
       )}
 
-      <SectionTitle>إحصائيات اليوم</SectionTitle>
-
-      <div className="flex gap-4 w-full">
-        <div className="flex-1">
-          <button
-            type="button"
-            onClick={() =>
-              todayStats.dischargedToday > 0 && setOpenModal("discharged")
-            }
-            className="w-full block text-right"
-            style={{
-              cursor: todayStats.dischargedToday > 0 ? "pointer" : "default",
-            }}
-          >
-            <StatCard
-              icon={<PeopleIcon />}
-              value={
-                loadingTodayStats ? "..." : formatNumber(todayStats.dischargedToday)
-              }
-              label="تم إنهاء خدمتهم اليوم"
-            />
-          </button>
-        </div>
-
-        <div className="flex-1">
-          <button
-            type="button"
-            onClick={() =>
-              todayStats.lettersToday > 0 && setOpenModal("letters")
-            }
-            className="w-full block text-right"
-            style={{
-              cursor: todayStats.lettersToday > 0 ? "pointer" : "default",
-            }}
-          >
-            <StatCard
-              icon={<IdCardIcon />}
-              value={loadingTodayStats ? "..." : formatNumber(todayStats.lettersToday)}
-              label="خطابات صادرة اليوم"
-            />
-          </button>
-        </div>
-
-        <div className="flex-1">
-          <StatCard
-            icon={<PersonCheckIcon />}
-            value={loadingTodayStats ? "..." : formatNumber(todayStats.activitiesToday)}
-            label="عملياتك اليوم"
-          />
-        </div>
-      </div>
+   
 
       <SectionTitle>الموقف العام للقوة الحالية</SectionTitle>
 
