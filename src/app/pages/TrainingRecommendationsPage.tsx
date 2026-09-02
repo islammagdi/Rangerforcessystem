@@ -583,6 +583,10 @@ export function TrainingRecommendationsPage() {
               <p>فـــرع التنظيـــم والإدارة</p>
               <p>التاريخ: ${formattedDate}</p>
             </div>
+                      <div class="title">
+           <h1>كشف توصيات المرحلة التجنيدية ${toArabicDigits(stageLabel)}</h1>
+                        <h2>(${toArabicDigits(listLabel)})</h2>
+          </div>
             <img
               src="https://qgsqlqlkdppxljyjujsq.supabase.co/storage/v1/object/sign/images/Logo_Ranger.png?token=eyJraWQiOiJlZTY4MzBjYi1hMmVmLTQyN2EtOWRiZi1hNWZmZmY0MjFjY2QiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJpbWFnZXMvTG9nb19SYW5nZXIucG5nIiwic2NvcGUiOiJkb3dubG9hZCIsImlhdCI6MTc4ODE2OTY2OCwiZXhwIjozMzMyNDE2OTY2OH0.tkuKl6uwrAXAaGcMC5r2hGtXP9uWCREsbZYcBxdgdFw"
               class="logo"
@@ -590,10 +594,7 @@ export function TrainingRecommendationsPage() {
             />
           </div>
 
-          <div class="title">
-           <h1>كشف توصيات المرحلة التجنيدية ${toArabicDigits(stageLabel)}</h1>
-                        <h2>(${toArabicDigits(listLabel)})</h2>
-          </div>
+
 
           <div class="table-container">
             <table>
