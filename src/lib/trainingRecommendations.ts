@@ -340,8 +340,7 @@ export async function logRecommendationChanges(
     else action = "تعديل";
 
     const fieldLabel = FIELD_LABELS[key];
-    const message = `قام ${userName} بتعديل توصية ${fullName}: ${action} ${fieldLabel} بتاريخ: ${formatArabicDateTime(now)}`;
-
+    const message = `قام ${userName} بتعديل توصية ${fullName}: ${action} ${fieldLabel} الى "${newVal}" بتاريخ: ${formatArabicDateTime(now)}`;
     entries.push({
       recommendation_id: recommendationId,
       user_name: userName,

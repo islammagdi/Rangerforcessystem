@@ -9,6 +9,7 @@ import {
   Cell,
   PieChart,
   Pie,
+  Tooltip,
 } from "recharts";
 import { ArrowDownUp, Building2 } from "lucide-react";
 
@@ -501,6 +502,30 @@ function UnitBarChart({
             width={45}
             orientation="right"
             allowDecimals={false}
+          />
+
+          <Tooltip
+            shared={false}
+            cursor={{ fill: "rgba(0,0,0,0.04)" }}
+            contentStyle={{
+              fontFamily: "'Almarai', sans-serif",
+              fontSize: 13,
+              borderRadius: 8,
+              border: "1px solid #eff0f6",
+              direction: "rtl",
+              textAlign: "right",
+            }}
+            labelStyle={{
+              fontFamily: "'Almarai', sans-serif",
+              fontWeight: 700,
+              color: "#2d3648",
+            }}
+                        itemStyle={{
+              fontFamily: "'Almarai', sans-serif",
+              color: "#2d3648",
+              fontWeight: 700,
+            }}
+            formatter={(value: number, name: string) => [value, name]}
           />
 
           <Bar

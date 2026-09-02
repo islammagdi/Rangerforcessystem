@@ -496,14 +496,16 @@ function UnitSoldiersPrintReport({
             </span>
           )}
 
-          <span
-            style={{
-              ...F,
-              fontSize: 14,
-            }}
-          >
-            المتبقي: {unit.remaining} فرد
-          </span>
+          {unit.isMain && (
+            <span
+              style={{
+                ...F,
+                fontSize: 14,
+              }}
+            >
+              المتبقي: {unit.remaining} فرد
+            </span>
+          )}
         </div>
       </div>
 
@@ -640,6 +642,8 @@ export function UnitSoldiersPage() {
       setError("");
 
       // 1) الوحدة
+      // ⬅️ لازم نجيبها الأول عشان نعرف isMain، لأن استعلام الأفراد
+      //    بعد كده بيتغير شكله بالكامل حسب نوع الوحدة.
       const {
         data: unitData,
         error: unitError,
@@ -657,14 +661,20 @@ export function UnitSoldiersPage() {
         throw unitError;
       }
 
+      const isMain = isMainUnitType(
+        unitData.unit_type
+      );
+
       // 2) الأفراد
       // ⬅️ مهم: is_active=true دايمًا شرط أساسي (حسب القاعدة الموحدة
       //    في lib/personnelRules) — بدونها كانت بتدخل أفراد غير نشطين
       //    في الحسابات وتسبب اختلاف الأرقام عن باقي الصفحات.
-      const {
-        data: personnelData,
-        error: personnelError,
-      } = await supabase
+      //
+      // ⬅️ الفيكس: الوحدة الأساسية تجيب الأفراد بمقارنة primary_unit_id،
+      //    أما الوحدة الإدارية فتجيب الأفراد بمقارنة attachment_unit_id
+      //    (فرد ملحق بالوحدة الإدارية دي)، مش primary_unit_id، وإلا
+      //    مفيش نتائج أبدًا للوحدات الإدارية.
+      let personnelQuery = supabase
         .from("personnel")
         .select(`
           id,
@@ -678,20 +688,83 @@ export function UnitSoldiersPage() {
           is_active,
           discharge_date
         `)
-        .eq("primary_unit_id", unitId)
-        .eq("is_active", true)
-        .order("full_name", {
-          ascending: true,
-        });
+        .eq("is_active", true);
+
+      personnelQuery = isMain
+        ? personnelQuery.eq(
+            "primary_unit_id",
+            unitId
+          )
+        : personnelQuery.eq(
+            "attachment_unit_id",
+            unitId
+          );
+
+      const {
+        data: personnelRaw,
+        error: personnelError,
+      } = await personnelQuery.order(
+        "full_name",
+        { ascending: true }
+      );
 
       if (personnelError) {
         throw personnelError;
       }
 
-      const personnel =
-        personnelData ?? [];
+      // 3) حالات الخدمة
+      // ⬅️ لازم نجيبها قبل فلترة الأفراد عشان نقدر نطبّق شرط الحالة:
+      //    - وحدة أساسية: "ملحق" أو "قوة الوحدة"
+      //    - وحدة إدارية: "ملحق" فقط
+      const {
+        data: statusesData,
+        error: statusesError,
+      } = await supabase
+        .from("service_statuses")
+        .select("id, name, code");
 
-      // 3) الرتب
+      if (statusesError) {
+        throw statusesError;
+      }
+
+      const statusById = new Map<
+        string,
+        StatusLike
+      >(
+        (statusesData ?? []).map(
+          (s: any) => [s.id, s]
+        )
+      );
+
+function isAllowedStatus(
+  statusId: string | null | undefined
+): boolean {
+  // ⬅️ الوحدة الأساسية: تعرض كل الأفراد اللي primary_unit_id بتاعهم
+  //    = الوحدة دي، بغض النظر عن حالة الخدمة. التصنيف داخل/خارج
+  //    الوحدة بيتحسب لاحقًا عبر isOutsideOwnUnit وبيتفلتر من الجدول
+  //    نفسه (فلتر "داخل/خارج الوحدة")، مش عن طريق استبعاد حالات هنا.
+  if (isMain) {
+    return true;
+  }
+
+  // ⬅️ الوحدة الإدارية: لسه محتاجين نقصر على "ملحق" بس، لأن دي اللي
+  //    فعلاً بتمثل إلحاق الفرد بالوحدة الإدارية دي.
+  const name = statusById
+    .get(statusId ?? "")
+    ?.name?.trim();
+
+  return name === "ملحق";
+}
+
+      const personnel = (
+        personnelRaw ?? []
+      ).filter((p) =>
+        isAllowedStatus(
+          p.service_status_id
+        )
+      );
+
+      // 4) الرتب
       const rankIds = [
         ...new Set(
           personnel
@@ -718,7 +791,7 @@ export function UnitSoldiersPage() {
         ranks = data ?? [];
       }
 
-      // 4) تصنيفات الأفراد
+      // 5) تصنيفات الأفراد
       // ⬅️ نجيب code كمان (مش الاسم بس) عشان نستخدم
       //    isVolunteerCategory / isConscriptCategory الموحدة
       const categoryIds = [
@@ -753,31 +826,7 @@ export function UnitSoldiersPage() {
         categories = data ?? [];
       }
 
-      // 4.5) حالات الخدمة
-      // ⬅️ جديد: لم تكن هذه الصفحة تجيب الحالات إطلاقًا من قبل،
-      //    وكانت تحدد "داخل/خارج الوحدة" بمقارنة أرقام الوحدات فقط
-      //    بدل الاعتماد على service_status_id الفعلي.
-      const {
-        data: statusesData,
-        error: statusesError,
-      } = await supabase
-        .from("service_statuses")
-        .select("id, name, code");
-
-      if (statusesError) {
-        throw statusesError;
-      }
-
-      const statusById = new Map<
-        string,
-        StatusLike
-      >(
-        (statusesData ?? []).map(
-          (s: any) => [s.id, s]
-        )
-      );
-
-      // 5) كل الوحدات المرتبطة بالأفراد
+      // 6) كل الوحدات المرتبطة بالأفراد
       const attachmentUnitIds = [
         ...new Set(
           personnel
@@ -862,7 +911,7 @@ export function UnitSoldiersPage() {
         ])
       );
 
-      // 6) Dropdown الوحدات الأساسية
+      // 7) Dropdown الوحدات الأساسية
       // يظهر فقط في الوحدة الإدارية
       const uniquePrimaryUnitIds = [
         ...new Set(
@@ -924,7 +973,7 @@ export function UnitSoldiersPage() {
         }
       );
 
-      // 7) تحويل البيانات
+      // 8) تحويل البيانات
       // ⬅️ حالة "داخل/خارج الوحدة" بقت مبنية من isOutsideOwnUnit
       //    (نفس الدالة المستخدمة في UnitDetailPage و UnitBarChart)
       //    بدل مقارنة أرقام الوحدات يدويًا.
@@ -1035,24 +1084,61 @@ export function UnitSoldiersPage() {
           };
         });
 
-      // 8) الإحصائيات
-      // ⬅️ بدل الحساب اليدوي (كان بيعتمد على نص الرتبة/نوع الخدمة)،
-      //    بقينا بنستخدم computeUnitStrengthStats الموحدة، فبتطابق
-      //    تمامًا نفس الأرقام في UnitDetailPage و UnitBarChart.
-      const stats =
-        computeUnitStrengthStats(
-          personnel,
-          unitId,
-          statusById,
-          categoryById
-        );
+      // 9) الإحصائيات
+      // ⬅️ الوحدة الأساسية: بنستخدم computeUnitStrengthStats الموحدة
+      //    (بتطابق تمامًا نفس الأرقام في UnitDetailPage و UnitBarChart)
+      //    لأنها مبنية على منطق "الوحدة الأساسية" (primary_unit_id).
+      //
+      // ⬅️ الوحدة الإدارية: computeUnitStrengthStats بترجع كل الأرقام
+      //    صفر هنا لأنها بتقارن primary_unit_id بـ unitId، وأفراد
+      //    الوحدة الإدارية أصلاً primary_unit_id بتاعهم مختلف (هما
+      //    بس ملحقين). فبنحسب القوة/ضباط الصف/الجنود مباشرة من
+      //    قايمة `personnel` المفلترة أصلاً (ملحق + attachment_unit_id
+      //    = الوحدة)، وبدون "المتبقي" لأنه مفهوم خاص بالوحدة الأساسية.
+      const stats = isMain
+        ? computeUnitStrengthStats(
+            personnel,
+            unitId,
+            statusById,
+            categoryById
+          )
+        : (() => {
+            const nco =
+              personnel.filter(
+                (p) =>
+                  isVolunteerCategory(
+                    categoryById.get(
+                      p.personnel_category_id ??
+                        ""
+                    )
+                  )
+              ).length;
+
+            const soldiers =
+              personnel.filter(
+                (p) =>
+                  isConscriptCategory(
+                    categoryById.get(
+                      p.personnel_category_id ??
+                        ""
+                    )
+                  )
+              ).length;
+
+            return {
+              total:
+                personnel.length,
+              soldiers,
+              nco,
+              khawarij: 0,
+              remaining: 0,
+            };
+          })();
 
       setUnit({
         id: unitData.id,
         name: unitData.name,
-        isMain: isMainUnitType(
-          unitData.unit_type
-        ),
+        isMain,
         total: stats.total,
         soldiers: stats.soldiers,
         nco: stats.nco,
@@ -1331,12 +1417,12 @@ export function UnitSoldiersPage() {
                       label: "خوارج:",
                       value: `${unit.khawarij} فرد`,
                     },
+                    {
+                      label: "المتبقي:",
+                      value: `${unit.remaining} فرد`,
+                    },
                   ]
                 : []),
-              {
-                label: "المتبقي:",
-                value: `${unit.remaining} فرد`,
-              },
             ].map((s, i, arr) => (
               <div
                 key={s.label}
@@ -1411,8 +1497,8 @@ export function UnitSoldiersPage() {
 
       {/* Soldiers section */}
 
-      <div className="bg-white w-full rounded-[12px] border border-[#eff0f6] overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#eff0f6]">
+      <div className="bg-white w-full rounded-[12px] border border-[#eff0f6]">
+        <div className="sticky top-0 z-10 bg-white rounded-t-[12px] flex items-center justify-between px-5 py-4 border-b border-[#eff0f6]">
           <h2
             style={{
               ...F,
@@ -1461,7 +1547,7 @@ export function UnitSoldiersPage() {
 
         {/* Filters */}
 
-        <div className="flex items-end gap-4 flex-wrap px-5 py-4 border-b border-[#eff0f6]">
+        <div className="sticky top-[65px] z-10 bg-white flex items-end gap-4 flex-wrap px-5 py-4 border-b border-[#eff0f6]">
 
           {/* Search */}
 

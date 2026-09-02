@@ -591,8 +591,8 @@ export function TrainingRecommendationsPage() {
           </div>
 
           <div class="title">
-            <h1>كشف توصيات المرحلة التجنيدية ${stageLabel}</h1>
-            <h2>(${listLabel})</h2>
+           <h1>كشف توصيات المرحلة التجنيدية ${toArabicDigits(stageLabel)}</h1>
+                        <h2>(${toArabicDigits(listLabel)})</h2>
           </div>
 
           <div class="table-container">

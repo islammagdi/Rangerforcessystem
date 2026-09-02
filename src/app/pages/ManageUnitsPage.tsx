@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, Plus, Pencil, Power, X } from "lucide-react";
+import { Search, Plus, Pencil, Power, X, Download } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import * as XLSX from "xlsx";
 
 interface Unit {
   id: string;
@@ -49,6 +50,15 @@ export function ManageUnitsPage() {
   const [errorMessage, setErrorMessage] =
     useState("");
 
+  // Modal تصدير إكسيل
+  const [showExportModal, setShowExportModal] =
+    useState(false);
+
+  const [exportTypeFilter, setExportTypeFilter] =
+    useState<TypeFilter>("الكل");
+
+  const [exportStatusFilter, setExportStatusFilter] =
+    useState<StatusFilter>("الكل");
   // ============================================================
   // تحميل الوحدات
   // ============================================================
@@ -560,6 +570,54 @@ export function ManageUnitsPage() {
   }
 
   // ============================================================
+  // تصدير الوحدات إلى إكسيل
+  // ============================================================
+
+  function handleExportExcel() {
+    const rowsToExport = units.filter((unit) => {
+      const matchesType =
+        exportTypeFilter === "الكل"
+          ? true
+          : exportTypeFilter === "اساسي"
+          ? unit.unit_type === "MAIN"
+          : unit.unit_type === "MANAGE";
+
+      const matchesStatus =
+        exportStatusFilter === "الكل"
+          ? true
+          : exportStatusFilter === "نشطه"
+          ? unit.is_active === true
+          : unit.is_active === false;
+
+      return matchesType && matchesStatus;
+    });
+
+    const excelData = rowsToExport.map((unit, index) => ({
+      "#": index + 1,
+      "اسم الوحدة": unit.name || "بدون اسم",
+      الكود: unit.code || "-",
+      النوع: unit.unit_type === "MAIN" ? "أساسية" : "فرعية",
+      الحالة: unit.is_active ? "نشطة" : "مغلقة",
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    worksheet["!cols"] = [
+      { wch: 6 },
+      { wch: 30 },
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 12 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "الوحدات");
+
+    const today = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(workbook, `كشف_الوحدات_${today}.xlsx`);
+
+    setShowExportModal(false);
+  }
+  // ============================================================
   // Loading
   // ============================================================
 
@@ -611,20 +669,34 @@ export function ManageUnitsPage() {
           </p>
         </div>
 
-        <button
-          onClick={openAddModal}
-          className="flex items-center gap-2 px-5 py-3 rounded-xl text-white font-bold"
-          style={{
-            backgroundColor:
-              "#344736",
-            fontFamily:
-              "'Almarai', sans-serif",
-          }}
-        >
-          <Plus size={19} />
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={() => setShowExportModal(true)}
+            className="flex items-center gap-2 px-5 py-3 rounded-xl text-[#344736] font-bold border border-[#344736]"
+            style={{
+              backgroundColor: "#ffffff",
+              fontFamily: "'Almarai', sans-serif",
+            }}
+          >
+            <Download size={19} />
+            تصدير إكسيل
+          </button>
 
-          إضافة وحدة
-        </button>
+          <button
+            onClick={openAddModal}
+            className="flex items-center gap-2 px-5 py-3 rounded-xl text-white font-bold"
+            style={{
+              backgroundColor:
+                "#344736",
+              fontFamily:
+                "'Almarai', sans-serif",
+            }}
+          >
+            <Plus size={19} />
+
+            إضافة وحدة
+          </button>
+        </div>
       </div>
 
       {/* ======================================================
@@ -1179,7 +1251,6 @@ export function ManageUnitsPage() {
                   ? "حفظ التعديل"
                   : "إضافة الوحدة"}
               </button>
-
               <button
                 onClick={closeModal}
                 disabled={saving}
@@ -1196,10 +1267,138 @@ export function ManageUnitsPage() {
 
       )}
 
+      {/* ======================================================
+          Modal تصدير إكسيل
+      ====================================================== */}
+
+      {showExportModal && (
+
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl">
+
+            {/* Header */}
+
+            <div className="flex items-center justify-between p-5 border-b">
+
+              <h2
+                className="text-lg font-bold text-[#2d3648]"
+                style={{
+                  fontFamily: "'Almarai', sans-serif",
+                }}
+              >
+                تصدير الوحدات إلى إكسيل
+              </h2>
+
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="p-2 rounded-lg hover:bg-gray-100"
+              >
+                <X size={20} />
+              </button>
+
+            </div>
+
+            {/* Body */}
+
+            <div className="p-5 space-y-5">
+
+              {/* فلتر النوع */}
+
+              <div>
+                <label
+                  className="block mb-2 text-sm font-bold text-gray-700"
+                  style={{
+                    fontFamily: "'Almarai', sans-serif",
+                  }}
+                >
+                  النوع
+                </label>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {(["الكل", "اساسي", "فرعي"] as TypeFilter[]).map(
+                    (opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => setExportTypeFilter(opt)}
+                        className={`py-2.5 rounded-xl border font-bold text-sm ${
+                          exportTypeFilter === opt
+                            ? "bg-[#344736] text-white border-[#344736]"
+                            : "bg-white text-gray-600 border-gray-200"
+                        }`}
+                      >
+                        {opt === "اساسي" ? "أساسية" : opt === "فرعي" ? "فرعية" : "الكل"}
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+
+              {/* فلتر الحالة */}
+
+              <div>
+                <label
+                  className="block mb-2 text-sm font-bold text-gray-700"
+                  style={{
+                    fontFamily: "'Almarai', sans-serif",
+                  }}
+                >
+                  الحالة
+                </label>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {(["الكل", "نشطه", "مغلقه"] as StatusFilter[]).map(
+                    (opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => setExportStatusFilter(opt)}
+                        className={`py-2.5 rounded-xl border font-bold text-sm ${
+                          exportStatusFilter === opt
+                            ? "bg-[#344736] text-white border-[#344736]"
+                            : "bg-white text-gray-600 border-gray-200"
+                        }`}
+                      >
+                        {opt === "نشطه" ? "نشطة" : opt === "مغلقه" ? "مغلقة" : "الكل"}
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Footer */}
+
+            <div className="p-5 border-t flex gap-3">
+
+              <button
+                onClick={handleExportExcel}
+                className="flex-1 py-3 rounded-xl bg-[#344736] text-white font-bold flex items-center justify-center gap-2"
+              >
+                <Download size={18} />
+                تحميل ملف الإكسيل
+              </button>
+
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="px-5 py-3 rounded-xl bg-gray-100 text-gray-700 font-bold"
+              >
+                إلغاء
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      )}
+
     </div>
   );
 }
-
 // ============================================================
 // Components
 // ============================================================

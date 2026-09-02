@@ -217,6 +217,111 @@ const BREADCRUMB_RULES: {
       { label: "النسخ الاحتياطي للبيانات", path: null },
     ],
   },
+
+  // ── كشوف التوصيات ──────────────────────────────────
+  {
+    test: (p) => p === "/dashboard/training-recommendations",
+    build: () => [
+      { label: "الموقف العام", path: "/dashboard" },
+      { label: "كشوف التوصيات", path: null },
+    ],
+  },
+  {
+    test: (p) => p === "/dashboard/training-recommendations/new",
+    build: () => [
+      { label: "الموقف العام", path: "/dashboard" },
+      {
+        label: "كشوف التوصيات",
+        path: "/dashboard/training-recommendations",
+      },
+      { label: "إضافة توصية", path: null },
+    ],
+  },
+  {
+    test: (p) =>
+      /^\/dashboard\/training-recommendations\/[^/]+$/.test(p) &&
+      !p.endsWith("/new"),
+    build: () => [
+      { label: "الموقف العام", path: "/dashboard" },
+      {
+        label: "كشوف التوصيات",
+        path: "/dashboard/training-recommendations",
+      },
+      { label: "تعديل توصية", path: null },
+    ],
+  },
+
+  // ── الفاكسات - الصادر ──────────────────────────────
+  {
+    test: (p) => p === "/dashboard/archive/outgoing",
+    build: () => [
+      { label: "الموقف العام", path: "/dashboard" },
+      { label: "الفاكسات - الصادر", path: null },
+    ],
+  },
+  {
+    test: (p) => p === "/dashboard/archive/outgoing/new",
+    build: () => [
+      { label: "الموقف العام", path: "/dashboard" },
+      { label: "الفاكسات - الصادر", path: "/dashboard/archive/outgoing" },
+      { label: "إضافة فاكس صادر", path: null },
+    ],
+  },
+  {
+    test: (p) =>
+      /^\/dashboard\/archive\/outgoing\/[^/]+$/.test(p) &&
+      !p.endsWith("/new"),
+    build: () => [
+      { label: "الموقف العام", path: "/dashboard" },
+      { label: "الفاكسات - الصادر", path: "/dashboard/archive/outgoing" },
+      { label: "بيانات الفاكس", path: null },
+    ],
+  },
+
+  // ── الفاكسات - الوارد ──────────────────────────────
+  {
+    test: (p) => p === "/dashboard/archive/incoming",
+    build: () => [
+      { label: "الموقف العام", path: "/dashboard" },
+      { label: "الفاكسات - الوارد", path: null },
+    ],
+  },
+  {
+    test: (p) => p === "/dashboard/archive/incoming/new",
+    build: () => [
+      { label: "الموقف العام", path: "/dashboard" },
+      { label: "الفاكسات - الوارد", path: "/dashboard/archive/incoming" },
+      { label: "إضافة فاكس وارد", path: null },
+    ],
+  },
+  {
+    test: (p) =>
+      /^\/dashboard\/archive\/incoming\/[^/]+$/.test(p) &&
+      !p.endsWith("/new"),
+    build: () => [
+      { label: "الموقف العام", path: "/dashboard" },
+      { label: "الفاكسات - الوارد", path: "/dashboard/archive/incoming" },
+      { label: "بيانات الفاكس", path: null },
+    ],
+  },
+
+  // ── رؤساء فرع التنظيم والإدارة ──────────────────────
+  {
+    test: (p) => p === "/dashboard/manage-branch-heads",
+    build: () => [
+      { label: "الموقف العام", path: "/dashboard" },
+      { label: "رؤساء فرع التنظيم والإدارة", path: null },
+    ],
+  },
+
+  // ── إدارة دفعات الرديف ──────────────────────────────
+  {
+    test: (p) => p === "/dashboard/manage-reserve-batches",
+    build: () => [
+      { label: "الموقف العام", path: "/dashboard" },
+      { label: "إدارة دفعات الرديف", path: null },
+    ],
+  },
 ];
 
 export function getBreadcrumbs(pathname: string): BreadcrumbStep[] {
