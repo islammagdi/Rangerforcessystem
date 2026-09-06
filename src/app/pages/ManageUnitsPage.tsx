@@ -672,7 +672,7 @@ export function ManageUnitsPage() {
         <div className="flex items-center gap-3 flex-wrap">
           <button
             onClick={() => setShowExportModal(true)}
-            className="flex items-center gap-2 px-5 py-3 rounded-xl text-[#344736] font-bold border border-[#344736]"
+            className="flex items-center gap-2 px-5 py-3 rounded-xl text-[#00B867] font-bold border border-[#00B867]"
             style={{
               backgroundColor: "#ffffff",
               fontFamily: "'Almarai', sans-serif",
@@ -687,7 +687,7 @@ export function ManageUnitsPage() {
             className="flex items-center gap-2 px-5 py-3 rounded-xl text-white font-bold"
             style={{
               backgroundColor:
-                "#344736",
+                "#00B867",
               fontFamily:
                 "'Almarai', sans-serif",
             }}
@@ -1196,7 +1196,7 @@ export function ManageUnitsPage() {
                     className={`py-3 rounded-xl border font-bold ${
                       unitType ===
                       "MAIN"
-                        ? "bg-[#344736] text-white border-[#344736]"
+                        ? "bg-[#00B867] text-white border-[#00B867]"
                         : "bg-white text-gray-600 border-gray-200"
                     }`}
                   >
@@ -1213,7 +1213,7 @@ export function ManageUnitsPage() {
                     className={`py-3 rounded-xl border font-bold ${
                       unitType ===
                       "MANAGE"
-                        ? "bg-[#344736] text-white border-[#344736]"
+                        ? "bg-[#00B867] text-white border-[#00B867]"
                         : "bg-white text-gray-600 border-gray-200"
                     }`}
                   >
@@ -1243,7 +1243,7 @@ export function ManageUnitsPage() {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex-1 py-3 rounded-xl bg-[#344736] text-white font-bold disabled:opacity-50"
+                className="flex-1 py-3 rounded-xl bg-[#00B867] text-white font-bold disabled:opacity-50"
               >
                 {saving
                   ? "جاري الحفظ..."
@@ -1324,7 +1324,7 @@ export function ManageUnitsPage() {
                         onClick={() => setExportTypeFilter(opt)}
                         className={`py-2.5 rounded-xl border font-bold text-sm ${
                           exportTypeFilter === opt
-                            ? "bg-[#344736] text-white border-[#344736]"
+                            ? "bg-[#00B867] text-white border-[#00B867]"
                             : "bg-white text-gray-600 border-gray-200"
                         }`}
                       >
@@ -1356,7 +1356,7 @@ export function ManageUnitsPage() {
                         onClick={() => setExportStatusFilter(opt)}
                         className={`py-2.5 rounded-xl border font-bold text-sm ${
                           exportStatusFilter === opt
-                            ? "bg-[#344736] text-white border-[#344736]"
+                            ? "bg-[#00B867] text-white border-[#00B867]"
                             : "bg-white text-gray-600 border-gray-200"
                         }`}
                       >
@@ -1375,7 +1375,7 @@ export function ManageUnitsPage() {
 
               <button
                 onClick={handleExportExcel}
-                className="flex-1 py-3 rounded-xl bg-[#344736] text-white font-bold flex items-center justify-center gap-2"
+                className="flex-1 py-3 rounded-xl bg-[#00B867] text-white font-bold flex items-center justify-center gap-2"
               >
                 <Download size={18} />
                 تحميل ملف الإكسيل
@@ -1447,7 +1447,7 @@ function FilterButton({
       onClick={onClick}
       className={`px-4 py-2 rounded-lg text-sm font-bold transition ${
         active
-          ? "bg-[#344736] text-white"
+          ? "bg-[#00B867] text-white"
           : "bg-gray-100 text-gray-600 hover:bg-gray-200"
       }`}
       style={{

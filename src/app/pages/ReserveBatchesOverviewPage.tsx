@@ -344,6 +344,12 @@ export function ReserveBatchesOverviewPage() {
   const [soldierCounts, setSoldierCounts] = useState<Record<string, number>>(
     {}
   );
+  // ⬅️ عدد الأفراد "لسه بالخدمة" فقط لكل دفعة — يستخدم فقط في فحص
+  //    منع إلغاء تفعيل الدفعة، منفصل عن عمود "عدد الجنود" المعروض
+  //    (اللي المفروض يبقى العدد الكامل بغض النظر عن is_active)
+  const [activeSoldierCounts, setActiveSoldierCounts] = useState<
+    Record<string, number>
+  >({});
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -353,7 +359,14 @@ export function ReserveBatchesOverviewPage() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   // ✅ فلاتر جدول الدفعات
-  const [batchFilter, setBatchFilter] = useState<string>("all");
+const [yearFilter, setYearFilter] = useState<string>("all");
+
+// السنة الحالية + 5 سنين قادمة (تستخدم في فلتر السنة فوق الجدول)
+const currentYear = new Date().getFullYear();
+const yearFilterOptions = Array.from(
+  { length: 6 },
+  (_, i) => currentYear + i
+);
   const [statusFilter, setStatusFilter] = useState<
     "all" | "active" | "inactive"
   >("all");
@@ -385,9 +398,15 @@ export function ReserveBatchesOverviewPage() {
       setBatches(loadedBatches);
 
       // ---------------------------------------------------
-      // 2) فئة "مجند" — عدد الجنود بيتحسب من الأفراد اللي
-      // discharge_date بتاعهم بيساوي تاريخ الدفعة، وفئتهم مجند،
-      // وهم لسه بالخدمة (is_active = true)
+      // 2) فئة "مجند" — عدد الجنود بيتحسب من كل الأفراد اللي
+      // discharge_date بتاعهم بيساوي تاريخ الدفعة، وفئتهم مجند.
+      // ⬅️ الفيكس: العدد المعروض في عمود "عدد الجنود" لازم يشمل
+      //    كل الأفراد بغض النظر عن is_active (زي ما هو متفق عليه)،
+      //    مش بس اللي لسه بالخدمة. ده كان بيسبب نقصان العدد لو فيه
+      //    أفراد اتسرّحوا فعلاً وبقى is_active = false عندهم لكن
+      //    تاريخ تسريحهم لسه بيطابق تاريخ الدفعة.
+      //    بنحسب في نفس الوقت "عدد اللي لسه بالخدمة" في map منفصل
+      //    (activeCounts) عشان يُستخدم بس في فحص منع إلغاء التفعيل.
       // ---------------------------------------------------
 
       const { data: conscriptCategory, error: categoryError } =
@@ -400,25 +419,68 @@ export function ReserveBatchesOverviewPage() {
       if (categoryError) throw categoryError;
 
       if (conscriptCategory && loadedBatches.length > 0) {
-        const { data: personnelData, error: personnelError } =
-          await supabase
-            .from("personnel")
-            .select("discharge_date")
-            .eq("personnel_category_id", conscriptCategory.id)
-            .eq("is_active", true)
-            .not("discharge_date", "is", null);
+        // ⬅️ الفيكس: Supabase بيرجّع 1000 صف كحد أقصى في الاستعلام
+        //    الواحد افتراضيًا. إجمالي عدد المجندين اللي عندهم تاريخ
+        //    تسريح ممكن يتخطى الرقم ده بكتير (2135 فرد مثلاً)، فكنا
+        //    بنجيب بس أول 1000 صف ويضيع باقي الأفراد من غير أي خطأ
+        //    ظاهر. الحل إننا نجيب البيانات على "صفحات" كل واحدة
+        //    1000 صف بالتتابع، ونكرر لحد ما نجيب كل الصفوف فعلاً.
+        const PAGE_SIZE = 1000;
+        let allPersonnel: {
+          discharge_date: string;
+          is_active: boolean;
+        }[] = [];
+        let page = 0;
 
-        if (personnelError) throw personnelError;
+        while (true) {
+          const from = page * PAGE_SIZE;
+          const to = from + PAGE_SIZE - 1;
+
+          const { data: personnelPage, error: personnelError } =
+            await supabase
+              .from("personnel")
+              .select("discharge_date, is_active")
+              .eq("personnel_category_id", conscriptCategory.id)
+              .not("discharge_date", "is", null)
+              .range(from, to);
+
+          if (personnelError) throw personnelError;
+
+          allPersonnel = allPersonnel.concat(personnelPage ?? []);
+
+          // لو الصفحة رجعت أقل من PAGE_SIZE، يبقى ده آخر صفحة
+          if (!personnelPage || personnelPage.length < PAGE_SIZE) {
+            break;
+          }
+
+          page += 1;
+        }
 
         const counts: Record<string, number> = {};
+        const activeCounts: Record<string, number> = {};
 
-        (personnelData ?? []).forEach((p: { discharge_date: string }) => {
-          counts[p.discharge_date] = (counts[p.discharge_date] ?? 0) + 1;
-        });
+        allPersonnel.forEach(
+          (p: { discharge_date: string; is_active: boolean }) => {
+            // ⬅️ تطبيع التاريخ لأول 10 خانات (YYYY-MM-DD) احتياطًا
+            //    لو discharge_date مخزّن كـ timestamp وفيه جزء وقت
+            //    زيادة، عشان يتطابق دايمًا مع batch_date بغض النظر
+            //    عن الوقت المخزّن معاه.
+            const dateKey = (p.discharge_date ?? "").slice(0, 10);
+
+            counts[dateKey] = (counts[dateKey] ?? 0) + 1;
+
+            if (p.is_active) {
+              activeCounts[dateKey] =
+                (activeCounts[dateKey] ?? 0) + 1;
+            }
+          }
+        );
 
         setSoldierCounts(counts);
+        setActiveSoldierCounts(activeCounts);
       } else {
         setSoldierCounts({});
+        setActiveSoldierCounts({});
       }
       console.table(batchesData);
     } catch (err: any) {
@@ -447,10 +509,15 @@ export function ReserveBatchesOverviewPage() {
     // الدفعة القادمة = أقرب دفعة تاريخها >= اليوم (upcoming مرتبة تصاعديًا بالفعل)
     const nextBatch = upcoming.length > 0 ? upcoming[0] : null;
 
+    const activeCount = batches.filter((b) => b.is_active).length;
+    const inactiveCount = batches.length - activeCount;
+
     return {
       total: batches.length,
       upcomingCount: upcoming.length,
       pastCount: past.length,
+      activeCount,
+      inactiveCount,
       nextBatch,
     };
   }, [batches]);
@@ -461,11 +528,13 @@ export function ReserveBatchesOverviewPage() {
   // الباقي في نفس الوقت
   // ---------------------------------------------------------
 
-  const filteredBatches = useMemo(() => {
+const filteredBatches = useMemo(() => {
     let list = batches;
 
-    if (batchFilter !== "all") {
-      list = list.filter((b) => b.id === batchFilter);
+    if (yearFilter !== "all") {
+      list = list.filter(
+        (b) => b.batch_date.slice(0, 4) === yearFilter
+      );
     }
 
     if (statusFilter !== "all") {
@@ -486,7 +555,7 @@ export function ReserveBatchesOverviewPage() {
     }
 
     return list;
-  }, [batches, soldierCounts, batchFilter, statusFilter, countSort]);
+  }, [batches, soldierCounts, yearFilter, statusFilter, countSort]);
 
   // ---------------------------------------------------------
   // تفعيل / إلغاء تفعيل دفعة
@@ -497,11 +566,13 @@ export function ReserveBatchesOverviewPage() {
 
     // ✅ منع إلغاء تفعيل دفعة لسه فيها أفراد "بالخدمة" لم تُنهَ
     // إجراءات تسريحهم بعد. الفحص بيطبّق بس عند "إلغاء التفعيل"
-    // (مش عند "إعادة التنشيط")، وبيعتمد على نفس القيمة المعروضة
-    // في عمود "عدد الجنود" (soldierCounts) عشان يكون متطابق تمامًا
-    // مع اللي شايفه المستخدم في الجدول.
+    // (مش عند "إعادة التنشيط")، وبيعتمد على activeSoldierCounts
+    // (عدد اللي لسه بالخدمة فقط) — مش soldierCounts (العدد الكامل
+    // المعروض في الجدول) — عشان الفحص ده معناه فعليًا "فيه حد لسه
+    // ما اتسرّحش"، مش "فيه سجل مرتبط بالدفعة".
     if (batch.is_active) {
-      const activeSoldiersCount = soldierCounts[batch.batch_date] ?? 0;
+      const activeSoldiersCount =
+        activeSoldierCounts[batch.batch_date] ?? 0;
 
       if (activeSoldiersCount > 0) {
         setError(
@@ -654,23 +725,37 @@ export function ReserveBatchesOverviewPage() {
           <div className="flex flex-wrap gap-4 w-full">
             <StatCard
               icon={<Layers size={20} color="#00b867" />}
-              label="إجمالي عدد الدفعات"
+              label="إجمالي  الدفعات"
               value={stats.total.toLocaleString("ar-EG")}
               accent="#00b867"
             />
 
             <StatCard
               icon={<Clock size={20} color="#1f3d97" />}
-              label="عدد الدفعات القادمة"
+              label=" الدفعات القادمة"
               value={stats.upcomingCount.toLocaleString("ar-EG")}
               accent="#1f3d97"
             />
 
-            <StatCard
+              <StatCard
               icon={<History size={20} color="#a1aebe" />}
-              label="عدد الدفعات السابقة"
+              label=" الدفعات السابقة"
               value={stats.pastCount.toLocaleString("ar-EG")}
               accent="#717d96"
+            />
+
+            <StatCard
+              icon={<CheckCircle2 size={20} color="#00b867" />}
+              label=" الدفعات النشطة"
+              value={stats.activeCount.toLocaleString("ar-EG")}
+              accent="#00b867"
+            />
+
+            <StatCard
+              icon={<XCircle size={20} color="#e34040" />}
+              label=" الدفعات غير النشطة"
+              value={stats.inactiveCount.toLocaleString("ar-EG")}
+              accent="#e34040"
             />
           </div>
 
@@ -726,26 +811,26 @@ export function ReserveBatchesOverviewPage() {
 
             {batches.length > 0 && (
               <div className="flex flex-wrap items-end gap-3 px-6 py-4 border-b border-[#e2e7f0]">
-                {/* فلتر الدفعة */}
+                           {/* فلتر السنة */}
 
                 <div className="flex flex-col gap-1.5 flex-1 min-w-[180px]">
                   <label
                     style={{ ...F, fontSize: 13, color: "#717d96" }}
                   >
-                    الدفعة
+                    السنة
                   </label>
 
                   <select
-                    value={batchFilter}
-                    onChange={(e) => setBatchFilter(e.target.value)}
+                    value={yearFilter}
+                    onChange={(e) => setYearFilter(e.target.value)}
                     dir="rtl"
                     className="w-full h-[44px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867] bg-white"
                     style={{ ...F, fontSize: 14, color: "#2d3648" }}
                   >
-                    <option value="all">كل الدفعات</option>
-                    {batches.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {getBatchLabel(b)}
+                    <option value="all">كل السنوات</option>
+                    {yearFilterOptions.map((y) => (
+                      <option key={y} value={String(y)}>
+                        {y}
                       </option>
                     ))}
                   </select>

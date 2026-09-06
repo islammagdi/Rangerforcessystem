@@ -44,6 +44,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/user-guide": "دليل استخدام المنظومة",
   "/dashboard/archive/outgoing": "الأرشيف / صادر",
   "/dashboard/archive/incoming": "الأرشيف / وارد",
+  "/dashboard/manage-unified-registry": "إدارة ملف القيد الموحّد",
 };
 // ============================================================
 // صلاحيات الوصول لكل مسار — نفس الأدوار المستخدمة في Sidebar
@@ -94,6 +95,10 @@ const PATH_ROLE_MAP: { prefix: string; roles: RoleCode[] }[] = [
     prefix: "/dashboard/training-recommendations",
     roles: ALL_ROLES,
   },
+  {
+  prefix: "/dashboard/manage-unified-registry",
+  roles: ["ADMIN"],
+},
 
 ];
 
@@ -330,6 +335,9 @@ else if (label === "صادر") {
 
 else if (label === "وارد") {
   navigate("/dashboard/archive/incoming");
+}
+else if (label === "إدارة ملف القيد الموحّد") {
+  navigate("/dashboard/manage-unified-registry");
 }
   }
 

@@ -863,12 +863,12 @@ const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
                 textAlign: "center",
               }}
             >
-              {[
+                            {[
                 "م",
                 "الدرجة",
                 "الاسم",
                 "الوحدة",
-                "وحدة الإلحاق",
+                isDetach ? "ملاحظات" : "وحدة الإلحاق",
               ].map((header) => (
                 <th
                   key={header}
@@ -927,20 +927,20 @@ const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
                   {toArabicDigits(soldier.unit)}
                 </td>
 
-                <td
+                              <td
                   style={{
                     padding: "5px",
                     border: "1px solid #eee",
                     textAlign: "center",
                   }}
                 >
-                  {toArabicDigits(
-                    isDetach
-                      ? "-"
-                      : soldier.attachmentUnit ||
+                  {isDetach
+                    ? "\u00A0" /* عمود ملاحظات فارغ في حالة إنهاء الإلحاق */
+                    : toArabicDigits(
+                        soldier.attachmentUnit ||
                           attachmentPlace ||
                           "-"
-                  )}
+                      )}
                 </td>
               </tr>
             ))}
@@ -1078,7 +1078,7 @@ const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
 
             .letter-preview {
               box-shadow: none !important;
-              border: 1.5px solid #000 !important;
+             border: none !important;
               margin: 0 !important;
               max-width: none !important;
               padding: 16px !important;
@@ -1798,19 +1798,54 @@ export function LetterReviewPage() {
       window.clearTimeout(timer);
     };
   }, [success, navigate]);
-
   /* =======================================================
      Print
      ---------------------------------------------------
-     المطلوب: طباعة نفس الخطاب مرتين في نفس صفحة الـ A4
-     (نسختين فوق بعض)، بدل نسخة واحدة بس.
+     المطلوب: طباعة نسختين من الخطاب.
 
-     الحل: بناخد outerHTML بتاع .letter-preview مرة واحدة
-     ونكرره جوه اتنين <div class="print-copy"> داخل
-     <div class="print-page">، مع تصغير بسيط (transform:
-     scale) لكل نسخة عشان النسختين يتظبطوا في ارتفاع صفحة
-     A4 واحدة من غير ما حد فيهم يتقطع لصفحة تانية.
+     - لو الخطاب قصير (عدد أفراد قليل) → نسختين مصغّرتين فوق
+       بعض في نفس ورقة A4 واحدة (زي الأول بالظبط).
+
+     - لو الخطاب طويل (عدد أفراد كبير وهيقرب من ورقة كاملة) →
+       نسختين، كل واحدة في ورقة A4 كاملة منفصلة (صفحتين ورق)،
+       من غير أي تصغير أو قص، عشان الجدول والتوقيع ميتقصوش.
+
+     بنحدد أي الحالتين عن طريق قياس الارتفاع الحقيقي للخطاب لو
+     اتطبع بعرض ورقة A4 الفعلي (مش عرضه الظاهر على الشاشة).
   ======================================================= */
+
+  function measureLetterHeightMM(
+    letterElement: HTMLElement
+  ): number {
+    // عرض منطقة الطباعة الفعلي: A4 = 210مم، ناقص هامشين 10مم
+    // من كل جانب (حسب @page margin: 10mm المستخدم في الطباعة)
+    const PRINT_CONTENT_WIDTH_MM = 190;
+    const PX_PER_MM = 96 / 25.4; // ≈ 3.7795
+
+    const clone = letterElement.cloneNode(
+      true
+    ) as HTMLElement;
+
+    // نخفي النسخة تمامًا عن الشاشة، لكن لازم تفضل جوه الـ DOM
+    // عشان المتصفح يقدر يحسب لها ارتفاع حقيقي
+    clone.style.position = "fixed";
+    clone.style.top = "-99999px";
+    clone.style.left = "-99999px";
+    clone.style.margin = "0";
+    clone.style.maxWidth = "none";
+    clone.style.width = `${
+      PRINT_CONTENT_WIDTH_MM * PX_PER_MM
+    }px`;
+
+    document.body.appendChild(clone);
+
+    const heightPx =
+      clone.getBoundingClientRect().height;
+
+    document.body.removeChild(clone);
+
+    return heightPx / PX_PER_MM;
+  }
 
   const handlePrintLetter = () => {
     const letterElement =
@@ -1855,6 +1890,233 @@ export function LetterReviewPage() {
         letterData.destination || ""
       }`.trim();
 
+    // ---------------------------------------------------
+    // نحدد هل الخطاب "قصير" (تدخل نسختين مصغّرتين في ورقة
+    // واحدة براحة) ولا "طويل" (محتاج ورقة كاملة لكل نسخة)
+    // ---------------------------------------------------
+
+    const heightMM =
+      measureLetterHeightMM(letterElement);
+
+    // المساحة المتاحة لكل نسخة في وضع "نسختين بورقة واحدة"
+    // تقريبًا 135مم (277مم متاحة ÷ 2)، وبنستخدم سقف أقل من
+    // كده كهامش أمان قبل ما نضطر ننتقل لوضع "ورقة لكل نسخة"
+    const MAX_HEIGHT_FOR_TWO_PER_PAGE_MM = 125;
+
+    const fitsTwoPerPage =
+      heightMM <=
+      MAX_HEIGHT_FOR_TWO_PER_PAGE_MM;
+
+    // ---------------------------------------------------
+    // القالب المشترك (CSS عام يستخدم في الحالتين)
+    // ---------------------------------------------------
+
+    const sharedStyles = `
+      @page {
+        size: A4;
+        margin: 10mm;
+      }
+
+      * {
+        box-sizing: border-box;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        min-height: 100%;
+        background: #fff;
+      }
+
+      body {
+        direction: rtl;
+        font-family: 'Times New Roman', Times, serif;
+      }
+
+       .letter-preview {
+        display: flex !important;
+        flex-direction: column !important;
+        width: 100% !important;
+        height: 100% !important;
+        max-width: none !important;
+        margin: 0 !important;
+        padding: 10px !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        background: #fff !important;
+      }
+
+      /* بلوك التوقيع دايمًا يتلزق في آخر الإطار/الصفحة، مهما
+         كان طول المحتوى اللي فوقه — margin-top: auto بتاخد كل
+         المسافة الفاضية فوقيها وتدفع البلوك لتحت */
+      .signature-block {
+        margin-top: auto !important;
+      }
+
+      .print-logo {
+        width: 55px !important;
+        height: 55px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        flex-shrink: 0 !important;
+      }
+
+      .print-logo img {
+        width: 55px !important;
+        height: 55px !important;
+        max-width: 55px !important;
+        max-height: 55px !important;
+        object-fit: contain !important;
+      }
+
+      table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+      }
+
+      th,
+      td {
+        border: 1px solid #ddd !important;
+      }
+
+      img {
+        display: block;
+      }
+    `;
+
+    // ---------------------------------------------------
+    // الحالة 1: خطاب قصير → نسختين مصغّرتين في ورقة واحدة
+    // (نفس الأسلوب القديم)
+    // ---------------------------------------------------
+
+    const twoPerPageBody = `
+      <div class="print-page">
+        <div class="print-frame">
+          <div class="print-copy">
+            ${letterHtml}
+          </div>
+        </div>
+
+        <div class="print-frame">
+          <div class="print-copy">
+            ${letterHtml}
+          </div>
+        </div>
+      </div>
+    `;
+
+    const twoPerPageStyles = `
+      ${sharedStyles}
+
+      .print-page {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        height: 277mm;
+        gap: 4mm;
+      }
+
+      /* الفريم الرمادي الخفيف — ارتفاع ثابت بالمليمتر بالظبط
+         (مش نسبة مئوية) عشان نضمن تساوي النسختين 100% بغض
+         النظر عن أي فروق في حساب المتصفح وقت الطباعة الفعلية */
+      .print-frame {
+        height: 136.5mm;
+        width: 100%;
+        border: 1px solid #ddd;
+        box-sizing: border-box;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        page-break-inside: avoid;
+      }
+
+      .print-copy {
+        width: 100%;
+        height: 100%;
+        flex: 1;
+        transform: scale(0.94);
+        transform-origin: top center;
+      }
+
+      @media print {
+        html,
+        body {
+          width: 100%;
+          min-height: 100%;
+          overflow: visible !important;
+        }
+
+        .print-page {
+          page-break-inside: avoid;
+        }
+      }
+    `;
+
+    // ---------------------------------------------------
+    // الحالة 2: خطاب طويل → كل نسخة في ورقة A4 كاملة منفصلة
+    // من غير أي تصغير أو قص، مع فاصل صفحة إجباري بين النسختين
+    // ---------------------------------------------------
+    const twoFullPagesBody = `
+      <div class="print-frame-full">
+        <div class="print-copy-full">
+          ${letterHtml}
+        </div>
+      </div>
+
+      <div class="page-break"></div>
+
+      <div class="print-frame-full">
+        <div class="print-copy-full">
+          ${letterHtml}
+        </div>
+      </div>
+    `;
+
+    const twoFullPagesStyles = `
+      ${sharedStyles}
+
+      .print-frame-full {
+        min-height: 277mm;
+        width: 100%;
+        border: 1px solid #ddd;
+        box-sizing: border-box;
+        padding: 6mm;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .print-copy-full {
+        width: 100%;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .page-break {
+        page-break-before: always;
+        break-before: page;
+        height: 0;
+      }
+
+      tr {
+        page-break-inside: avoid;
+      }
+    `;
+
+    const finalBody = fitsTwoPerPage
+      ? twoPerPageBody
+      : twoFullPagesBody;
+
+    const finalStyles = fitsTwoPerPage
+      ? twoPerPageStyles
+      : twoFullPagesStyles;
+
     printWindow.document.open();
 
     printWindow.document.write(`
@@ -1871,120 +2133,12 @@ export function LetterReviewPage() {
           <title>${pdfTitle}</title>
 
           <style>
-            @page {
-              size: A4;
-              margin: 10mm;
-            }
-
-            * {
-              box-sizing: border-box;
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-            }
-
-            html,
-            body {
-              margin: 0;
-              padding: 0;
-              width: 100%;
-              min-height: 100%;
-              background: #fff;
-            }
-
-            body {
-              direction: rtl;
-              font-family:
-                'Times New Roman',
-                Times,
-                serif;
-            }
-
-            /* الصفحة مقسومة لنصين، كل نص فيه نسخة كاملة من الخطاب */
-            .print-page {
-              display: flex;
-              flex-direction: column;
-              justify-content: flex-start;
-              gap: 6mm;
-              width: 100%;
-              height: 277mm;
-            }
-
-            .print-copy {
-              flex: 1 1 50%;
-              overflow: hidden;
-              transform: scale(0.94);
-              transform-origin: top center;
-              page-break-inside: avoid;
-            }
-
-            .letter-preview {
-              display: block !important;
-              width: 100% !important;
-              max-width: none !important;
-              margin: 0 !important;
-              padding: 10px !important;
-              border: 1.5px solid #000 !important;
-              border-radius: 0 !important;
-              box-shadow: none !important;
-              background: #fff !important;
-            }
-
-            .print-logo {
-              width: 32px !important;
-              height: 32px !important;
-              display: flex !important;
-              align-items: center !important;
-              justify-content: center !important;
-              flex-shrink: 0 !important;
-            }
-
-            .print-logo img {
-              width: 32px !important;
-              height: 32px !important;
-              max-width: 32px !important;
-              max-height: 32px !important;
-              object-fit: contain !important;
-            }
-
-            table {
-              width: 100% !important;
-              border-collapse: collapse !important;
-            }
-
-            th,
-            td {
-              border: 1px solid #ddd !important;
-            }
-
-            img {
-              display: block;
-            }
-
-            @media print {
-              html,
-              body {
-                width: 100%;
-                min-height: 100%;
-                overflow: visible !important;
-              }
-
-              .print-page {
-                page-break-inside: avoid;
-              }
-            }
+            ${finalStyles}
           </style>
         </head>
 
         <body>
-          <div class="print-page">
-            <div class="print-copy">
-              ${letterHtml}
-            </div>
-
-            <div class="print-copy">
-              ${letterHtml}
-            </div>
-          </div>
+          ${finalBody}
         </body>
       </html>
     `);

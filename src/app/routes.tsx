@@ -38,6 +38,7 @@ import { ArchiveIncomingNewPage } from "./pages/ArchiveIncomingNewPage";
 import { ArchiveIncomingDetailPage } from "./pages/ArchiveIncomingDetailPage";
 import { TrainingRecommendationsPage } from "./pages/TrainingRecommendationsPage";
 import { TrainingRecommendationFormPage } from "./pages/TrainingRecommendationFormPage";
+import { ManageUnifiedRegistryPage } from "./pages/ManageUnifiedRegistryPage";
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -87,7 +88,11 @@ export const router = createBrowserRouter([
           { path: "archive/incoming/:id", Component: ArchiveIncomingDetailPage },
           { path: "training-recommendations", Component: TrainingRecommendationsPage },
             { path: "training-recommendations/new", Component: TrainingRecommendationFormPage },
-              { path: "training-recommendations/:id", Component: TrainingRecommendationFormPage }
+              { path: "training-recommendations/:id", Component: TrainingRecommendationFormPage },
+              {
+  path: "manage-unified-registry",
+  Component: ManageUnifiedRegistryPage,
+},
     ],
   },
 ]);

@@ -1303,24 +1303,59 @@ export function LetterDetailPage() {
      ✅ لو غير موثق ويوجد معاينة مؤقتة (PNG) → يطبع المعاينة.
      ✅ غير كده → يطبع الصفحة كاملة كـ fallback أخير.
   ======================================================= */
+/* =========================================================
+   قياس ارتفاع الصورة (بالمليمتر) لو اتطبعت بعرض ورقة A4
+   الفعلي، عشان نقرر: نسختين في ورقة واحدة، ولا كل نسخة في
+   ورقة كاملة منفصلة.
+========================================================= */
 
-  function handleTopPrint() {
-    
+function measureImageHeightMM(url: string): Promise<number> {
+  // عرض منطقة الطباعة: A4 = 210مم، ناقص هامشين 5مم (حسب
+  // @page margin: 5mm المستخدم في الطباعة هنا)
+  const CONTENT_WIDTH_MM = 200;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+
+    img.onload = () => {
+      if (!img.naturalWidth || !img.naturalHeight) {
+        resolve(0);
+        return;
+      }
+
+      const ratio = img.naturalHeight / img.naturalWidth;
+      resolve(ratio * CONTENT_WIDTH_MM);
+    };
+
+    img.onerror = () => {
+      // لو فشل تحميل الصورة لأي سبب، نرجّع 0 عشان الكود
+      // يكمل عادي بوضع "نسختين في ورقة واحدة" الافتراضي
+      resolve(0);
+    };
+
+    img.src = url;
+  });
+}
+   async function handleTopPrint() {
     const printUrl = isVerified
       ? signedFileUrl
       : previewImageUrl;
-        const pdfTitle = `خطاب ${letter.type} ${toArabicDigits(
-    letter.letterNumber
-  )} ${letter.destination}`.trim();
+
+    const pdfTitle = `خطاب ${letter.type} ${toArabicDigits(
+      letter.letterNumber
+    )} ${letter.destination}`.trim();
 
     if (!printUrl) {
-       const originalTitle = document.title;
-  document.title = pdfTitle;
-  window.print();
-  document.title = originalTitle;
+      const originalTitle = document.title;
+      document.title = pdfTitle;
+      window.print();
+      document.title = originalTitle;
       return;
     }
 
+    // ⚠️ لازم نفتح النافذة فورًا هنا (قبل أي await)، وإلا
+    // متصفحات زي Safari هتمنع النافذة باعتبارها popup غير
+    // مرتبط مباشرة بضغطة المستخدم
     const printWindow = window.open(
       "",
       "_blank",
@@ -1338,6 +1373,58 @@ export function LetterDetailPage() {
       (isVerified &&
         signedFileType === "application/pdf") ||
       printUrl.toLowerCase().includes(".pdf");
+
+    // ---------------------------------------------------
+    // نبني محتوى الطباعة حسب الحالة
+    // ---------------------------------------------------
+
+    let printBody = "";
+
+    if (isPdf) {
+      printBody = `<iframe src="${printUrl}"></iframe>`;
+    } else if (!isVerified) {
+      // ✅ الخطاب غير موثق (معاينة مؤقتة PNG) — نقيس الصورة
+      // الأول قبل ما نقرر شكل الطباعة
+      const heightMM = await measureImageHeightMM(printUrl);
+
+      // المساحة المتاحة لكل نسخة في وضع "نسختين بورقة واحدة"
+      // تقريبًا 143مم (287مم متاحة ÷ 2)، وبنستخدم سقف أقل
+      // كهامش أمان قبل التحويل لوضع "ورقة لكل نسخة"
+      const MAX_HEIGHT_FOR_TWO_PER_PAGE_MM = 130;
+
+      const fitsTwoPerPage =
+        heightMM > 0 &&
+        heightMM <=
+          MAX_HEIGHT_FOR_TWO_PER_PAGE_MM;
+
+      printBody = fitsTwoPerPage
+        ? `
+            <div class="page">
+              <div class="copy">
+                <img src="${printUrl}" alt="نسخة 1" />
+              </div>
+
+              <div class="cut-line"></div>
+
+              <div class="copy">
+                <img src="${printUrl}" alt="نسخة 2" />
+              </div>
+            </div>
+          `
+        : `
+            <div class="full-page-copy">
+              <img src="${printUrl}" alt="نسخة 1" />
+            </div>
+
+            <div class="page-break"></div>
+
+            <div class="full-page-copy">
+              <img src="${printUrl}" alt="نسخة 2" />
+            </div>
+          `;
+    } else {
+      printBody = `<img src="${printUrl}" alt="الخطاب الموثق" />`;
+    }
 
     printWindow.document.open();
 
@@ -1361,44 +1448,70 @@ export function LetterDetailPage() {
             }
 
             * {
-    box-sizing: border-box;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
+              box-sizing: border-box;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
             }
 
             html,
             body {
-    margin:0;
-    padding:0;
-    width:100%;
-    height:100%;
-    background:#fff;
+              margin: 0;
+              padding: 0;
+              width: 100%;
+              height: 100%;
+              background: #fff;
             }
 
-            .page{
-    width:100%;
-    height:calc(297mm - 10mm); /* ارتفاع A4 بعد خصم الهوامش */
-    display:flex;
-    flex-direction:column;
-}
+            /* وضع "نسختين في ورقة واحدة" */
 
-.copy{
-    flex:1;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    overflow:hidden;
-}
-    .copy img{
-    width:100%;
-    height:100%;
-    object-fit:contain;
-}
+            .page {
+              width: 100%;
+              height: calc(297mm - 10mm);
+              display: flex;
+              flex-direction: column;
+            }
 
-.cut-line{
-    border-top:2px solid #fff;
-    margin:2mm 0;
-}
+            .copy {
+              flex: 1;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              overflow: hidden;
+            }
+
+            .copy img {
+              width: 100%;
+              height: 100%;
+              object-fit: contain;
+            }
+
+            .cut-line {
+              border-top: 2px solid #fff;
+              margin: 2mm 0;
+            }
+
+            /* وضع "ورقة كاملة لكل نسخة" */
+
+            .full-page-copy {
+              width: 100%;
+              height: calc(297mm - 10mm);
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              overflow: hidden;
+            }
+
+            .full-page-copy img {
+              width: 100%;
+              height: 100%;
+              object-fit: contain;
+            }
+
+            .page-break {
+              page-break-before: always;
+              break-before: page;
+              height: 0;
+            }
 
             body {
               direction: rtl;
@@ -1419,27 +1532,7 @@ export function LetterDetailPage() {
         </head>
 
         <body>
-${
-  isPdf
-    ? `<iframe src="${printUrl}"></iframe>`
-    : !isVerified
-      ? `
-        <div class="page">
-          <div class="copy">
-            <img src="${printUrl}" alt="نسخة 1" />
-          </div>
-
-          <div class="cut-line"></div>
-
-          <div class="copy">
-            <img src="${printUrl}" alt="نسخة 2" />
-          </div>
-        </div>
-      `
-      : `
-        <img src="${printUrl}" alt="الخطاب الموثق" />
-      `
-}
+          ${printBody}
         </body>
       </html>
     `);

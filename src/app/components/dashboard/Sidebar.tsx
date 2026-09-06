@@ -71,6 +71,7 @@ const LABEL_TO_PATH: Record<string, string> = {
 "الفاكسات - الصادر": "/dashboard/archive/outgoing",
 "الفاكسات - الوارد": "/dashboard/archive/incoming",
 "كشوف التوصيات": "/dashboard/training-recommendations",
+"إدارة ملف القيد الموحّد": "/dashboard/manage-unified-registry",
 };
 // =====================================================
 // Logo
@@ -712,6 +713,12 @@ async function handleLogout() {
   label: "الفاكسات - الوارد",
   section: "الأرشيف",
   roles: ["ADMIN", "ARCHIVE_OFFICER", "USER"],
+},
+{
+  icon: <FileSpreadsheet size={18} />,
+  label: "إدارة ملف القيد الموحّد",
+  section: "ادارة المنظومة",
+  roles: ["ADMIN"],
 },
 
       ],

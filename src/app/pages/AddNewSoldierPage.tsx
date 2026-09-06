@@ -327,7 +327,7 @@ function StarIcon({ white = false }: { white?: boolean }) {
       <path
         d="M13 2l3.09 7.26L24 10.27l-5.5 5.37 1.32 7.86L13 19.77 6.18 23.5l1.32-7.86L2 10.27l7.91-1.01L13 2Z"
         fill={white ? "white" : "#00B867"}
-        stroke={white ? "white" : "#00522E"}
+        
         strokeWidth="1.5"
       />
     </svg>
@@ -895,7 +895,7 @@ function GroupUploadSection({
   return (
     <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full">
       <div className="flex flex-col gap-5 px-6 py-5">
-        <div className="flex flex-wrap items-start justify-between gap-4 w-full">
+        <div className="flex flex-wrap items-center justify-between gap-4 w-full">
           <div className="flex flex-col gap-1 items-start flex-1 min-w-0">
             <p
               style={{
@@ -2810,35 +2810,9 @@ if (!militaryNumber) {
                 </FieldGroup>
               </div>
 
-              {!isAttachmentEnabled &&
-                status && (
-                  <div className="bg-[#f5f8f5] border border-[#dce8dd] rounded-[10px] px-4 py-3">
-                    <p
-                      style={{
-                        ...F,
-                        fontSize: 13,
-                        color: "#415844",
-                      }}
-                    >
-                      جهة الإلحاق غير متاحة لهذا الموقف، وسيتم حفظ
-                      وحده الالحاق بقيمة فارغه.
-                    </p>
-                  </div>
-                )}
+         
 
-              {category === "متطوع" && (
-                <div className="bg-[#f5f8f5] border border-[#dce8dd] rounded-[10px] px-4 py-3">
-                  <p
-                    style={{
-                      ...F,
-                      fontSize: 13,
-                      color: "#415844",
-                    }}
-                  >
-                    الافراد من فئة متطوع ليس لهم تاريخ تسريح.
-                  </p>
-                </div>
-              )}
+            
 
               <div className="flex justify-end pt-1">
                 <button

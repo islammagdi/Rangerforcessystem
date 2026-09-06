@@ -1765,7 +1765,7 @@ export function IndividualQueryPage() {
 
         {/* Query Controls */}
 
-        <div className="flex flex-col sm:flex-row gap-5 w-full items-end justify-end">
+       <div className="flex flex-col sm:flex-row gap-5 w-full items-start justify-end">
           {/* Basis */}
 
           <div className="flex flex-col gap-1.5 flex-1 min-w-0 w-full">
@@ -1796,7 +1796,7 @@ export function IndividualQueryPage() {
 
           {/* Search Value */}
 
-          <div className="flex flex-col gap-1.5 flex-1 min-w-0 w-full">
+          <div className="flex flex-col gap-1.5 flex-1 min-w-0 w-full relative">
             <label
               style={{
                 fontFamily:
@@ -1855,9 +1855,9 @@ export function IndividualQueryPage() {
               dir="rtl"
             />
 
-            {queryTextError && (
+{queryTextError && (
               <p
-                className="text-right"
+                className="absolute top-full right-0 mt-1"
                 style={{
                   fontFamily:
                     "'Almarai', sans-serif",
@@ -1872,23 +1872,39 @@ export function IndividualQueryPage() {
 
           {/* Search Button */}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="shrink-0 w-full sm:w-[150px] h-[52px] rounded-[8px] flex items-center justify-center transition-opacity hover:opacity-90 disabled:opacity-50"
-            style={{
-              background:
-                "linear-gradient(to bottom, #00b867, #00522e)",
-              fontFamily:
-                "'Almarai', sans-serif",
-              fontSize: "16px",
-              color: "#f5f5f5",
-            }}
-          >
-            {loading
-              ? "جاري البحث..."
-              : "استعلام"}
-          </button>
+<div className="flex flex-col gap-1.5 shrink-0 w-full sm:w-[150px]">
+            {/* عنصر وهمي بنفس ارتفاع الـ label عشان الزرار يترص بنفس مستوى الحقول */}
+            <label
+              className="invisible"
+              style={{
+                fontFamily:
+                  "'Almarai', sans-serif",
+                fontWeight: 700,
+                fontSize: "16px",
+                display: "block",
+              }}
+            >
+              .
+            </label>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full h-[54px] rounded-[8px] flex items-center justify-center transition-opacity hover:opacity-90 disabled:opacity-50"
+              style={{
+                background:
+                  "linear-gradient(to bottom, #00b867, #00522e)",
+                fontFamily:
+                  "'Almarai', sans-serif",
+                fontSize: "16px",
+                color: "#f5f5f5",
+              }}
+            >
+              {loading
+                ? "جاري البحث..."
+                : "استعلام"}
+            </button>
+          </div>
         </div>
       </form>
 
