@@ -1721,8 +1721,9 @@ function measureImageHeightMM(url: string): Promise<number> {
 
                 {[
                   "م",
+                                    "رقم عسكري",
                   "درجة",
-                    "رقم عسكري",
+  
                   "اسم",
                   "الوحدة",
                   "وحدة الإلحاق",

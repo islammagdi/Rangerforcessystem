@@ -842,7 +842,7 @@ function GeneralArchiveTab({
 
     <FilterDropdown
       placeholder="عرض حسب النوع"
-      options={["الحاق", "إنهاء الحاق"]}
+      options={["الحاق", "إنهاء الحاق", "خطاب ضم أفراد صاعقة", "خطاب ضم أفراد إدارات خارجية"]}
       value={filterType}
       onChange={setFilterType}
     />

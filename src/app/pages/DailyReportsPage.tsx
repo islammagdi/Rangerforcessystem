@@ -412,11 +412,13 @@ function SimpleDropdown({
   options,
   onChange,
   placeholder,
+  disabled = false,
 }: {
   value: string;
   options: { value: string; label: string }[];
   onChange: (v: string) => void;
   placeholder?: string;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -442,19 +444,29 @@ function SimpleDropdown({
     setSearch("");
   }
 
+  function handleToggleOpen() {
+    if (disabled) return;
+    handleOpen();
+  }
+
   return (
     <div className="relative w-full">
       <button
         type="button"
-        onClick={handleOpen}
-        className="w-full h-[54px] bg-white border border-[#e2e7f0] rounded-[8px] flex items-center gap-2 px-3 hover:border-[#a0aec0] transition-colors"
+        onClick={handleToggleOpen}
+        disabled={disabled}
+        className={`w-full h-[54px] border rounded-[8px] flex items-center gap-2 px-3 transition-colors ${
+          disabled
+            ? "bg-gray-100 border-gray-300 cursor-not-allowed"
+            : "bg-white border-[#e2e7f0] hover:border-[#a0aec0]"
+        }`}
         dir="rtl"
       >
         <ChevronDown
           size={18}
-          className={`shrink-0 text-[#2d3648] transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
+          className={`shrink-0 transition-transform ${
+            disabled ? "text-gray-400" : "text-[#2d3648]"
+          } ${open ? "rotate-180" : ""}`}
         />
 
         <span
@@ -462,14 +474,18 @@ function SimpleDropdown({
           style={{
             ...F,
             fontSize: 16,
-            color: value ? "#2d3648" : "#4a5468",
+            color: disabled
+              ? "#9ca3af"
+              : value
+              ? "#2d3648"
+              : "#4a5468",
           }}
         >
           {value || placeholder || "اختر"}
         </span>
       </button>
 
-      {open && (
+      {open && !disabled && (
         <div
           className="absolute z-50 top-full mt-1 w-full bg-white border border-[#e2e7f0] rounded-[8px] shadow-lg overflow-hidden"
           dir="rtl"
@@ -486,7 +502,7 @@ function SimpleDropdown({
                   setOpen(false);
                 }
               }}
-              placeholder="اكتب جزء من اسم الوحدة..."
+              placeholder="اكتب جزء من السنة او الشهر..."
               className="w-full h-[44px] px-3 rounded-[7px] border border-[#e2e7f0] outline-none focus:border-[#00b867]"
               style={{
                 ...F,
@@ -559,6 +575,45 @@ function Step2({
 
   const [dischargeDate, setDischargeDate] =
     useState("");
+
+  // ✅ دفعات الرديف — تُجلب من قاعدة البيانات بدل إدخال تاريخ حر
+  const [batchOptions, setBatchOptions] = useState<
+    { value: string; label: string }[]
+  >([]);
+
+  const [loadingBatches, setLoadingBatches] =
+    useState(true);
+
+  useEffect(() => {
+    async function loadBatches() {
+      try {
+        setLoadingBatches(true);
+
+        const { data, error } = await supabase
+          .from("reserve_batches")
+          .select("id, batch_date, name")
+          .eq("is_active", true)
+          .order("batch_date", { ascending: true });
+
+        if (error) throw error;
+
+        const options = (data ?? []).map((batch) => ({
+          value: batch.batch_date,
+          label:
+            batch.name ||
+            formatDate(batch.batch_date),
+        }));
+
+        setBatchOptions(options);
+      } catch (err) {
+        console.error("Load reserve batches error:", err);
+      } finally {
+        setLoadingBatches(false);
+      }
+    }
+
+    void loadBatches();
+  }, []);
 
   const selectedUnit = units.find(
     (u) => u.id === unitId
@@ -799,34 +854,26 @@ function Step2({
       </div>
 
       {/* ======================================================
-          Discharge Date
+          Discharge Date (دفعة الرديف)
+          ✅ دروب داون بدل التاريخ الحر، مقفول إلا لو الشيك بوكس
+          "استثناء دفعة رديف" متفعّل
          ====================================================== */}
 
-      <div className="relative w-full">
-        <input
-          type="date"
-          value={dischargeDate}
-          onChange={(e) =>
-            setDischargeDate(e.target.value)
+      <div className="flex flex-col gap-2">
+        <SimpleDropdown
+          value={
+            batchOptions.find(
+              (opt) => opt.value === dischargeDate
+            )?.label ?? ""
           }
-          disabled={!excludeBatch}
-          className={`w-full h-[54px] border rounded-[8px] px-3 text-right outline-none transition-colors ${
-            excludeBatch
-              ? "bg-white border-[#e2e7f0] focus:border-[#00b867]"
-              : "bg-gray-100 border-gray-300 cursor-not-allowed"
-          }`}
-          style={{
-            ...F,
-            fontSize: 15,
-            color: excludeBatch
-              ? "#2d3648"
-              : "#9ca3af",
-            direction: "rtl",
-          }}
-        />
-
-        <Calendar
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1aebe] pointer-events-none"
+          options={batchOptions}
+          onChange={setDischargeDate}
+          placeholder={
+            loadingBatches
+              ? "جاري تحميل الدفعات..."
+              : "اختر دفعة الرديف"
+          }
+          disabled={!excludeBatch || loadingBatches}
         />
       </div>
 

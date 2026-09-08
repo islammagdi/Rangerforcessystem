@@ -5,6 +5,7 @@ import type { CSSProperties } from "react";
 import html2canvas from "html2canvas-pro";
 import { createNotification } from "../../lib/createNotification";
 import { supabase } from "../../lib/supabase";
+import { STAGE_MONTHS } from "../../lib/trainingRecommendations";
 import imgEagle from "figma:asset/af406d517dfa4e5b22e9993bd61d8e4e002646b6.png";
 
 /* =========================================================
@@ -27,7 +28,30 @@ const BLANK_SPACE = "ــــــــــــ";
 
 const ATTACH_STATUS_ID =
   "d443b755-802a-4e5d-8a1b-0c372c5f94dd";
+// ═══════════════════════════════════════════════════════════
+// ثوابت طباعة الخطاب (نسختين في صفحة واحدة)
+//
+// المطلوب: توفير ورق — لو الخطاب قصير كفاية، تُطبع نسختين
+// في نفس ورقة A4. الحد الأقصى المسموح لطول المحتوى الأصلي
+// (قبل التصغير) لازم يُحسب من نفس القيم الحقيقية المستخدمة في
+// CSS الطباعة نفسه (طول الإطار ونسبة التصغير)، مش رقم تخميني،
+// عشان الحساب يفضل صحيح دايمًا حتى لو التصميم اتغيّر لاحقًا.
+// ═══════════════════════════════════════════════════════════
 
+const PRINT_PAGE_HEIGHT_MM = 277; // ارتفاع A4 القابل للطباعة (297 - هامشين 10مم)
+const PRINT_FRAME_GAP_MM = 4; // الفجوة بين الإطارين
+const PRINT_COPY_SCALE = 0.94; // نسبة تصغير كل نسخة جوه إطارها
+const PRINT_SAFETY_MARGIN_MM = 3; // هامش أمان بسيط يمنع أي قص عند الحواف
+
+// طول كل إطار = (طول الصفحة - الفجوة) ÷ 2
+const PRINT_FRAME_HEIGHT_MM =
+  (PRINT_PAGE_HEIGHT_MM - PRINT_FRAME_GAP_MM) / 2;
+
+// أقصى طول للمحتوى الأصلي (قبل التصغير) يقدر يدخل جوه الإطار
+// براحة بعد ما يتصغّر بنسبة PRINT_COPY_SCALE
+const MAX_HEIGHT_FOR_TWO_PER_PAGE_MM =
+  PRINT_FRAME_HEIGHT_MM / PRINT_COPY_SCALE -
+  PRINT_SAFETY_MARGIN_MM;
 const DETACH_STATUS_ID =
   "b64822a7-38e3-4c98-b738-0f0f077bb6f2";
 
@@ -84,6 +108,15 @@ const getRelationObject = <T,>(
   return Array.isArray(value) ? value[0] ?? null : value;
 };
 
+function getStageLabel(month?: number, year?: number): string {
+  if (!month || !year) return "";
+
+  const monthLabel =
+    STAGE_MONTHS.find((m) => m.value === month)?.label ?? "";
+
+  return `${monthLabel} ${toArabicDigits(year)}`;
+}
+
 /* =========================================================
    Types
 ========================================================= */
@@ -99,19 +132,36 @@ type Soldier = {
   attachmentUnit: string;
   attachmentUnitId: string | null;
   dischargeDate: string | null;
+
+  // ✅ مستخدمة فقط لخطابات الضم (صاعقة / إدارات خارجية)
+  remarks?: string;
+  administrationId?: string | null;
+  administrationName?: string | null;
 };
 
 type LetterData = {
   destination: string;
   attachmentPlace: string;
   reason: string;
-  notes?: string; // ✅ جديد
+  notes?: string;
   issuingUnitId?: string;
   attachmentUnitId?: string;
+
+  // ✅ مستخدمة فقط لخطابات الضم
+  stageMonth?: number;
+  stageYear?: number;
+  administrationId?: string | null;
+  administrationName?: string | null;
 };
 
+type LetterFlowType =
+  | "attachment"
+  | "end-attachment"
+  | "join-saeqa"
+  | "join-external";
+
 type PageState = {
-  letterType?: "attachment" | "end-attachment";
+  letterType?: LetterFlowType;
   letterTypeId?: string;
   letterTypeCode?: string;
   letterTypeName?: string;
@@ -659,10 +709,13 @@ function LetterPreview({
   destination,
   attachmentPlace,
   reason,
-   notes,
+  notes,
   letterType,
   branchHeadName,
   branchHeadRank,
+  stageMonth,
+  stageYear,
+  administrationName,
 }: {
   soldiers: Soldier[];
   destination: string;
@@ -672,13 +725,28 @@ function LetterPreview({
   letterType: string;
   branchHeadName: string;
   branchHeadRank: string;
+  stageMonth?: number;
+  stageYear?: number;
+  administrationName?: string;
 }) {
   const now = new Date();
-const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
+  const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
   const currentYear = now.getFullYear();
 
-  const isDetach =
-    letterType === "end-attachment";
+  const isDetach = letterType === "end-attachment";
+  const isJoinSaeqa = letterType === "join-saeqa";
+  const isJoinExternal = letterType === "join-external";
+  const isJoin = isJoinSaeqa || isJoinExternal;
+
+  const stageLabel = getStageLabel(stageMonth, stageYear);
+  const modelNote = toArabicDigits("(1س)");
+
+  // ✅ رؤوس جدول الأفراد حسب نوع الخطاب
+  const tableHeaders = isJoin
+    ? isJoinExternal
+      ? ["م", "الدرجة", "الاسم", "الوحدة", "ملاحظات", "الإدارة"]
+      : ["م", "الدرجة", "الاسم", "الوحدة", "ملاحظات"]
+    : ["م", "الدرجة", "الاسم", "الوحدة", isDetach ? "ملاحظات" : "وحدة الإلحاق"];
 
   return (
     <>
@@ -789,7 +857,60 @@ const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
             textAlign: "right",
           }}
         >
-          {soldiers.length === 1 ? (
+          {isJoinSaeqa ? (
+            soldiers.length === 1 ? (
+              <>
+                قادم لكم اليوم                 <DateBlank
+                  month={currentMonth}
+                  year={currentYear}
+                />{" "} الفرد المذكور اسمه بعد بمهامته
+                وملبوساته الاميرية ونموذج {modelNote} الاصل من قوه
+                المرحلة التجنيدية {toArabicDigits(stageLabel)} وذلك
+                للضم علي قوتكم وبياناته كالتالي:
+              </>
+            ) : (
+              <>
+                قادم لكم اليوم                 <DateBlank
+                  month={currentMonth}
+                  year={currentYear}
+                />{" "} الافراد المذكور اسمائهم بعد
+                بمهامتهم وملبوساتهم الاميرية ونموذج {modelNote}{" "}
+                الاصل من قوه المرحلة التجنيدية{" "}
+                {toArabicDigits(stageLabel)} وذلك للضم علي قوتكم
+                وبياناتهم كالتالي:
+              </>
+            )
+          ) : isJoinExternal ? (
+            soldiers.length === 1 ? (
+              <>
+                قادم لكم اليوم                 <DateBlank
+                  month={currentMonth}
+                  year={currentYear}
+                />{" "} الفرد المذكور اسمه بعد بمهامته
+                وملبوساته الاميرية وكذا نموذج {modelNote} الاصل من
+                اداره{" "}
+                {toArabicDigits(
+                  soldiers[0]?.administrationName ||
+                    administrationName ||
+                    "..."
+                )}{" "}
+                من قوة المرحلة التجنيدية{" "}
+                {toArabicDigits(stageLabel)} وذلك للضم علي قوتكم
+                وبياناته كالتالي:
+              </>
+            ) : (
+              <>
+                قادم لكم اليوم                 <DateBlank
+                  month={currentMonth}
+                  year={currentYear}
+                />{" "} الافراد المذكور اسمائهم بعد
+                بمهامتهم وملبوساتهم الاميرية وكذا نموذج {modelNote}{" "}
+                الاصل من الادارات الموضحة من قوة المرحلة التجنيدية{" "}
+                {toArabicDigits(stageLabel)} وذلك للضم علي قوتكم
+                وبياناتهم كالتالي:
+              </>
+            )
+          ) : soldiers.length === 1 ? (
             isDetach ? (
               <>
                 قادم لكم اليوم{" "}
@@ -863,13 +984,7 @@ const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
                 textAlign: "center",
               }}
             >
-                            {[
-                "م",
-                "الدرجة",
-                "الاسم",
-                "الوحدة",
-                isDetach ? "ملاحظات" : "وحدة الإلحاق",
-              ].map((header) => (
+              {tableHeaders.map((header) => (
                 <th
                   key={header}
                   style={{
@@ -927,21 +1042,53 @@ const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
                   {toArabicDigits(soldier.unit)}
                 </td>
 
-                              <td
-                  style={{
-                    padding: "5px",
-                    border: "1px solid #eee",
-                    textAlign: "center",
-                  }}
-                >
-                  {isDetach
-                    ? "\u00A0" /* عمود ملاحظات فارغ في حالة إنهاء الإلحاق */
-                    : toArabicDigits(
-                        soldier.attachmentUnit ||
-                          attachmentPlace ||
-                          "-"
+                {isJoin ? (
+                  <>
+                    {/* ملاحظات */}
+                    <td
+                      style={{
+                        padding: "5px",
+                        border: "1px solid #eee",
+                        textAlign: "center",
+                      }}
+                    >
+                      {toArabicDigits(
+                        soldier.remarks || "(1س) الأصل"
                       )}
-                </td>
+                    </td>
+
+                    {/* الإدارة (ضم إدارات فقط) */}
+                    {isJoinExternal && (
+                      <td
+                        style={{
+                          padding: "5px",
+                          border: "1px solid #eee",
+                          textAlign: "center",
+                        }}
+                      >
+                        {toArabicDigits(
+                          soldier.administrationName || "-"
+                        )}
+                      </td>
+                    )}
+                  </>
+                ) : (
+                  <td
+                    style={{
+                      padding: "5px",
+                      border: "1px solid #eee",
+                      textAlign: "center",
+                    }}
+                  >
+                    {isDetach
+                      ? "\u00A0" /* عمود ملاحظات فارغ في حالة إنهاء الإلحاق */
+                      : toArabicDigits(
+                          soldier.attachmentUnit ||
+                            attachmentPlace ||
+                            "-"
+                        )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -958,92 +1105,92 @@ const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
         >
           مع وافر التحية ،،،
         </p>
-{notes && notes.trim() && (
-  <div
-    style={{
-      marginTop: 16,
-    }}
-    dir="rtl"
-  >
-    <p
-      style={{
-        ...PF,
-        fontSize: 14,
-        margin: 0,
-        textAlign: "right",
-        fontWeight: 800,
-        color: "#333",
-      }}
-    >
-      ملاحظات:
-    </p>
+        {notes && notes.trim() && (
+          <div
+            style={{
+              marginTop: 16,
+            }}
+            dir="rtl"
+          >
+            <p
+              style={{
+                ...PF,
+                fontSize: 14,
+                margin: 0,
+                textAlign: "right",
+                fontWeight: 800,
+                color: "#333",
+              }}
+            >
+              ملاحظات:
+            </p>
 
-    <p
-      style={{
-        ...PF,
-        fontSize: 14,
-        margin: 0,
-        marginTop: 4,
-        textAlign: "right",
-        fontWeight: 500,
-        color: "#333",
-      }}
-    >
-      {toArabicDigits(notes)}
-    </p>
-  </div>
-)}
+            <p
+              style={{
+                ...PF,
+                fontSize: 14,
+                margin: 0,
+                marginTop: 4,
+                textAlign: "right",
+                fontWeight: 500,
+                color: "#333",
+              }}
+            >
+              {toArabicDigits(notes)}
+            </p>
+          </div>
+        )}
 
-       {/* Signature */}
-<div
-  className="signature-block"
-  style={{
-    ...PF,
-    fontSize: 14,
-    marginTop: 28,
-    width: "fit-content",
-    maxWidth: "100%",
-    marginLeft: 0,
-    marginRight: "auto",
-    direction: "rtl",
-    textAlign: "justify",
-    textAlignLast: "justify",   // كانت "right"
-  }}
->
-  <p
-    style={{
-      margin: 0,
-      fontWeight: 700,
-      whiteSpace: "pre",
-    }}
-  >
-    {"التوقيع (                             )"}
-  </p>
+        {/* Signature */}
+        <div
+          className="signature-block"
+          style={{
+            ...PF,
+            fontSize: 14,
+            marginTop: 28,
+            width: "fit-content",
+            maxWidth: "100%",
+            marginLeft: 0,
+            marginRight: "auto",
+            direction: "rtl",
+            textAlign: "justify",
+            textAlignLast: "justify",
+          }}
+        >
+          <p
+            style={{
+              margin: 0,
+              fontWeight: 700,
+              whiteSpace: "pre",
+            }}
+          >
+            {"التوقيع (                             )"}
+          </p>
 
-  <p
-    style={{
-      margin: "6px 0 0",
-      fontWeight: 700,
-    }}
-  >
-    {toArabicDigits(
-      branchHeadRank || "جاري تحميل الرتبة"
-    )}{" "}
-    /{" "}
-    {toArabicDigits(
-      branchHeadName || "جاري تحميل الاسم"
-    )}
-  </p>
+          <p
+            style={{
+              margin: "6px 0 0",
+              fontWeight: 700,
+            }}
+          >
+            {toArabicDigits(
+              branchHeadRank || "جاري تحميل الرتبة"
+            )}{" "}
+            /{" "}
+            {toArabicDigits(
+              branchHeadName || "جاري تحميل الاسم"
+            )}
+          </p>
 
-  <p
-    style={{
-      margin: "4px 0 0",
-      fontWeight: 700,
-    }}
-  >
-    رئيــــس فــــرع التنظيــــم والاداره
-  </p>
-</div>
+          <p
+            style={{
+              margin: "4px 0 0",
+              fontWeight: 700,
+            }}
+          >
+            رئيــــس فــــرع التنظيــــم والاداره
+          </p>
+        </div>
       </div>
 
       <style>
@@ -1115,10 +1262,16 @@ export function LetterReviewPage() {
   const state =
     location.state as PageState | null;
 
-  const letterType =
-    state?.letterType === "end-attachment"
-      ? "end-attachment"
+  const letterType: LetterFlowType =
+    state?.letterType === "end-attachment" ||
+    state?.letterType === "join-saeqa" ||
+    state?.letterType === "join-external"
+      ? state.letterType
       : "attachment";
+
+  const isJoinSaeqa = letterType === "join-saeqa";
+  const isJoinExternal = letterType === "join-external";
+  const isJoin = isJoinSaeqa || isJoinExternal;
 
   const soldiers = state?.soldiers ?? [];
 
@@ -1269,22 +1422,10 @@ export function LetterReviewPage() {
       );
       return;
     }
-    if (!soldiers.length) {
-      setError("لا يوجد أفراد في الخطاب.");
-      return;
-    }
 
-    if (!state?.letterTypeId) {
-      setError(
-        "نوع الخطاب غير موجود. ارجع واختر نوع الخطاب مرة أخرى."
-      );
-      return;
-    }
-
-    // ✅ التحقق الجديد: لو الخطاب "إلحاق" (مش إنهاء إلحاق)، نتأكد إن
-    // مفيش فرد وحدة إلحاقه المختارة هي نفسها وحدته الأساسية —
-    // لأن ده منطقيًا غير مسموح (الفرد أصلاً موجود في وحدته دي).
-    if (letterType !== "end-attachment") {
+    // ✅ التحقق ده خاص فقط بخطاب "إلحاق" (مش إنهاء إلحاق ولا ضم):
+    // نتأكد إن مفيش فرد وحدة إلحاقه المختارة هي نفسها وحدته الأساسية
+    if (letterType === "attachment") {
       const invalidSoldiers = soldiers.filter((soldier) => {
         const chosenAttachmentUnitId =
           soldier.attachmentUnitId ??
@@ -1308,9 +1449,6 @@ export function LetterReviewPage() {
       }
     }
 
-    setSaving(true);
-    setError("");
-    setPreviewWarning("");
     setSaving(true);
     setError("");
     setPreviewWarning("");
@@ -1366,13 +1504,27 @@ export function LetterReviewPage() {
         );
       }
 
-      const isAttach =
-        letterTypeRow.code === "ATTACH";
+      // ✅ تطبيع الكود قبل المقارنة: بيشيل أي مسافات أو حروف
+      // خفية (Bidi marks) ممكن تتسلل عند نسخ/لصق القيم من مكان
+      // لمكان، ويضمن المقارنة تنجح دايمًا بغض النظر عن كده
+      const normalizedCode = letterTypeRow.code
+        ?.replace(/[\u200E\u200F\u202A-\u202E]/g, "")
+        .trim()
+        .toUpperCase();
 
-      const isDetach =
-        letterTypeRow.code === "DEATTACH";
+      const isAttach = normalizedCode === "ATTACH";
+      const isDetach = normalizedCode === "DEATTACH";
+      const isJoinSaeqaSave = normalizedCode === "JOIN_SAEQA";
+      const isJoinExternalSave = normalizedCode === "JOIN_EXTERNAL";
 
-      if (!isAttach && !isDetach) {
+      const isJoinSave =
+        isJoinSaeqaSave || isJoinExternalSave;
+
+      if (
+        !isAttach &&
+        !isDetach &&
+        !isJoinSave
+      ) {
         throw new Error(
           `نوع الخطاب غير مدعوم: ${letterTypeRow.code}`
         );
@@ -1392,10 +1544,12 @@ export function LetterReviewPage() {
         );
       }
 
-      const attachmentUnitId =
-        letterData.attachmentUnitId ??
-        soldiers[0]?.attachmentUnitId ??
-        null;
+      // ✅ خطابات الضم مفيهاش وحدة إلحاق أصلًا — بتفضل null دايمًا
+      const attachmentUnitId = isJoinSave
+        ? null
+        : letterData.attachmentUnitId ??
+          soldiers[0]?.attachmentUnitId ??
+          null;
 
       if (isAttach && !attachmentUnitId) {
         throw new Error(
@@ -1404,11 +1558,14 @@ export function LetterReviewPage() {
       }
 
       const finalAttachmentUnitId =
-        isDetach ? null : attachmentUnitId;
+        isDetach || isJoinSave ? null : attachmentUnitId;
 
+      // ✅ خطابات الضم مفيهاش تغيير في service_status أصلًا
       const newServiceStatusId = isAttach
         ? ATTACH_STATUS_ID
-        : DETACH_STATUS_ID;
+        : isDetach
+        ? DETACH_STATUS_ID
+        : null;
 
       /* -----------------------------------------------
          Branch Head
@@ -1468,6 +1625,14 @@ export function LetterReviewPage() {
           branchRank?.name ?? "",
         status: "UNDOCUMENTED",
         created_by: userId,
+
+        // ✅ أعمدة خاصة بخطابات الضم فقط، تفضل null لباقي الأنواع
+        stage_month: isJoinSave
+          ? letterData.stageMonth ?? null
+          : null,
+        stage_year: isJoinSave
+          ? letterData.stageYear ?? null
+          : null,
       };
 
       const {
@@ -1501,6 +1666,15 @@ export function LetterReviewPage() {
         (soldier) => ({
           letter_id: newLetter.id,
           personnel_id: soldier.id,
+
+          // ✅ ملاحظة الفرد وإدارته — تُخزَّن فقط لخطابات الضم
+          remarks: isJoinSave
+            ? soldier.remarks ?? "(1س) الأصل"
+            : null,
+
+          external_administration_id: isJoinExternalSave
+            ? soldier.administrationId ?? null
+            : null,
         })
       );
 
@@ -1518,106 +1692,110 @@ export function LetterReviewPage() {
 
       /* -----------------------------------------------
          Update Personnel
+         ✅ خطابات الضم توثيقية بحتة — مفيش أي تغيير على
+         حالة الفرد أو وحدة إلحاقه، فبنتخطى الخطوة دي بالكامل
       ----------------------------------------------- */
 
-      const updateResults =
-        await Promise.all(
-          soldiers.map(async (soldier) => {
-            const soldierAttachmentId =
+      if (!isJoinSave) {
+        const updateResults =
+          await Promise.all(
+            soldiers.map(async (soldier) => {
+              const soldierAttachmentId =
+                isDetach
+                  ? null
+                  : soldier.attachmentUnitId ??
+                    finalAttachmentUnitId;
+
+              return supabase
+                .from("personnel")
+                .update({
+                  service_status_id:
+                    newServiceStatusId,
+                  attachment_unit_id:
+                    soldierAttachmentId,
+                  updated_at:
+                    new Date().toISOString(),
+                })
+                .eq("id", soldier.id);
+            })
+          );
+
+        const updatePersonnelError =
+          updateResults.find(
+            (result) => result.error
+          )?.error;
+
+        if (updatePersonnelError) {
+          throw new Error(
+            `تم حفظ الخطاب وربط الأفراد، ولكن فشل تحديث حالة الأفراد: ${updatePersonnelError.message}`
+          );
+        }
+
+        /* -----------------------------------------------
+           Verify Personnel
+        ----------------------------------------------- */
+
+        const personnelIds = soldiers.map(
+          (soldier) => soldier.id
+        );
+
+        const {
+          data: updatedPersonnel,
+          error: verifyPersonnelError,
+        } = await supabase
+          .from("personnel")
+          .select(
+            "id, service_status_id, attachment_unit_id"
+          )
+          .in("id", personnelIds);
+
+        if (verifyPersonnelError) {
+          throw new Error(
+            `تعذر التحقق من تحديث بيانات الأفراد: ${verifyPersonnelError.message}`
+          );
+        }
+
+        if (
+          !updatedPersonnel ||
+          updatedPersonnel.length !==
+            personnelIds.length
+        ) {
+          throw new Error(
+            "لم يتم تحديث جميع الأفراد المحددين."
+          );
+        }
+
+        const expectedAttachmentBySoldierId =
+          new Map(
+            soldiers.map((soldier) => [
+              soldier.id,
               isDetach
                 ? null
                 : soldier.attachmentUnitId ??
-                  finalAttachmentUnitId;
-
-            return supabase
-              .from("personnel")
-              .update({
-                service_status_id:
-                  newServiceStatusId,
-                attachment_unit_id:
-                  soldierAttachmentId,
-                updated_at:
-                  new Date().toISOString(),
-              })
-              .eq("id", soldier.id);
-          })
-        );
-
-      const updatePersonnelError =
-        updateResults.find(
-          (result) => result.error
-        )?.error;
-
-      if (updatePersonnelError) {
-        throw new Error(
-          `تم حفظ الخطاب وربط الأفراد، ولكن فشل تحديث حالة الأفراد: ${updatePersonnelError.message}`
-        );
-      }
-
-      /* -----------------------------------------------
-         Verify Personnel
-      ----------------------------------------------- */
-
-      const personnelIds = soldiers.map(
-        (soldier) => soldier.id
-      );
-
-      const {
-        data: updatedPersonnel,
-        error: verifyPersonnelError,
-      } = await supabase
-        .from("personnel")
-        .select(
-          "id, service_status_id, attachment_unit_id"
-        )
-        .in("id", personnelIds);
-
-      if (verifyPersonnelError) {
-        throw new Error(
-          `تعذر التحقق من تحديث بيانات الأفراد: ${verifyPersonnelError.message}`
-        );
-      }
-
-      if (
-        !updatedPersonnel ||
-        updatedPersonnel.length !==
-          personnelIds.length
-      ) {
-        throw new Error(
-          "لم يتم تحديث جميع الأفراد المحددين."
-        );
-      }
-
-      const expectedAttachmentBySoldierId =
-        new Map(
-          soldiers.map((soldier) => [
-            soldier.id,
-            isDetach
-              ? null
-              : soldier.attachmentUnitId ??
-                finalAttachmentUnitId,
-          ])
-        );
-
-      const invalidPersonnel =
-        updatedPersonnel.filter((person) => {
-          const expectedAttachment =
-            expectedAttachmentBySoldierId.get(
-              person.id
-            );
-
-          return (
-            person.service_status_id !==
-              newServiceStatusId ||
-            person.attachment_unit_id !==
-              expectedAttachment
+                  finalAttachmentUnitId,
+            ])
           );
-        });
 
-      if (invalidPersonnel.length) {
-        throw new Error(
-          "فشل التحقق من تحديث حالة أو جهة إلحاق بعض الأفراد."
-        );
+        const invalidPersonnel =
+          updatedPersonnel.filter((person) => {
+            const expectedAttachment =
+              expectedAttachmentBySoldierId.get(
+                person.id
+              );
+
+            return (
+              person.service_status_id !==
+                newServiceStatusId ||
+              person.attachment_unit_id !==
+                expectedAttachment
+            );
+          });
+
+        if (invalidPersonnel.length) {
+          throw new Error(
+            "فشل التحقق من تحديث حالة أو جهة إلحاق بعض الأفراد."
+          );
+        }
       }
 
       /* -----------------------------------------------
@@ -1733,15 +1911,6 @@ export function LetterReviewPage() {
         err
       );
 
-      /*
-       * Rollback للخطاب والروابط.
-       *
-       * ملاحظة:
-       * استرجاع personnel نفسه بشكل آمن يحتاج حفظ القيم
-       * القديمة لكل فرد قبل التحديث أو تنفيذ العملية داخل
-       * PostgreSQL RPC/Transaction.
-       */
-
       if (createdLetterId) {
         try {
           await supabase
@@ -1781,6 +1950,7 @@ export function LetterReviewPage() {
     soldiers,
     state,
     letterData,
+    letterType,
   ]);
 
   /* =======================================================
@@ -1800,42 +1970,40 @@ export function LetterReviewPage() {
   }, [success, navigate]);
   /* =======================================================
      Print
-     ---------------------------------------------------
-     المطلوب: طباعة نسختين من الخطاب.
-
-     - لو الخطاب قصير (عدد أفراد قليل) → نسختين مصغّرتين فوق
-       بعض في نفس ورقة A4 واحدة (زي الأول بالظبط).
-
-     - لو الخطاب طويل (عدد أفراد كبير وهيقرب من ورقة كاملة) →
-       نسختين، كل واحدة في ورقة A4 كاملة منفصلة (صفحتين ورق)،
-       من غير أي تصغير أو قص، عشان الجدول والتوقيع ميتقصوش.
-
-     بنحدد أي الحالتين عن طريق قياس الارتفاع الحقيقي للخطاب لو
-     اتطبع بعرض ورقة A4 الفعلي (مش عرضه الظاهر على الشاشة).
   ======================================================= */
 
-  function measureLetterHeightMM(
+   function measureLetterHeightMM(
     letterElement: HTMLElement
   ): number {
-    // عرض منطقة الطباعة الفعلي: A4 = 210مم، ناقص هامشين 10مم
-    // من كل جانب (حسب @page margin: 10mm المستخدم في الطباعة)
     const PRINT_CONTENT_WIDTH_MM = 190;
-    const PX_PER_MM = 96 / 25.4; // ≈ 3.7795
+    const PX_PER_MM = 96 / 25.4;
 
     const clone = letterElement.cloneNode(
       true
     ) as HTMLElement;
 
-    // نخفي النسخة تمامًا عن الشاشة، لكن لازم تفضل جوه الـ DOM
-    // عشان المتصفح يقدر يحسب لها ارتفاع حقيقي
+    // ✅ نفس الـ overrides المستخدمة فعليًا في sharedStyles وقت
+    // الطباعة (padding, border, إلخ)، عشان القياس يبقى مطابق
+    // تمامًا للشكل الحقيقي وقت الطباعة، مش لشكله على الشاشة
+    clone.style.display = "flex";
+    clone.style.flexDirection = "column";
     clone.style.position = "fixed";
     clone.style.top = "-99999px";
     clone.style.left = "-99999px";
     clone.style.margin = "0";
     clone.style.maxWidth = "none";
+    clone.style.border = "none";
+    clone.style.borderRadius = "0";
+    clone.style.boxShadow = "none";
+    clone.style.padding = "10px";
     clone.style.width = `${
       PRINT_CONTENT_WIDTH_MM * PX_PER_MM
     }px`;
+    clone.style.height = "auto";
+
+    // إزالة أي كلاسات Tailwind قد تفرض عرض/بادينج مختلف عن
+    // القياس المطلوب (مثل max-w-[680px] الموجودة على الشاشة)
+    clone.className = "letter-preview";
 
     document.body.appendChild(clone);
 
@@ -1878,6 +2046,10 @@ export function LetterReviewPage() {
       state?.letterTypeName ||
       (letterType === "end-attachment"
         ? "إنهاء إلحاق"
+        : letterType === "join-saeqa"
+        ? "ضم صاعقة"
+        : letterType === "join-external"
+        ? "ضم إدارات"
         : "إلحاق");
 
     const letterNumberLabel =
@@ -1890,26 +2062,14 @@ export function LetterReviewPage() {
         letterData.destination || ""
       }`.trim();
 
-    // ---------------------------------------------------
-    // نحدد هل الخطاب "قصير" (تدخل نسختين مصغّرتين في ورقة
-    // واحدة براحة) ولا "طويل" (محتاج ورقة كاملة لكل نسخة)
-    // ---------------------------------------------------
-
     const heightMM =
       measureLetterHeightMM(letterElement);
-
-    // المساحة المتاحة لكل نسخة في وضع "نسختين بورقة واحدة"
-    // تقريبًا 135مم (277مم متاحة ÷ 2)، وبنستخدم سقف أقل من
-    // كده كهامش أمان قبل ما نضطر ننتقل لوضع "ورقة لكل نسخة"
-    const MAX_HEIGHT_FOR_TWO_PER_PAGE_MM = 125;
 
     const fitsTwoPerPage =
       heightMM <=
       MAX_HEIGHT_FOR_TWO_PER_PAGE_MM;
 
-    // ---------------------------------------------------
-    // القالب المشترك (CSS عام يستخدم في الحالتين)
-    // ---------------------------------------------------
+    console.log("DEBUG: fitsTwoPerPage:", fitsTwoPerPage);
 
     const sharedStyles = `
       @page {
@@ -1951,9 +2111,6 @@ export function LetterReviewPage() {
         background: #fff !important;
       }
 
-      /* بلوك التوقيع دايمًا يتلزق في آخر الإطار/الصفحة، مهما
-         كان طول المحتوى اللي فوقه — margin-top: auto بتاخد كل
-         المسافة الفاضية فوقيها وتدفع البلوك لتحت */
       .signature-block {
         margin-top: auto !important;
       }
@@ -1990,11 +2147,6 @@ export function LetterReviewPage() {
       }
     `;
 
-    // ---------------------------------------------------
-    // الحالة 1: خطاب قصير → نسختين مصغّرتين في ورقة واحدة
-    // (نفس الأسلوب القديم)
-    // ---------------------------------------------------
-
     const twoPerPageBody = `
       <div class="print-page">
         <div class="print-frame">
@@ -2018,15 +2170,12 @@ export function LetterReviewPage() {
         display: flex;
         flex-direction: column;
         width: 100%;
-        height: 277mm;
-        gap: 4mm;
+        height: ${PRINT_PAGE_HEIGHT_MM}mm;
+        gap: ${PRINT_FRAME_GAP_MM}mm;
       }
 
-      /* الفريم الرمادي الخفيف — ارتفاع ثابت بالمليمتر بالظبط
-         (مش نسبة مئوية) عشان نضمن تساوي النسختين 100% بغض
-         النظر عن أي فروق في حساب المتصفح وقت الطباعة الفعلية */
       .print-frame {
-        height: 136.5mm;
+        height: ${PRINT_FRAME_HEIGHT_MM}mm;
         width: 100%;
         border: 1px solid #ddd;
         box-sizing: border-box;
@@ -2040,7 +2189,7 @@ export function LetterReviewPage() {
         width: 100%;
         height: 100%;
         flex: 1;
-        transform: scale(0.94);
+        transform: scale(${PRINT_COPY_SCALE});
         transform-origin: top center;
       }
 
@@ -2058,10 +2207,6 @@ export function LetterReviewPage() {
       }
     `;
 
-    // ---------------------------------------------------
-    // الحالة 2: خطاب طويل → كل نسخة في ورقة A4 كاملة منفصلة
-    // من غير أي تصغير أو قص، مع فاصل صفحة إجباري بين النسختين
-    // ---------------------------------------------------
     const twoFullPagesBody = `
       <div class="print-frame-full">
         <div class="print-copy-full">
@@ -2173,6 +2318,10 @@ export function LetterReviewPage() {
   const pageTitle =
     letterType === "end-attachment"
       ? "اصدار خطاب إنهاء إلحاق"
+      : letterType === "join-saeqa"
+      ? "اصدار خطاب ضم أفراد صاعقة"
+      : letterType === "join-external"
+      ? "اصدار خطاب ضم أفراد إدارات خارجية"
       : "اصدار خطاب إلحاق";
 
   /* =======================================================
@@ -2297,20 +2446,41 @@ export function LetterReviewPage() {
             )}
           />
 
-          <InfoPair
-            label="وحدة الإلحاق"
-            value={
-              letterType ===
-              "end-attachment"
-                ? "سيتم إنهاء الإلحاق"
-                : toArabicDigits(
-                    letterData.attachmentPlace ||
-                      soldiers[0]
-                        ?.attachmentUnit ||
-                      "لا يوجد"
-                  )
-            }
-          />
+          {isJoin ? (
+            <>
+              <InfoPair
+                label="المرحلة التجنيدية"
+                value={getStageLabel(
+                  letterData.stageMonth,
+                  letterData.stageYear
+                )}
+              />
+
+              {isJoinExternal && (
+                <InfoPair
+                  label="الإدارة"
+                  value={
+                    letterData.administrationName ?? ""
+                  }
+                />
+              )}
+            </>
+          ) : (
+            <InfoPair
+              label="وحدة الإلحاق"
+              value={
+                letterType ===
+                "end-attachment"
+                  ? "سيتم إنهاء الإلحاق"
+                  : toArabicDigits(
+                      letterData.attachmentPlace ||
+                        soldiers[0]
+                          ?.attachmentUnit ||
+                        "لا يوجد"
+                    )
+              }
+            />
+          )}
 
           <InfoPair
             label="رئيس الفرع"
@@ -2339,13 +2509,32 @@ export function LetterReviewPage() {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[600px] border-collapse">
             <thead>
-              <tr className="bg-[#f7f9fc]">
-                {[
-                  "درجة",
-                  "اسم",
-                  "الوحدة",
-                  "وحدة الإلحاق",
-                ].map((header) => (
+                           <tr className="bg-[#f7f9fc]">
+                {(isJoin
+                  ? isJoinExternal
+                    ? [
+                        "رقم عسكري",
+                        "درجة",
+                        "اسم",
+                        "الوحدة",
+                        "ملاحظات",
+                        "الإدارة",
+                      ]
+                    : [
+                        "رقم عسكري",
+                        "درجة",
+                        "اسم",
+                        "الوحدة",
+                        "ملاحظات",
+                      ]
+                  : [
+                      "رقم عسكري",
+                      "درجة",
+                      "اسم",
+                      "الوحدة",
+                      "وحدة الإلحاق",
+                    ]
+                ).map((header) => (
                   <th
                     key={header}
                     className="px-4 py-3 text-right border-b"
@@ -2365,8 +2554,14 @@ export function LetterReviewPage() {
             </thead>
 
             <tbody>
-              {soldiers.map((soldier) => (
+                 {soldiers.map((soldier) => (
                 <tr key={soldier.id}>
+                  <td className="px-4 py-3 border-b">
+                    {toArabicDigits(
+                      soldier.militaryId
+                    )}
+                  </td>
+
                   <td className="px-4 py-3 border-b">
                     {toArabicDigits(
                       soldier.rank
@@ -2385,16 +2580,36 @@ export function LetterReviewPage() {
                     )}
                   </td>
 
-                  <td className="px-4 py-3 border-b">
-                    {letterType ===
-                    "end-attachment"
-                      ? "لا يوجد"
-                      : toArabicDigits(
-                          soldier.attachmentUnit ||
-                            letterData.attachmentPlace ||
-                            "لا يوجد"
+                  {isJoin ? (
+                    <>
+                      <td className="px-4 py-3 border-b">
+                        {toArabicDigits(
+                          soldier.remarks ||
+                            "(1س) الأصل"
                         )}
-                  </td>
+                      </td>
+
+                      {isJoinExternal && (
+                        <td className="px-4 py-3 border-b">
+                          {toArabicDigits(
+                            soldier.administrationName ||
+                              "-"
+                          )}
+                        </td>
+                      )}
+                    </>
+                  ) : (
+                    <td className="px-4 py-3 border-b">
+                      {letterType ===
+                      "end-attachment"
+                        ? "لا يوجد"
+                        : toArabicDigits(
+                            soldier.attachmentUnit ||
+                              letterData.attachmentPlace ||
+                              "لا يوجد"
+                          )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -2433,6 +2648,11 @@ export function LetterReviewPage() {
             }
             branchHeadRank={
               branchHeadRank
+            }
+            stageMonth={letterData.stageMonth}
+            stageYear={letterData.stageYear}
+            administrationName={
+              letterData.administrationName ?? undefined
             }
           />
         </div>

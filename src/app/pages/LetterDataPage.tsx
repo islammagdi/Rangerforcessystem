@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import { supabase } from "../../lib/supabase";
+import { STAGE_MONTHS } from "../../lib/trainingRecommendations";
 import type { SoldierData } from "../data/soldiersData";
 
 const F: React.CSSProperties = {
@@ -20,8 +21,14 @@ const F: React.CSSProperties = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface SoldierWithAttachment extends SoldierData {
-  attachmentUnit: string;
+  // مستخدمة فقط لخطابات الإلحاق/إنهاء الإلحاق
+  attachmentUnit?: string;
   attachmentUnitId?: string;
+
+  // ✅ مستخدمة فقط لخطابات الضم (صاعقة / إدارات خارجية)
+  remarks?: string;
+  administrationId?: string | null;
+  administrationName?: string | null;
 }
 
 export interface LetterData {
@@ -31,7 +38,13 @@ export interface LetterData {
   attachmentPlace: string;
   attachmentPlaceId: string | null;
   reason: string;
-   notes: string; // ✅ جديد
+  notes: string;
+
+  // ✅ مستخدمة فقط لخطابات الضم
+  stageMonth?: number;
+  stageYear?: number;
+  administrationId?: string | null;
+  administrationName?: string | null;
 }
 
 interface Unit {
@@ -48,6 +61,25 @@ interface LetterType {
   code: string;
   is_active: boolean;
 }
+
+interface ExternalAdministration {
+  id: string;
+  name: string;
+}
+
+// ✅ أنواع الخطاب الأربعة المدعومة الآن
+type LetterFlowType =
+  | "attachment"
+  | "end-attachment"
+  | "join-saeqa"
+  | "join-external";
+
+const LETTER_TYPE_CODE_MAP: Record<LetterFlowType, string> = {
+  attachment: "ATTACH",
+  "end-attachment": "DEATTACH",
+  "join-saeqa": "JOIN_SAEQA",
+  "join-external": "JOIN_EXTERNAL",
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Stepper
@@ -322,7 +354,7 @@ function FormDropdown({
                 color: "#717d96",
               }}
             >
-              {filteredOptions.length} وحدة
+              {filteredOptions.length} نتيجة
             </div>
 
             <ul className="max-h-60 overflow-y-auto">
@@ -336,7 +368,7 @@ function FormDropdown({
                       color: "#717d96",
                     }}
                   >
-                    لا توجد وحدة بهذا الاسم
+                    لا توجد نتيجة بهذا الاسم
                   </div>
                 </li>
               ) : (
@@ -411,7 +443,6 @@ function InlineDropdown({
 
     const menuWidth = Math.max(rect.width, 240);
 
-    // dir="rtl" ⇒ نحاذي القائمة مع يمين الزرار
     let left = rect.right - menuWidth;
     if (left < 8) left = 8;
 
@@ -434,7 +465,6 @@ function InlineDropdown({
     setOpen(false);
   }
 
-  // اقفل الدروب داون عند السكرول / تغيير حجم الشاشة / الضغط بره القائمة
   useEffect(() => {
     if (!open) return;
 
@@ -598,22 +628,32 @@ export function LetterDataPage() {
   const location = useLocation();
 
   const state = location.state as {
-    letterType?: "attachment" | "end-attachment";
+    letterType?: LetterFlowType;
     soldiers?: SoldierData[];
   } | null;
 
-  const letterType =
-    state?.letterType === "end-attachment"
-      ? "end-attachment"
+  // ✅ بقى فيه 4 أنواع بدل 2
+  const letterType: LetterFlowType =
+    state?.letterType === "end-attachment" ||
+    state?.letterType === "join-saeqa" ||
+    state?.letterType === "join-external"
+      ? state.letterType
       : "attachment";
 
   const incomingSoldiers: SoldierData[] = state?.soldiers ?? [];
 
   const isEndAttachment = letterType === "end-attachment";
+  const isJoin = letterType === "join-saeqa" || letterType === "join-external";
+  const isJoinExternal = letterType === "join-external";
 
-  const pageTitle = isEndAttachment
-    ? "اصدار خطاب إنهاء إلحاق"
-    : "اصدار خطاب إلحاق";
+  const pageTitle =
+    letterType === "end-attachment"
+      ? "اصدار خطاب إنهاء إلحاق"
+      : letterType === "join-saeqa"
+      ? "اصدار خطاب ضم أفراد صاعقة"
+      : letterType === "join-external"
+      ? "اصدار خطاب ضم أفراد إدارات خارجية"
+      : "اصدار خطاب إلحاق";
 
   // ─────────────────────────────────────────────────────────
   // Supabase Data
@@ -621,6 +661,9 @@ export function LetterDataPage() {
 
   const [units, setUnits] = useState<Unit[]>([]);
   const [letterTypes, setLetterTypes] = useState<LetterType[]>([]);
+  const [administrations, setAdministrations] = useState<
+    ExternalAdministration[]
+  >([]);
 
   const [loadingData, setLoadingData] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -634,6 +677,7 @@ export function LetterDataPage() {
         const [
           { data: unitsData, error: unitsError },
           { data: typesData, error: typesError },
+          { data: adminsData, error: adminsError },
         ] = await Promise.all([
           supabase
             .from("units")
@@ -644,6 +688,12 @@ export function LetterDataPage() {
           supabase
             .from("letter_types")
             .select("id,name,code,is_active")
+            .eq("is_active", true)
+            .order("name"),
+
+          supabase
+            .from("external_administrations")
+            .select("id,name")
             .eq("is_active", true)
             .order("name"),
         ]);
@@ -658,8 +708,15 @@ export function LetterDataPage() {
           );
         }
 
+        if (adminsError) {
+          throw new Error(
+            `خطأ في تحميل الإدارات الخارجية: ${adminsError.message}`
+          );
+        }
+
         setUnits(unitsData ?? []);
         setLetterTypes(typesData ?? []);
+        setAdministrations(adminsData ?? []);
       } catch (error) {
         console.error(error);
 
@@ -681,11 +738,11 @@ export function LetterDataPage() {
   // ─────────────────────────────────────────────────────────
 
   const selectedLetterType = letterTypes.find(
-    (type) => type.code === (isEndAttachment ? "DEATTACH" : "ATTACH")
+    (type) => type.code === LETTER_TYPE_CODE_MAP[letterType]
   );
 
   // ─────────────────────────────────────────────────────────
-  // Form State
+  // Form State — الإلحاق / إنهاء الإلحاق
   // ─────────────────────────────────────────────────────────
 
   const [destination, setDestination] = useState("");
@@ -697,7 +754,29 @@ export function LetterDataPage() {
   );
 
   const [reason, setReason] = useState("");
-const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState("");
+
+  // ─────────────────────────────────────────────────────────
+  // Form State — خطابات الضم فقط
+  // ─────────────────────────────────────────────────────────
+
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 6 }, (_, i) => currentYear - i);
+
+  const [stageMonth, setStageMonth] = useState(STAGE_MONTHS[0].value);
+  const [stageYear, setStageYear] = useState(currentYear);
+
+  const [administrationName, setAdministrationName] = useState("");
+  const [administrationId, setAdministrationId] = useState("");
+
+  // ملاحظة كل فرد (افتراضيًا "(1س) الأصل" وقابلة للتعديل)
+  const [remarks, setRemarks] = useState<Record<string, string>>({});
+
+  // إدارة كل فرد (تبدأ بالإدارة العامة المختارة، وقابلة للتخصيص لكل فرد)
+  const [soldierAdminOverrides, setSoldierAdminOverrides] = useState<
+    Record<string, string>
+  >({});
+
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // ─────────────────────────────────────────────────────────
@@ -713,10 +792,11 @@ const [notes, setNotes] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
 
   // ─────────────────────────────────────────────────────────
-  // Unit Options
+  // Unit / Administration Options
   // ─────────────────────────────────────────────────────────
 
   const unitOptions = units.map((unit) => unit.name).filter(Boolean);
+  const administrationOptions = administrations.map((a) => a.name);
 
   // ─────────────────────────────────────────────────────────
   // Destination
@@ -737,7 +817,7 @@ const [notes, setNotes] = useState("");
   }
 
   // ─────────────────────────────────────────────────────────
-  // Attachment Unit
+  // Attachment Unit (خاص بالإلحاق فقط)
   // ─────────────────────────────────────────────────────────
 
   function handleAttachmentPlaceChange(name: string) {
@@ -746,8 +826,6 @@ const [notes, setNotes] = useState("");
     setAttachmentPlace(name);
     setAttachmentPlaceId(unit?.id ?? null);
 
-    // تغيير وحدة الإلحاق العامة
-    // يعيد ضبط التعديلات الفردية
     setOverrides({});
     setOverrideIds({});
 
@@ -758,10 +836,6 @@ const [notes, setNotes] = useState("");
       }));
     }
   }
-
-  // ─────────────────────────────────────────────────────────
-  // Get Soldier Attachment
-  // ─────────────────────────────────────────────────────────
 
   function getAttachmentUnit(soldier: SoldierData): string {
     if (overrides[soldier.id]) {
@@ -795,10 +869,6 @@ const [notes, setNotes] = useState("");
     return attachmentPlaceId;
   }
 
-  // ─────────────────────────────────────────────────────────
-  // Row Change
-  // ─────────────────────────────────────────────────────────
-
   function handleRowAttachmentChange(soldierId: string, value: string) {
     const unit = units.find((item) => item.name === value);
 
@@ -813,6 +883,56 @@ const [notes, setNotes] = useState("");
     }));
 
     setEditingId(null);
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // Administration (خاص بخطابات الضم فقط)
+  // ─────────────────────────────────────────────────────────
+
+  function handleAdministrationChange(name: string) {
+    const admin = administrations.find((a) => a.name === name);
+
+    setAdministrationName(name);
+    setAdministrationId(admin?.id ?? "");
+
+    // تغيير الإدارة العامة يعيد ضبط أي تخصيص فردي سابق
+    setSoldierAdminOverrides({});
+
+    if (errors.administration) {
+      setErrors((prev) => ({
+        ...prev,
+        administration: "",
+      }));
+    }
+  }
+
+  function getSoldierAdministrationId(soldierId: string): string {
+    return soldierAdminOverrides[soldierId] ?? administrationId;
+  }
+
+  function handleSoldierAdministrationChange(
+    soldierId: string,
+    adminId: string
+  ) {
+    setSoldierAdminOverrides((prev) => ({
+      ...prev,
+      [soldierId]: adminId,
+    }));
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // Remarks (خاص بخطابات الضم فقط)
+  // ─────────────────────────────────────────────────────────
+
+  function getRemark(soldierId: string): string {
+    return remarks[soldierId] ?? "(1س) الأصل";
+  }
+
+  function handleRemarkChange(soldierId: string, value: string) {
+    setRemarks((prev) => ({
+      ...prev,
+      [soldierId]: value,
+    }));
   }
 
   // ─────────────────────────────────────────────────────────
@@ -834,6 +954,26 @@ const [notes, setNotes] = useState("");
       e.destination = "جهة الخطاب مطلوبة";
     }
 
+    if (!selectedLetterType) {
+      e.letterType = "نوع الخطاب غير موجود في قاعدة البيانات";
+    }
+
+    if (localSoldiers.length === 0) {
+      e.soldiers = "يجب اختيار فرد واحد على الأقل";
+    }
+
+    // ✅ خطابات الضم: مفيهاش مكان إلحاق ولا سبب، وبس بنتحقق من
+    // الإدارة العامة لو النوع "ضم إدارات خارجية"
+    if (isJoin) {
+      if (isJoinExternal && !administrationId) {
+        e.administration = "الإدارة مطلوبة";
+      }
+
+      return e;
+    }
+
+    // باقي التحقق خاص فقط بالإلحاق/إنهاء الإلحاق
+
     if (!isEndAttachment && !attachmentPlaceId) {
       e.attachmentPlace = "مكان الالحاق مطلوب";
     }
@@ -844,22 +984,12 @@ const [notes, setNotes] = useState("");
         : "سبب الالحاق مطلوب";
     }
 
-    if (!selectedLetterType) {
-      e.letterType = "نوع الخطاب غير موجود في قاعدة البيانات";
-    }
-
-    if (localSoldiers.length === 0) {
-      e.soldiers = "يجب اختيار فرد واحد على الأقل";
-    }
-
-        // ✅ التحقق الجديد: لو الخطاب "إلحاق" (مش إنهاء إلحاق)، نتأكد إن
-    // مفيش فرد وحدة إلحاقه المختارة (سواء العامة أو المُعدَّلة له
-    // شخصيًا من الجدول) هي نفسها وحدته الأساسية.
+    // ✅ التحقق: لو الخطاب "إلحاق"، نتأكد إن مفيش فرد وحدة إلحاقه
+    // المختارة هي نفسها وحدته الأساسية
     if (!isEndAttachment && localSoldiers.length > 0) {
       const invalidSoldierNames = localSoldiers
         .filter((soldier) => {
-          const chosenAttachmentUnitName =
-            getAttachmentUnit(soldier);
+          const chosenAttachmentUnitName = getAttachmentUnit(soldier);
 
           return (
             chosenAttachmentUnitName &&
@@ -869,12 +999,12 @@ const [notes, setNotes] = useState("");
         .map((soldier) => soldier.name);
 
       if (invalidSoldierNames.length > 0) {
-        e.attachmentPlace ='لا يمكن إلحاق الفرد بنفس وحدته الأساسية يرجي تغيير الوحدة.';
+        e.attachmentPlace =
+          "لا يمكن إلحاق الفرد بنفس وحدته الأساسية يرجي تغيير الوحدة.";
       }
     }
 
     return e;
-  
   }
 
   // ─────────────────────────────────────────────────────────
@@ -891,37 +1021,62 @@ const [notes, setNotes] = useState("");
 
     setErrors({});
 
-    const soldiersWithAttachment: SoldierWithAttachment[] =
-      localSoldiers.map((soldier) => ({
+    let soldiersPayload: SoldierWithAttachment[];
+
+    if (isJoin) {
+      soldiersPayload = localSoldiers.map((soldier) => {
+        const adminId = isJoinExternal
+          ? getSoldierAdministrationId(soldier.id)
+          : "";
+
+        const adminName = isJoinExternal
+          ? administrations.find((a) => a.id === adminId)?.name ?? null
+          : null;
+
+        return {
+          ...soldier,
+          remarks: getRemark(soldier.id),
+          administrationId: isJoinExternal ? adminId || null : null,
+          administrationName: adminName,
+        };
+      });
+    } else {
+      soldiersPayload = localSoldiers.map((soldier) => ({
         ...soldier,
-
         attachmentUnit: getAttachmentUnit(soldier),
-
         attachmentUnitId: getAttachmentUnitId(soldier) ?? undefined,
       }));
+    }
 
-   const letterData: LetterData = {
-  destination,
-  destinationId,
-  issuingUnitId: destinationId,
+    const letterData: LetterData = {
+      destination,
+      destinationId,
+      issuingUnitId: destinationId,
 
-  attachmentPlace: isEndAttachment ? "" : attachmentPlace,
+      attachmentPlace: !isJoin && !isEndAttachment ? attachmentPlace : "",
+      attachmentPlaceId: !isJoin && !isEndAttachment ? attachmentPlaceId : null,
 
-  attachmentPlaceId: isEndAttachment ? null : attachmentPlaceId,
+      reason: isJoin ? "" : reason,
+      notes: isJoin ? "" : notes,
 
-  reason,
-  notes, // ✅ جديد
-};
+      ...(isJoin
+        ? {
+            stageMonth,
+            stageYear,
+            administrationId: isJoinExternal ? administrationId || null : null,
+            administrationName: isJoinExternal
+              ? administrationName || null
+              : null,
+          }
+        : {}),
+    };
 
     navigate("/dashboard/issue-letter/review", {
       state: {
         letterType,
         letterTypeId: selectedLetterType?.id,
-
         letterTypeCode: selectedLetterType?.code,
-
-        soldiers: soldiersWithAttachment,
-
+        soldiers: soldiersPayload,
         letterData,
       },
     });
@@ -986,11 +1141,17 @@ const [notes, setNotes] = useState("");
   }
 
   // ─────────────────────────────────────────────────────────
-  // Table Classes
+  // Table Columns (حسب نوع الخطاب)
   // ─────────────────────────────────────────────────────────
 
   const thClass = "px-4 py-3 text-right border-b border-[#e2e7f0]";
   const tdClass = "px-4 py-3 text-right border-b border-[#e2e7f0]";
+
+  const tableHeaders = isJoin
+    ? isJoinExternal
+      ? ["درجة", "اسم", "الوحدة", "ملاحظات", "الادارة", "الاجراء"]
+      : ["درجة", "اسم", "الوحدة", "ملاحظات", "الاجراء"]
+    : ["درجة", "اسم", "الوحدة", "وحدة الالحاق", "الاجراء"];
 
   // ─────────────────────────────────────────────────────────
   // Render
@@ -1052,34 +1213,218 @@ const [notes, setNotes] = useState("");
 
       <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full">
         <div className="flex flex-col gap-5 px-6 py-5">
-          {/* Destination */}
+          {isJoin ? (
+            /* ═══════════════════════════════════════════════════
+               بيانات خطابات الضم (صاعقة / إدارات خارجية)
+            ═══════════════════════════════════════════════════ */
+            <>
+              <div className="flex flex-col sm:flex-row gap-4 w-full">
+                {/* جهة الخطاب */}
 
-          {isEndAttachment ? (
-            <div className="flex flex-col gap-1.5 w-full">
-              <label
-                style={{
-                  ...F,
-                  fontWeight: 700,
-                  fontSize: 15,
-                  color: "#2d3648",
-                }}
-              >
-                جهة الخطاب
-              </label>
+                <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                  <label
+                    style={{
+                      ...F,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      color: "#2d3648",
+                    }}
+                  >
+                    جهة الخطاب
+                  </label>
 
-              <FormDropdown
-                placeholder="ابحث عن جهة الخطاب"
-                options={unitOptions}
-                value={destination}
-                onChange={handleDestinationChange}
-                error={errors.destination}
-              />
-            </div>
+                  <FormDropdown
+                    placeholder="ابحث عن جهة الخطاب"
+                    options={unitOptions}
+                    value={destination}
+                    onChange={handleDestinationChange}
+                    error={errors.destination}
+                  />
+                </div>
+
+                {/* الإدارة (ضم إدارات فقط) */}
+
+                {isJoinExternal && (
+                  <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                    <label
+                      style={{
+                        ...F,
+                        fontWeight: 700,
+                        fontSize: 15,
+                        color: "#2d3648",
+                      }}
+                    >
+                      الإدارة
+                    </label>
+
+                    <FormDropdown
+                      placeholder="اختر الإدارة"
+                      options={administrationOptions}
+                      value={administrationName}
+                      onChange={handleAdministrationChange}
+                      error={errors.administration}
+                    />
+
+                    <p
+                      style={{
+                        ...F,
+                        fontSize: 12,
+                        color: "#717d96",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      سيتم تطبيق الإدارة على جميع الأفراد، ويمكنك تعديلها
+                      لكل فرد من خلال جدول الأفراد
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* المرحلة التجنيدية */}
+
+              <div className="flex flex-col sm:flex-row gap-4 w-full">
+                <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                  <label
+                    style={{
+                      ...F,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      color: "#2d3648",
+                    }}
+                  >
+                    سنة المرحلة التجنيدية
+                  </label>
+
+                  <select
+                    value={stageYear}
+                    onChange={(e) => setStageYear(Number(e.target.value))}
+                    dir="rtl"
+                    className="w-full h-[52px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#1f3d97] bg-white"
+                    style={{ ...F, fontSize: 16, color: "#2d3648" }}
+                  >
+                    {yearOptions.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                  <label
+                    style={{
+                      ...F,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      color: "#2d3648",
+                    }}
+                  >
+                    شهر المرحلة التجنيدية
+                  </label>
+
+                  <select
+                    value={stageMonth}
+                    onChange={(e) => setStageMonth(Number(e.target.value))}
+                    dir="rtl"
+                    className="w-full h-[52px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#1f3d97] bg-white"
+                    style={{ ...F, fontSize: 16, color: "#2d3648" }}
+                  >
+                    {STAGE_MONTHS.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </>
           ) : (
-            <div className="flex flex-col sm:flex-row gap-4 w-full">
-              {/* Destination */}
+            /* ═══════════════════════════════════════════════════
+               بيانات الإلحاق / إنهاء الإلحاق (زي ما كانت بالظبط)
+            ═══════════════════════════════════════════════════ */
+            <>
+              {isEndAttachment ? (
+                <div className="flex flex-col gap-1.5 w-full">
+                  <label
+                    style={{
+                      ...F,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      color: "#2d3648",
+                    }}
+                  >
+                    جهة الخطاب
+                  </label>
 
-              <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                  <FormDropdown
+                    placeholder="ابحث عن جهة الخطاب"
+                    options={unitOptions}
+                    value={destination}
+                    onChange={handleDestinationChange}
+                    error={errors.destination}
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-col sm:flex-row gap-4 w-full">
+                  <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                    <label
+                      style={{
+                        ...F,
+                        fontWeight: 700,
+                        fontSize: 15,
+                        color: "#2d3648",
+                      }}
+                    >
+                      جهة الخطاب
+                    </label>
+
+                    <FormDropdown
+                      placeholder="ابحث عن جهة الخطاب"
+                      options={unitOptions}
+                      value={destination}
+                      onChange={handleDestinationChange}
+                      error={errors.destination}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                    <label
+                      style={{
+                        ...F,
+                        fontWeight: 700,
+                        fontSize: 15,
+                        color: "#2d3648",
+                      }}
+                    >
+                      مكان الالحاق
+                    </label>
+
+                    <FormDropdown
+                      placeholder="ابحث عن مكان الالحاق"
+                      options={unitOptions}
+                      value={attachmentPlace}
+                      onChange={handleAttachmentPlaceChange}
+                      error={errors.attachmentPlace}
+                    />
+
+                    <p
+                      style={{
+                        ...F,
+                        fontSize: 12,
+                        color: "#717d96",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      سيتم تطبيق وحدة الالحاق على جميع الافراد ولكن يمكنك
+                      تعديل كل فرد من خلال جدول الافراد
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="w-full h-px bg-[#eff0f6]" />
+
+              <div className="flex flex-col gap-1.5 w-full">
                 <label
                   style={{
                     ...F,
@@ -1088,21 +1433,49 @@ const [notes, setNotes] = useState("");
                     color: "#2d3648",
                   }}
                 >
-                  جهة الخطاب
+                  {isEndAttachment ? "سبب انهاء الالحاق" : "سبب الالحاق"}
                 </label>
 
-                <FormDropdown
-                  placeholder="ابحث عن جهة الخطاب"
-                  options={unitOptions}
-                  value={destination}
-                  onChange={handleDestinationChange}
-                  error={errors.destination}
+                <textarea
+                  value={reason}
+                  onChange={(e) => {
+                    setReason(e.target.value);
+
+                    if (errors.reason) {
+                      setErrors((p) => ({
+                        ...p,
+                        reason: "",
+                      }));
+                    }
+                  }}
+                  placeholder="اكتب السبب"
+                  rows={3}
+                  dir="rtl"
+                  className={[
+                    "w-full bg-white border rounded-[8px] px-3 py-3 text-right outline-none resize-none focus:border-[#1f3d97] transition-colors",
+                    errors.reason ? "border-[#ef4444]" : "border-[#e2e7f0]",
+                  ].join(" ")}
+                  style={{
+                    ...F,
+                    fontSize: 16,
+                    color: "#4a5468",
+                  }}
                 />
+
+                {errors.reason && (
+                  <p
+                    style={{
+                      ...F,
+                      fontSize: 13,
+                      color: "#ef4444",
+                    }}
+                  >
+                    {errors.reason}
+                  </p>
+                )}
               </div>
 
-              {/* Attachment Unit */}
-
-              <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+              <div className="flex flex-col gap-1.5 w-full">
                 <label
                   style={{
                     ...F,
@@ -1111,114 +1484,28 @@ const [notes, setNotes] = useState("");
                     color: "#2d3648",
                   }}
                 >
-                  مكان الالحاق
+                  ملاحظات (اختياري)
                 </label>
 
-                <FormDropdown
-                  placeholder="ابحث عن مكان الالحاق"
-                  options={unitOptions}
-                  value={attachmentPlace}
-                  onChange={handleAttachmentPlaceChange}
-                  error={errors.attachmentPlace}
-                />
-
-                <p
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="اكتب أي ملاحظات إضافية"
+                  rows={2}
+                  dir="rtl"
+                  className="w-full bg-white border border-[#e2e7f0] rounded-[8px] px-3 py-3 text-right outline-none resize-none focus:border-[#1f3d97] transition-colors"
                   style={{
                     ...F,
-                    fontSize: 12,
-                    color: "#717d96",
-                    lineHeight: 1.5,
+                    fontSize: 16,
+                    color: "#4a5468",
                   }}
-                >
-                  سيتم تطبيق وحدة الالحاق على جميع الافراد ولكن يمكنك تعديل
-                  كل فرد من خلال جدول الافراد
-                </p>
+                />
               </div>
-            </div>
+            </>
           )}
 
           <div className="w-full h-px bg-[#eff0f6]" />
 
-          {/* Reason */}
-
-          <div className="flex flex-col gap-1.5 w-full">
-            <label
-              style={{
-                ...F,
-                fontWeight: 700,
-                fontSize: 15,
-                color: "#2d3648",
-              }}
-            >
-              {isEndAttachment ? "سبب انهاء الالحاق" : "سبب الالحاق"}
-            </label>
-
-            <textarea
-              value={reason}
-              onChange={(e) => {
-                setReason(e.target.value);
-
-                if (errors.reason) {
-                  setErrors((p) => ({
-                    ...p,
-                    reason: "",
-                  }));
-                }
-              }}
-              placeholder="اكتب السبب"
-              rows={3}
-              dir="rtl"
-              className={[
-                "w-full bg-white border rounded-[8px] px-3 py-3 text-right outline-none resize-none focus:border-[#1f3d97] transition-colors",
-                errors.reason ? "border-[#ef4444]" : "border-[#e2e7f0]",
-              ].join(" ")}
-              style={{
-                ...F,
-                fontSize: 16,
-                color: "#4a5468",
-              }}
-            />
-
-            {errors.reason && (
-              <p
-                style={{
-                  ...F,
-                  fontSize: 13,
-                  color: "#ef4444",
-                }}
-              >
-                {errors.reason}
-              </p>
-            )}
-          </div>
-{/* Notes */}
-
-<div className="flex flex-col gap-1.5 w-full">
-  <label
-    style={{
-      ...F,
-      fontWeight: 700,
-      fontSize: 15,
-      color: "#2d3648",
-    }}
-  >
-    ملاحظات (اختياري)
-  </label>
-
-  <textarea
-    value={notes}
-    onChange={(e) => setNotes(e.target.value)}
-    placeholder="اكتب أي ملاحظات إضافية"
-    rows={2}
-    dir="rtl"
-    className="w-full bg-white border border-[#e2e7f0] rounded-[8px] px-3 py-3 text-right outline-none resize-none focus:border-[#1f3d97] transition-colors"
-    style={{
-      ...F,
-      fontSize: 16,
-      color: "#4a5468",
-    }}
-  />
-</div>
           {/* Soldiers */}
 
           {localSoldiers.length > 0 && (
@@ -1226,13 +1513,7 @@ const [notes, setNotes] = useState("");
               <table className="w-full min-w-[580px] border-collapse">
                 <thead>
                   <tr className="bg-[#f7f9fc]">
-                    {[
-                      "درجة",
-                      "اسم",
-                      "الوحدة",
-                      "وحدة الالحاق",
-                      "الاجراء",
-                    ].map((h) => (
+                    {tableHeaders.map((h) => (
                       <th key={h} className={thClass}>
                         <div className="flex items-center gap-1 justify-start">
                           <span
@@ -1297,89 +1578,162 @@ const [notes, setNotes] = useState("");
                         </span>
                       </td>
 
-                      {/* Attachment Unit */}
+                      {isJoin ? (
+                        <>
+                          {/* Remarks (نص حر لكل فرد) */}
 
-                      <td className={tdClass}>
-                        {editingId === soldier.id ? (
-                          <InlineDropdown
-                            value={getAttachmentUnit(soldier)}
-                            options={unitOptions}
-                            onChange={(v) =>
-                              handleRowAttachmentChange(soldier.id, v)
-                            }
-                          />
-                        ) : (
-                          <span
-                            style={{
-                              ...F,
-                              fontSize: 14,
-                              color: "#2d3648",
-                            }}
-                          >
-                            {getAttachmentUnit(soldier) || "-"}
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Actions */}
-
-                      <td className={tdClass}>
-                        <div className="flex items-start gap-2">
-                          {/* Delete */}
-
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveSoldier(soldier.id)}
-                            className="w-7 h-7 rounded-[6px] flex items-center justify-center transition-colors hover:opacity-80"
-                            style={{
-                              backgroundColor: "#fce8f1",
-                            }}
-                          >
-                            <Trash2
-                              size={13}
+                          <td className={tdClass}>
+                            <input
+                              type="text"
+                              value={getRemark(soldier.id)}
+                              onChange={(e) =>
+                                handleRemarkChange(soldier.id, e.target.value)
+                              }
+                              dir="rtl"
+                              className="w-full min-w-[140px] h-9 px-2 rounded-[6px] border border-[#e2e7f0] text-right outline-none focus:border-[#1f3d97]"
                               style={{
-                                color: "#e3282c",
+                                ...F,
+                                fontSize: 13,
+                                color: "#2d3648",
                               }}
                             />
-                          </button>
+                          </td>
 
-                          {/* Edit / Check */}
+                          {/* Administration (ضم إدارات فقط) */}
 
-                          {editingId === soldier.id ? (
-                            <button
-                              type="button"
-                              onClick={() => setEditingId(null)}
-                              className="w-7 h-7 rounded-[6px] flex items-center justify-center transition-colors hover:opacity-80"
-                              style={{
-                                backgroundColor: "#ebfaea",
-                              }}
-                            >
-                              <Check
-                                size={13}
+                          {isJoinExternal && (
+                            <td className={tdClass}>
+                              <select
+                                value={getSoldierAdministrationId(soldier.id)}
+                                onChange={(e) =>
+                                  handleSoldierAdministrationChange(
+                                    soldier.id,
+                                    e.target.value
+                                  )
+                                }
+                                dir="rtl"
+                                className="w-full min-w-[140px] h-9 px-2 rounded-[6px] border border-[#e2e7f0] text-right outline-none focus:border-[#1f3d97] bg-white"
                                 style={{
-                                  color: "#00b867",
+                                  ...F,
+                                  fontSize: 13,
+                                  color: "#2d3648",
                                 }}
-                              />
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setEditingId(soldier.id)}
-                              className="w-7 h-7 rounded-[6px] flex items-center justify-center transition-colors hover:opacity-80"
-                              style={{
-                                backgroundColor: "#ebedfd",
-                              }}
-                            >
-                              <Pencil
-                                size={13}
-                                style={{
-                                  color: "#1f3d97",
-                                }}
-                              />
-                            </button>
+                              >
+                                <option value="">اختر الإدارة</option>
+                                {administrations.map((admin) => (
+                                  <option key={admin.id} value={admin.id}>
+                                    {admin.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
                           )}
-                        </div>
-                      </td>
+
+                          {/* Actions: حذف فقط */}
+
+                          <td className={tdClass}>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSoldier(soldier.id)}
+                              className="w-7 h-7 rounded-[6px] flex items-center justify-center transition-colors hover:opacity-80"
+                              style={{
+                                backgroundColor: "#fce8f1",
+                              }}
+                            >
+                              <Trash2
+                                size={13}
+                                style={{
+                                  color: "#e3282c",
+                                }}
+                              />
+                            </button>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          {/* Attachment Unit */}
+
+                          <td className={tdClass}>
+                            {editingId === soldier.id ? (
+                              <InlineDropdown
+                                value={getAttachmentUnit(soldier)}
+                                options={unitOptions}
+                                onChange={(v) =>
+                                  handleRowAttachmentChange(soldier.id, v)
+                                }
+                              />
+                            ) : (
+                              <span
+                                style={{
+                                  ...F,
+                                  fontSize: 14,
+                                  color: "#2d3648",
+                                }}
+                              >
+                                {getAttachmentUnit(soldier) || "-"}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Actions */}
+
+                          <td className={tdClass}>
+                            <div className="flex items-start gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleRemoveSoldier(soldier.id)
+                                }
+                                className="w-7 h-7 rounded-[6px] flex items-center justify-center transition-colors hover:opacity-80"
+                                style={{
+                                  backgroundColor: "#fce8f1",
+                                }}
+                              >
+                                <Trash2
+                                  size={13}
+                                  style={{
+                                    color: "#e3282c",
+                                  }}
+                                />
+                              </button>
+
+                              {editingId === soldier.id ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingId(null)}
+                                  className="w-7 h-7 rounded-[6px] flex items-center justify-center transition-colors hover:opacity-80"
+                                  style={{
+                                    backgroundColor: "#ebfaea",
+                                  }}
+                                >
+                                  <Check
+                                    size={13}
+                                    style={{
+                                      color: "#00b867",
+                                    }}
+                                  />
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingId(soldier.id)}
+                                  className="w-7 h-7 rounded-[6px] flex items-center justify-center transition-colors hover:opacity-80"
+                                  style={{
+                                    backgroundColor: "#ebedfd",
+                                  }}
+                                >
+                                  <Pencil
+                                    size={13}
+                                    style={{
+                                      color: "#1f3d97",
+                                    }}
+                                  />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </>
+                      )}
                     </tr>
                   ))}
                 </tbody>

@@ -299,9 +299,15 @@ export function SelectSoldiersPage() {
   } | null;
 
   const letterType =
-    state?.letterType === "end-attachment"
-      ? "end-attachment"
+    state?.letterType === "end-attachment" ||
+    state?.letterType === "join-saeqa" ||
+    state?.letterType === "join-external"
+      ? state.letterType
       : "attachment";
+
+  const isJoinLetter =
+    letterType === "join-saeqa" ||
+    letterType === "join-external";
 
   const [militaryNumber, setMilitaryNumber] = useState("");
   const [soldiers, setSoldiers] = useState<SoldierData[]>([]);
@@ -312,8 +318,12 @@ export function SelectSoldiersPage() {
     | "database"
     | "undocumented-letter"
     | "not-attached"
+    | "already-joined"
     | null
   >(null);
+
+  const [previousJoinLetterNumber, setPreviousJoinLetterNumber] =
+    useState<string | null>(null);
   const [pendingLetterNumber, setPendingLetterNumber] = useState<string | null>(null);
 
   const [searching, setSearching] = useState(false);
@@ -418,39 +428,49 @@ async function handleAdd() {
       }
     }
 
-    // ✅ منع إضافة فرد عليه خطاب سابق لسه "غير موثّق"
-    // ✅ منع إضافة فرد عليه خطاب سابق لسه "غير موثّق"
-    // لازم يتوثّق الأول قبل ما نقدر نصدر خطاب جديد ليه
-    const {
-      data: pendingLetters,
-      error: pendingError,
-    } = await supabase
-      .from("letter_personnel")
-      .select("letter_id, letters!inner(letter_number, status)")
-      .eq("personnel_id", data.id)
-      .eq("letters.status", "UNDOCUMENTED");
+    // ✅ خطاب الضم (صاعقة/إدارات) بيصدر للفرد مرة واحدة فقط
+    // مدى الحياة — بغض النظر عن حالة التوثيق. نتحقق من وجود أي
+    // خطاب ضم سابق لهذا الفرد (من أي النوعين) قبل السماح بإضافته.
+      // ✅ خطاب الضم (صاعقة/إدارات) بيصدر للفرد مرة واحدة فقط
+    // مدى الحياة — بغض النظر عن حالة التوثيق. نتحقق من وجود أي
+    // خطاب ضم سابق لهذا الفرد (من أي النوعين) قبل السماح بإضافته.
+    if (isJoinLetter) {
+      const {
+        data: previousJoinLetters,
+        error: joinCheckError,
+      } = await supabase
+        .from("letter_personnel")
+        .select(
+          "letter_id, letters!inner(letter_number, letter_type_id, letter_types!inner(code))"
+        )
+        .eq("personnel_id", data.id)
+        .in("letters.letter_types.code", [
+          "JOIN_SAEQA",
+          "JOIN_EXTERNAL",
+        ]);
 
-    if (pendingError) {
-      console.error(pendingError);
-      setErrorType("database");
-      return;
-    }
+      if (joinCheckError) {
+        console.error(joinCheckError);
+        setErrorType("database");
+        return;
+      }
 
-    if (pendingLetters && pendingLetters.length > 0) {
-      const firstPending = pendingLetters[0] as any;
+      if (previousJoinLetters && previousJoinLetters.length > 0) {
+        const firstJoin = previousJoinLetters[0] as any;
 
-      const letterRecord = Array.isArray(firstPending.letters)
-        ? firstPending.letters[0]
-        : firstPending.letters;
+        const letterRecord = Array.isArray(firstJoin.letters)
+          ? firstJoin.letters[0]
+          : firstJoin.letters;
 
-      setPendingLetterNumber(
-        letterRecord?.letter_number != null
-          ? String(letterRecord.letter_number)
-          : null
-      );
+        setPreviousJoinLetterNumber(
+          letterRecord?.letter_number != null
+            ? String(letterRecord.letter_number)
+            : null
+        );
 
-      setErrorType("undocumented-letter");
-      return;
+        setErrorType("already-joined");
+        return;
+      }
     }
 
     const rank = Array.isArray(data.rank)
@@ -525,6 +545,10 @@ async function handleAdd() {
   const pageTitle =
     letterType === "end-attachment"
       ? "اصدار خطاب إنهاء إلحاق"
+      : letterType === "join-saeqa"
+      ? "اصدار خطاب ضم أفراد صاعقة"
+      : letterType === "join-external"
+      ? "اصدار خطاب ضم أفراد إدارات خارجية"
       : "اصدار خطاب إلحاق";
 
     const hasError =
@@ -532,7 +556,8 @@ async function handleAdd() {
     errorType === "duplicate" ||
     errorType === "database" ||
     errorType === "undocumented-letter" ||
-    errorType === "not-attached";
+    errorType === "not-attached" ||
+    errorType === "already-joined";
 
   return (
     <div
@@ -740,6 +765,43 @@ async function handleAdd() {
               >
                لا يمكن إصدار خطاب إنهاء إلحاق لفرد غير مُلحق.
 
+              </p>
+            </div>
+          </div>
+        )}
+                {errorType === "already-joined" && (
+          <div
+            className="flex items-start gap-3 px-4 py-3 rounded-[10px]"
+            style={{
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+            }}
+          >
+            <AlertCircle color="#ef4444" />
+
+            <div>
+              <p
+                style={{
+                  ...F,
+                  fontWeight: 700,
+                  color: "#991b1b",
+                }}
+              >
+                لا يمكن إضافة هذا الفرد
+              </p>
+
+              <p
+                style={{
+                  ...F,
+                  fontSize: 13,
+                  color: "#b91c1c",
+                }}
+              >
+                سبق إصدار خطاب ضم لهذا الفرد
+                {previousJoinLetterNumber
+                  ? ` برقم ${previousJoinLetterNumber} `
+                  : " "}
+                . لا يمكن إصدار أكثر من خطاب ضم واحد لنفس الفرد.
               </p>
             </div>
           </div>
