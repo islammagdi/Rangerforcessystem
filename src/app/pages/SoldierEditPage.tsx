@@ -38,7 +38,11 @@ function isSoldierRankName(name?: string | null): boolean {
   const n = (name ?? "").trim();
   return n === "جندي" || n === "جندى";
 }
-
+// تنسيق تاريخ الدفعة لعرضه في حالة عدم وجود اسم مخصص لها
+function formatBatchDate(date: string) {
+  const [year, month, day] = date.split("-");
+  return `${day}/${month}/${year}`;
+}
 // ─────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────
@@ -1038,7 +1042,7 @@ export function SoldierEditPage() {
   const [attachmentUnitOptions, setAttachmentUnitOptions] = useState<
     Option[]
   >([]);
-
+  const [reserveBatchOptions, setReserveBatchOptions] = useState<Option[]>([]);
   // ───────────────────────────────────────────────────────────
   // Selected values
   // ───────────────────────────────────────────────────────────
@@ -1100,6 +1104,7 @@ const filteredRankOptions = useMemo(() => {
         categoriesResult,
         unitsResult,
         serviceStatusesResult,
+        reserveBatchesResult,
       ] = await Promise.all([
         supabase
           .from("ranks")
@@ -1121,6 +1126,12 @@ const filteredRankOptions = useMemo(() => {
           .from("service_statuses")
           .select("id,name")
           .order("name", { ascending: true }),
+
+        supabase
+          .from("reserve_batches")
+          .select("id,batch_date,name,is_active")
+          .eq("is_active", true)
+          .order("batch_date", { ascending: true }),
       ]);
 
       if (ranksResult.error) {
@@ -1139,6 +1150,9 @@ const filteredRankOptions = useMemo(() => {
         throw serviceStatusesResult.error;
       }
 
+      if (reserveBatchesResult.error) {
+        throw reserveBatchesResult.error;
+      }
       setRankOptions(
         (ranksResult.data ?? []).map((row) => ({
           id: row.id,
@@ -1177,6 +1191,15 @@ const filteredRankOptions = useMemo(() => {
         (serviceStatusesResult.data ?? []).map((row) => ({
           id: row.id,
           name: row.name,
+        }))
+      );
+
+      // ✅ خيارات دفعات الرديف - نستخدم batch_date نفسه كـ "id" لأنه
+      // هو نفس القيمة المخزّنة فعليًا في personnel.discharge_date
+      setReserveBatchOptions(
+        (reserveBatchesResult.data ?? []).map((row) => ({
+          id: row.batch_date,
+          name: row.name || `دفعة ${formatBatchDate(row.batch_date)}`,
         }))
       );
     } catch (err: any) {
@@ -1840,7 +1863,7 @@ await createNotification({
                   )}
                 </div>
               }
-              right={
+                right={
                 <div>
                   <p
                     style={{
@@ -1853,10 +1876,19 @@ await createNotification({
                     تاريخ التسريح
                   </p>
 
-                  <DatePickerDDMMYYYY
-                    value={isVolunteerCategory ? null : dischargeDateIso}
-                    onChange={setDischargeDateIso}
+                  <EditDropdown
+                    options={reserveBatchOptions}
+                    value={
+                      isVolunteerCategory
+                        ? null
+                        : dischargeDateIso
+                    }
+                    onChange={(option) => {
+                      setDischargeDateIso(option.id);
+                      setError("");
+                    }}
                     disabled={isVolunteerCategory}
+                    placeholder="اختر دفعة الرديف"
                   />
 
                   {isVolunteerCategory && (

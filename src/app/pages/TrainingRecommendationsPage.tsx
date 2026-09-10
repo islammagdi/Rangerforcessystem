@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Printer, Plus, Pencil, Trash2, X } from "lucide-react";
-
+import { logActivity } from "../../lib/logActivity";
 import { supabase } from "../../lib/supabase";
 import { usePermissions } from "../../lib/usePermissions";
 import {
@@ -18,7 +18,51 @@ import {
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
+// تسميات الحقول عشان تظهر بالعربي في السجل
+const FIELD_LABELS: Record<string, string> = {
+  stage_month: "المرحلة التجنيدية",
+  stage_year: "السنة",
+  list_type: "نوع الكشف",
+  list_type_other: "اسم نوع الكشف",
+  full_name: "اسم الفرد",
+  recommender: "الموصي",
+  recruitment_area: "المنطقة التجنيدية",
+  national_id: "الرقم القومي",
+  triple_number: "الرقم الثلاثي",
+  qualification: "المؤهل",
+  required_weapon: "السلاح المطلوب",
+  current_weapon: "السلاح الحالي",
+  required_unit: "الوحدة المطلوبة",
+  current_unit: "الوحدة الحالية",
+};
 
+function getChangedFields(
+  oldData: Record<string, any>,
+  newData: Record<string, any>
+) {
+  const changes: {
+    field: string;
+    label: string;
+    oldValue: any;
+    newValue: any;
+  }[] = [];
+
+  Object.keys(newData).forEach((key) => {
+    const oldValue = oldData[key] ?? null;
+    const newValue = newData[key] ?? null;
+
+    if (oldValue !== newValue) {
+      changes.push({
+        field: key,
+        label: FIELD_LABELS[key] ?? key,
+        oldValue,
+        newValue,
+      });
+    }
+  });
+
+  return changes;
+}
 const PF: React.CSSProperties = {
   fontFamily: "'Times New Roman', Times, serif",
 };
@@ -292,6 +336,38 @@ export function TrainingRecommendationsPage() {
     try {
       await deleteRecommendation(row.id);
       setRows((prev) => prev.filter((r) => r.id !== row.id));
+
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        let userName = "غير معروف";
+
+        if (user) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("username")
+            .eq("id", user.id)
+            .maybeSingle();
+
+          userName = profile?.username ?? "غير معروف";
+        }
+
+        await logActivity({
+          userId: user?.id ?? null,
+          userName,
+          actionType: "DELETE",
+          action: "حذف توصية تدريب",
+          entity: "training_recommendations",
+          details: JSON.stringify({
+            recommendationId: row.id,
+            fullName: row.full_name,
+          }),
+        });
+      } catch (auditError) {
+        console.error("Audit log error:", auditError);
+      }
     } catch (err: any) {
       console.error("Delete recommendation error:", err);
       setError(err?.message || "حدث خطأ أثناء حذف التوصية");

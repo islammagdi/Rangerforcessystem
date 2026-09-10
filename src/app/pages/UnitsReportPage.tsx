@@ -66,11 +66,74 @@ interface UnitView {
 }
 
 const SORT_OPTIONS = [
+    "التبعية",
   "القوة الاكبر",
   "القوة الاصغر",
   "نسبة الخوارج الأعلى",
   "نسبة الخوارج الأدنى",
+
 ];
+
+// ─── ترتيب التبعية الهرمي ───────────────────────────────────────────────
+// ترتيب ثابت بالاسم يعكس التسلسل الإداري/القيادي للوحدات.
+// ملاحظة: "كتيبة 33 صاعقة" مكررة في القائمة الأصلية (مرة تحت المجموعة 127
+// ومرة تحت المجموعة 129) — بما إن الترتيب هنا بالاسم فقط، هيتاخد أول ظهور
+// ليها. لو دول فعليًا وحدتين مختلفتين بنفس الاسم، الترتيب الدقيق محتاج
+// يعتمد على parent_unit_id بدل الاسم.
+const UNIT_HIERARCHY_ORDER: string[] = [
+  "قيادة المجموعة 127 صاعقة",
+  "كتيبة 33 صاعقة",
+  "كتيبة 43 صاعقة",
+  "كتيبة 53 صاعقة",
+  "كتيبة 103 صاعقة",
+  "قيادة المجموعة 129 صاعقة",
+  "كتيبة 13 صاعقة",
+  "كتيبة 23 صاعقة",
+  "كتيبة 83 صاعقة",
+  "كتيبة 113 صاعقة",
+  "قيادة المجموعة 145 صاعقة",
+  "كتيبة 63 صاعقة",
+  "كتيبة 93 صاعقة",
+  "كتيبة 73 صاعقة",
+  "كتيبة 143 صاعقة",
+  "قيادة المجموعة 101 صاعقة",
+  "كتيبة 11 صاعقة",
+  "كتيبة 21 صاعقة",
+  "كتيبة 31 صاعقة",
+  "كتيبة 41 صاعقة",
+  "قياده مجموعه العمليات الخاصه",
+  "الوحدة 777 قتال",
+  "الوحدة 999 قتال",
+  "كتيبة 50 صاعقة",
+  "سرية العائمات",
+  "فصيلة شئون مظلات",
+  "سريه القياده",
+  "كتيبة القيادة",
+  "سرية الإيجلا",
+  "كتيبة التأمين الفني",
+  "ميس 4",
+  "سرية 279 نقل",
+  "فصيلة 121 شرطة عسكرية",
+  "سرية 680 إشارة",
+  "مدرسة الصاعقة",
+  "فرقة الموسيقى",
+  "السرية الزراعية",
+  "كتيبة 49 مدفعية",
+];
+
+// خريطة اسم → ترتيبه (أول ظهور بيفوز لو الاسم اتكرر)
+const UNIT_HIERARCHY_INDEX = new Map<string, number>();
+UNIT_HIERARCHY_ORDER.forEach((name, idx) => {
+  if (!UNIT_HIERARCHY_INDEX.has(name)) {
+    UNIT_HIERARCHY_INDEX.set(name, idx);
+  }
+});
+
+function hierarchyRank(name: string): number {
+  const idx = UNIT_HIERARCHY_INDEX.get(name.trim());
+  // أي وحدة مش موجودة في قائمة التبعية تتحط في الآخر، بترتيب مستقر حسب الاسم
+  return idx === undefined ? Number.MAX_SAFE_INTEGER : idx;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function barColor(pct: number): BarColor {
@@ -321,7 +384,7 @@ type FilterType = "الكل" | "اساسي" | "اداري";
 export function UnitsReportPage() {
   const [filter, setFilter] = useState<FilterType>("الكل");
   const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState("القوة الاكبر");
+const [sortBy, setSortBy] = useState("التبعية");
 
   const [units, setUnits] = useState<DbUnit[]>([]);
   const [personnel, setPersonnel] = useState<DbPersonnelRow[]>([]);
@@ -570,7 +633,15 @@ export function UnitsReportPage() {
     if (sortBy === "نسبة الخوارج الأدنى") {
       list = [...list].sort((a, b) => a.khawarijPct - b.khawarijPct);
     }
-
+    if (sortBy === "التبعية") {
+      list = [...list].sort((a, b) => {
+        const ra = hierarchyRank(a.name);
+        const rb = hierarchyRank(b.name);
+        if (ra !== rb) return ra - rb;
+        // لو مش موجودين في القائمة، رتبهم أبجديًا كخيار احتياطي
+        return a.name.localeCompare(b.name, "ar");
+      });
+    }
     return list;
   }, [unitViews, filter, search, sortBy]);
 

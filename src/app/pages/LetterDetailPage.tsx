@@ -2048,34 +2048,55 @@ async function handleConfirmDelete() {
                 </div>
               )}
 
-              <UploadArea
-                letterId={id ?? ""}
-                onSave={(
-                  fileUrl,
-                  fileType
-                ) => {
-
-                  setSignedFileUrl(
-                    fileUrl
-                  );
-
-                  setSignedFileType(
+              {hasPermission("issue_letter:create") ? (
+                <UploadArea
+                  letterId={id ?? ""}
+                  onSave={(
+                    fileUrl,
                     fileType
-                  );
+                  ) => {
 
-                  setSaved(true);
+                    setSignedFileUrl(
+                      fileUrl
+                    );
 
-                  setLetter(
-                    (previous) =>
-                      previous
-                        ? {
-                            ...previous,
-                            status: "موثق",
-                          }
-                        : previous
-                  );
-                }}
-              />
+                    setSignedFileType(
+                      fileType
+                    );
+
+                    setSaved(true);
+
+                    setLetter(
+                      (previous) =>
+                        previous
+                          ? {
+                              ...previous,
+                              status: "موثق",
+                            }
+                          : previous
+                    );
+                  }}
+                />
+              ) : (
+                <div
+                  className="w-full rounded-[10px] px-4 py-3 text-center"
+                  dir="rtl"
+                  style={{
+                    background: "#f7f9fc",
+                    border: "1px solid #e2e7f0",
+                  }}
+                >
+                  <span
+                    style={{
+                      ...F,
+                      fontSize: 14,
+                      color: "#717d96",
+                    }}
+                  >
+                    ليس لديك صلاحية رفع النسخة الموثقة لهذا الخطاب.
+                  </span>
+                </div>
+              )}
 
             </>
 

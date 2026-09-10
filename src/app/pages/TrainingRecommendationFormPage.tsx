@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { AlertTriangle, Info } from "lucide-react";
-
+import { logActivity } from "../../lib/logActivity";
 import { supabase } from "../../lib/supabase";
 import {
   createRecommendation,
@@ -23,7 +23,51 @@ import {
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
+// تسميات الحقول عشان تظهر بالعربي في السجل
+const FIELD_LABELS: Record<string, string> = {
+  stage_month: "المرحلة التجنيدية",
+  stage_year: "السنة",
+  list_type: "نوع الكشف",
+  list_type_other: "اسم نوع الكشف",
+  full_name: "اسم الفرد",
+  recommender: "الموصي",
+  recruitment_area: "المنطقة التجنيدية",
+  national_id: "الرقم القومي",
+  triple_number: "الرقم الثلاثي",
+  qualification: "المؤهل",
+  required_weapon: "السلاح المطلوب",
+  current_weapon: "السلاح الحالي",
+  required_unit: "الوحدة المطلوبة",
+  current_unit: "الوحدة الحالية",
+};
 
+function getChangedFields(
+  oldData: Record<string, any>,
+  newData: Record<string, any>
+) {
+  const changes: {
+    field: string;
+    label: string;
+    oldValue: any;
+    newValue: any;
+  }[] = [];
+
+  Object.keys(newData).forEach((key) => {
+    const oldValue = oldData[key] ?? null;
+    const newValue = newData[key] ?? null;
+
+    if (oldValue !== newValue) {
+      changes.push({
+        field: key,
+        label: FIELD_LABELS[key] ?? key,
+        oldValue,
+        newValue,
+      });
+    }
+  });
+
+  return changes;
+}
 export function TrainingRecommendationFormPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
@@ -260,27 +304,69 @@ export function TrainingRecommendationFormPage() {
         userName = profile?.username ?? "غير معروف";
       }
 
-      if (isEditMode && id) {
-        await updateRecommendation(id, payload);
+if (isEditMode && id) {
+  await updateRecommendation(id, payload);
 
-        if (originalPayload) {
-          await logRecommendationChanges(
-            id,
+  if (originalPayload) {
+    await logRecommendationChanges(
+      id,
+      userName,
+      payload.full_name,
+      originalPayload,
+      payload
+    );
+  }
+
+        try {
+          const changedFields = originalPayload
+            ? getChangedFields(originalPayload, payload)
+            : [];
+
+          const detailsText =
+            changedFields.length > 0
+              ? changedFields
+                  .map(
+                    (change) =>
+                      `${change.label}: ${change.oldValue || "-"} → ${
+                        change.newValue || "-"
+                      }`
+                  )
+                  .join("\n")
+              : "لم يتم تغيير أي بيانات";
+
+          await logActivity({
+            userId: user?.id ?? null,
             userName,
-            payload.full_name,
-            originalPayload,
-            payload
-          );
+            actionType: "UPDATE",
+            action: `تعديل توصية تدريب: ${payload.full_name}`,
+            entity: "training_recommendations",
+            details: detailsText,
+          });
+        } catch (auditError) {
+          console.error("Audit log error:", auditError);
         }
-      } else {
-        const newId = await createRecommendation({
-          ...payload,
-          created_by: user?.id ?? null,
-          created_by_name: userName,
-        });
+} else {
+  const newId = await createRecommendation({
+    ...payload,
+    created_by: user?.id ?? null,
+    created_by_name: userName,
+  });
 
-        await logRecommendationCreated(newId, userName, payload.full_name);
-      }
+  await logRecommendationCreated(newId, userName, payload.full_name);
+
+        try {
+          await logActivity({
+            userId: user?.id ?? null,
+            userName,
+            actionType: "CREATE",
+            action: `إضافة توصية تدريب: ${payload.full_name}`,
+            entity: "training_recommendations",
+            details: `تم إضافة توصية جديدة للفرد: ${payload.full_name}`,
+          });
+        } catch (auditError) {
+          console.error("Audit log error:", auditError);
+        }
+}
 
       navigate("/dashboard/training-recommendations");
     } catch (err: any) {

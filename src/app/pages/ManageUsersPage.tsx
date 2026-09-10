@@ -44,6 +44,9 @@ type Profile = {
   updated_at: string;
   personnel?: Personnel | null;
   user_roles?: UserRole[];
+  full_name?: string | null;
+  rank_name?: string | null;
+  login_code?: string | null;
 };
 
 type Role = {
@@ -67,9 +70,17 @@ export function ManageUsersPage() {
   const [showModal, setShowModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
 
+  const [addMode, setAddMode] = useState<"personnel" | "manual">(
+    "personnel"
+  );
+
   const [militaryNumber, setMilitaryNumber] = useState("");
   const [selectedPersonnel, setSelectedPersonnel] =
     useState<Personnel | null>(null);
+
+  const [manualFullName, setManualFullName] = useState("");
+  const [manualRankName, setManualRankName] = useState("");
+  const [manualLoginCode, setManualLoginCode] = useState("");
 
   const [selectedRole, setSelectedRole] = useState("");
   const [selectedUser, setSelectedUser] =
@@ -112,7 +123,10 @@ export function ManageUsersPage() {
           personnel_id,
           is_active,
           created_at,
-          updated_at
+          updated_at,
+          full_name,
+          rank_name,
+          login_code
         `)
         .order("created_at", { ascending: false });
 
@@ -425,10 +439,13 @@ export function ManageUsersPage() {
   // =====================================================
   // فتح نافذة إضافة مستخدم
   // =====================================================
-
   function openAddModal() {
+    setAddMode("personnel");
     setMilitaryNumber("");
     setSelectedPersonnel(null);
+    setManualFullName("");
+    setManualRankName("");
+    setManualLoginCode("");
     setSelectedRole("");
     setError("");
     setSuccess("");
@@ -439,8 +456,12 @@ export function ManageUsersPage() {
     if (saving) return;
 
     setShowModal(false);
+    setAddMode("personnel");
     setMilitaryNumber("");
     setSelectedPersonnel(null);
+    setManualFullName("");
+    setManualRankName("");
+    setManualLoginCode("");
     setSelectedRole("");
     setError("");
     setSuccess("");
@@ -450,10 +471,22 @@ export function ManageUsersPage() {
   // إضافة مستخدم
   // =====================================================
 
-  async function createUser() {
-    if (!selectedPersonnel) {
-      setError("ابحث عن الفرد أولاً");
-      return;
+    async function createUser() {
+    if (addMode === "personnel") {
+      if (!selectedPersonnel) {
+        setError("ابحث عن الفرد أولاً");
+        return;
+      }
+    } else {
+      if (!manualFullName.trim()) {
+        setError("اكتب الاسم الكامل للضابط");
+        return;
+      }
+
+      if (!manualLoginCode.trim()) {
+        setError("اكتب كود الدخول");
+        return;
+      }
     }
 
     if (!selectedRole) {
@@ -466,46 +499,52 @@ export function ManageUsersPage() {
     setSuccess("");
 
     try {
-      // التأكد مرة أخرى من عدم وجود Profile
-      const {
-        data: existingProfile,
-        error: checkError,
-      } = await supabase
-        .from("profiles")
-        .select("id, username")
-        .eq(
-          "personnel_id",
-          selectedPersonnel.id
-        )
-        .maybeSingle();
+      let requestBody: Record<string, unknown>;
 
-      if (checkError) {
-        throw checkError;
-      }
+      if (addMode === "personnel") {
+        // التأكد مرة أخرى من عدم وجود Profile
+        const {
+          data: existingProfile,
+          error: checkError,
+        } = await supabase
+          .from("profiles")
+          .select("id, username")
+          .eq("personnel_id", selectedPersonnel!.id)
+          .maybeSingle();
 
-      if (existingProfile) {
-        throw new Error(
-          `هذا الفرد لديه حساب مستخدم بالفعل (${existingProfile.username})`
-        );
+        if (checkError) {
+          throw checkError;
+        }
+
+        if (existingProfile) {
+          throw new Error(
+            `هذا الفرد لديه حساب مستخدم بالفعل (${existingProfile.username})`
+          );
+        }
+
+        requestBody = {
+          mode: "personnel",
+          personnel_id: selectedPersonnel!.id,
+          role_id: selectedRole,
+        };
+      } else {
+        requestBody = {
+          mode: "manual",
+          full_name: manualFullName.trim(),
+          rank_name: manualRankName.trim() || null,
+          login_code: manualLoginCode.trim(),
+          role_id: selectedRole,
+        };
       }
 
       // -------------------------------------------------
       // إنشاء المستخدم عن طريق Edge Function
       // -------------------------------------------------
 
-      const {
-        data,
-        error: functionError,
-      } = await supabase.functions.invoke(
-        "create-system-user",
-        {
-          body: {
-            personnel_id:
-              selectedPersonnel.id,
-            role_id: selectedRole,
-          },
-        }
-      );
+      const { data, error: functionError } =
+        await supabase.functions.invoke("create-system-user", {
+          body: requestBody,
+        });
 
       if (functionError) {
         throw functionError;
@@ -513,15 +552,11 @@ export function ManageUsersPage() {
 
       if (!data?.success) {
         throw new Error(
-          data?.error ||
-            data?.message ||
-            "فشل إنشاء المستخدم"
+          data?.error || data?.message || "فشل إنشاء المستخدم"
         );
       }
 
-      setSuccess(
-        "تم إنشاء المستخدم بنجاح"
-      );
+      setSuccess("تم إنشاء المستخدم بنجاح");
 
       await loadData();
 
@@ -529,15 +564,9 @@ export function ManageUsersPage() {
         closeAddModal();
       }, 800);
     } catch (err: any) {
-      console.error(
-        "CREATE USER ERROR:",
-        err
-      );
+      console.error("CREATE USER ERROR:", err);
 
-      setError(
-        err?.message ||
-          "حدث خطأ أثناء إنشاء المستخدم"
-      );
+      setError(err?.message || "حدث خطأ أثناء إنشاء المستخدم");
     } finally {
       setSaving(false);
     }
@@ -860,9 +889,35 @@ export function ManageUsersPage() {
         );
       }
 
-      setSuccess(
-        "تم إعادة تعيين كلمة المرور بنجاح"
-      );
+   if (!data?.success) {
+  throw new Error(
+    data?.error ||
+      data?.message ||
+      "فشل إعادة تعيين كلمة المرور"
+  );
+}
+
+// ✅ إجبار المستخدم على تغيير كلمة المرور في أول تسجيل دخول
+const { error: forceChangeError } = await supabase
+  .from("profiles")
+  .update({
+    must_change_password: true,
+    updated_at: new Date().toISOString(),
+  })
+  .eq("id", selectedUser.id);
+
+if (forceChangeError) {
+  console.error(
+    "FORCE PASSWORD CHANGE FLAG ERROR:",
+    forceChangeError
+  );
+  // مش هنوقف العملية بسبب دي، بس نبلّغ المستخدم إن فيه تحذير بسيط
+  setSuccess(
+    "تم إعادة تعيين كلمة المرور، لكن حدث خطأ بسيط أثناء ضبط إجبار تغييرها — يُفضّل التأكد يدويًا."
+  );
+} else {
+  setSuccess("تم إعادة تعيين كلمة المرور بنجاح");
+}
     } catch (err: any) {
       console.error(
         "RESET PASSWORD ERROR:",
@@ -1059,7 +1114,7 @@ export function ManageUsersPage() {
                   </th>
 
                   <th className="text-right px-5 py-4">
-                    الرقم العسكري
+                 المعرف
                   </th>
 
                   <th className="text-right px-5 py-4">
@@ -1091,22 +1146,22 @@ export function ManageUsersPage() {
                     </td>
 
                     <td className="px-5 py-4 text-[#334155]">
-                      {user.personnel
-                        ?.full_name ||
+                      {user.personnel?.full_name ||
+                        user.full_name ||
                         "غير مرتبط"}
                     </td>
 
                     <td className="px-5 py-4 text-[#334155]">
-                      {user.personnel
-                        ?.ranks?.name ||
+                      {user.personnel?.ranks?.name ||
+                        user.rank_name ||
                         "غير محدد"}
                     </td>
 
-                    <td className="px-5 py-4 text-[#334155]">
-                      {user.personnel
-                        ?.military_number ||
-                        "—"}
-                    </td>
+               <td className="px-5 py-4 text-[#334155]">
+  {user.personnel?.military_number ||
+    user.login_code ||
+    "—"}
+</td>
 
                     <td className="px-5 py-4">
                       <span className="inline-flex rounded-full bg-[#eefbf3] px-3 py-1 text-xs font-medium text-[#008c52]">
@@ -1222,56 +1277,138 @@ export function ManageUsersPage() {
                 </div>
               )}
 
-              <label className="block text-sm font-medium text-[#334155] mb-2">
-                الرقم العسكري
-              </label>
+                           {/* اختيار نوع الحساب */}
 
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={militaryNumber}
-                  onChange={(e) => {
-                    setMilitaryNumber(
-                      e.target.value
-                    );
-
+              <div className="mb-5 flex gap-2 p-1 bg-[#f1f5f9] rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddMode("personnel");
                     setError("");
-                    setSelectedPersonnel(
-                      null
-                    );
+                    setSuccess("");
                   }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      searchPersonnel();
-                    }
-                  }}
-                  placeholder="اكتب الرقم العسكري"
-                  className="flex-1 h-12 rounded-xl border border-[#cbd5e1] px-4 outline-none focus:border-[#00B867] focus:ring-2 focus:ring-[#00B867]/10"
-                />
+                  className={`flex-1 h-10 rounded-lg text-sm font-medium transition-colors ${
+                    addMode === "personnel"
+                      ? "bg-white text-[#081021] shadow-sm"
+                      : "text-[#64748b]"
+                  }`}
+                >
+                  فرد (بالرقم العسكري)
+                </button>
 
                 <button
                   type="button"
-                  onClick={searchPersonnel}
-                  disabled={
-                    searching ||
-                    !militaryNumber.trim()
-                  }
-                  className="h-12 px-5 rounded-xl bg-[#081021] text-white flex items-center gap-2 disabled:opacity-50"
+                  onClick={() => {
+                    setAddMode("manual");
+                    setError("");
+                    setSuccess("");
+                  }}
+                  className={`flex-1 h-10 rounded-lg text-sm font-medium transition-colors ${
+                    addMode === "manual"
+                      ? "bg-white text-[#081021] shadow-sm"
+                      : "text-[#64748b]"
+                  }`}
                 >
-                  {searching ? (
-                    <Loader2
-                      size={18}
-                      className="animate-spin"
-                    />
-                  ) : (
-                    <Search size={18} />
-                  )}
-
-                  بحث
+                  ضابط (حساب يدوي)
                 </button>
               </div>
 
-              {selectedPersonnel && (
+              {addMode === "personnel" ? (
+                <>
+                  <label className="block text-sm font-medium text-[#334155] mb-2">
+                    الرقم العسكري
+                  </label>
+
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={militaryNumber}
+                      onChange={(e) => {
+                        setMilitaryNumber(e.target.value);
+                        setError("");
+                        setSelectedPersonnel(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          searchPersonnel();
+                        }
+                      }}
+                      placeholder="اكتب الرقم العسكري"
+                      className="flex-1 h-12 rounded-xl border border-[#cbd5e1] px-4 outline-none focus:border-[#00B867] focus:ring-2 focus:ring-[#00B867]/10"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={searchPersonnel}
+                      disabled={searching || !militaryNumber.trim()}
+                      className="h-12 px-5 rounded-xl bg-[#081021] text-white flex items-center gap-2 disabled:opacity-50"
+                    >
+                      {searching ? (
+                        <Loader2 size={18} className="animate-spin" />
+                      ) : (
+                        <Search size={18} />
+                      )}
+                      بحث
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-[#334155] mb-2">
+                      الاسم الكامل
+                    </label>
+
+                    <input
+                      type="text"
+                      value={manualFullName}
+                      onChange={(e) => {
+                        setManualFullName(e.target.value);
+                        setError("");
+                      }}
+                      placeholder="اكتب اسم الضابط الكامل"
+                      className="w-full h-12 rounded-xl border border-[#cbd5e1] px-4 outline-none focus:border-[#00B867] focus:ring-2 focus:ring-[#00B867]/10"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-[#334155] mb-2">
+                      الرتبة (اختياري)
+                    </label>
+
+                    <input
+                      type="text"
+                      value={manualRankName}
+                      onChange={(e) => setManualRankName(e.target.value)}
+                      placeholder="مثال: مقدم"
+                      className="w-full h-12 rounded-xl border border-[#cbd5e1] px-4 outline-none focus:border-[#00B867] focus:ring-2 focus:ring-[#00B867]/10"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-[#334155] mb-2">
+                      كود الدخول
+                    </label>
+
+                    <input
+                      type="text"
+                      value={manualLoginCode}
+                      onChange={(e) => {
+                        setManualLoginCode(e.target.value);
+                        setError("");
+                      }}
+                      placeholder="مثال: OFF001 (حروف إنجليزية وأرقام فقط)"
+                      dir="ltr"
+                      className="w-full h-12 rounded-xl border border-[#cbd5e1] px-4 outline-none focus:border-[#00B867] focus:ring-2 focus:ring-[#00B867]/10"
+                    />
+
+                    <p className="text-xs text-[#94a3b8] mt-2">
+                      كود فريد هيتم استخدامه لتسجيل الدخول بدل الرقم العسكري
+                    </p>
+                  </div>
+                </div>
+              )}
+              {addMode === "personnel" && selectedPersonnel && (
                 <div className="mt-5 rounded-xl border border-[#dcefe3] bg-[#f6fcf8] p-4">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="w-11 h-11 rounded-full bg-[#DCF4DF] flex items-center justify-center text-[#008c52]">
@@ -1315,8 +1452,7 @@ export function ManageUsersPage() {
                   </div>
                 </div>
               )}
-
-              {selectedPersonnel && (
+              {addMode === "personnel" && selectedPersonnel && (
                 <>
                   <div className="mt-5">
                     <label className="block text-sm font-medium text-[#334155] mb-2">
@@ -1396,6 +1532,28 @@ export function ManageUsersPage() {
                   </div>
                 </>
               )}
+
+              {addMode === "manual" && (
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-[#334155] mb-2">
+                    صلاحيات المستخدم
+                  </label>
+
+                  <select
+                    value={selectedRole}
+                    onChange={(e) => setSelectedRole(e.target.value)}
+                    className="w-full h-12 rounded-xl border border-[#cbd5e1] bg-white px-4 outline-none focus:border-[#00B867]"
+                  >
+                    <option value="">اختر الصلاحية</option>
+
+                    {roles.map((role) => (
+                      <option key={role.id} value={role.id}>
+                        {role.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div className="px-6 py-4 border-t border-[#e2e8f0] flex items-center justify-start gap-3">
@@ -1413,8 +1571,10 @@ export function ManageUsersPage() {
                 onClick={createUser}
                 disabled={
                   saving ||
-                  !selectedPersonnel ||
-                  !selectedRole
+                  !selectedRole ||
+                  (addMode === "personnel"
+                    ? !selectedPersonnel
+                    : !manualFullName.trim() || !manualLoginCode.trim())
                 }
                 className="px-6 h-11 rounded-xl bg-[#00B867] hover:bg-[#009d59] text-white flex items-center gap-2 disabled:opacity-50"
               >

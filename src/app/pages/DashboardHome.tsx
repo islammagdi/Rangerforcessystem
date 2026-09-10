@@ -166,6 +166,8 @@ export function DashboardHome() {
         .from("profiles")
         .select(`
           username,
+          full_name,
+          rank_name,
           personnel:personnel_id (
             full_name,
             military_number,
@@ -576,57 +578,59 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
           <div className="w-full h-px bg-[#eff0f6] my-2" />
 
           <div className="flex flex-wrap gap-8 items-center">
-            {currentUser.personnel && (
-              <>
-                <div>
-                  <p
-                    className="text-gray-500 text-sm mb-1"
-                    style={{ fontFamily: "'Almarai', sans-serif" }}
-                  >
-                    الرقم العسكري
-                  </p>
+            {currentUser.personnel?.military_number && (
+              <div>
+                <p
+                  className="text-gray-500 text-sm mb-1"
+                  style={{ fontFamily: "'Almarai', sans-serif" }}
+                >
+                  الرقم العسكري
+                </p>
 
-                  <p
-                    className="font-bold text-[#344736]"
-                    style={{ fontFamily: "'Almarai', sans-serif" }}
-                  >
-                    {currentUser.personnel.military_number || "غير محدد"}
-                  </p>
-                </div>
-
-                <div>
-                  <p
-                    className="text-gray-500 text-sm mb-1"
-                    style={{ fontFamily: "'Almarai', sans-serif" }}
-                  >
-                    الدرجة
-                  </p>
-
-                  <p
-                    className="font-bold text-[#344736]"
-                    style={{ fontFamily: "'Almarai', sans-serif" }}
-                  >
-                    {currentUser.personnel.rank?.name || "غير محدد"}
-                  </p>
-                </div>
-
-                <div>
-                  <p
-                    className="text-gray-500 text-sm mb-1"
-                    style={{ fontFamily: "'Almarai', sans-serif" }}
-                  >
-                    الاسم الكامل
-                  </p>
-
-                  <p
-                    className="font-bold text-[#344736]"
-                    style={{ fontFamily: "'Almarai', sans-serif" }}
-                  >
-                    {currentUser.personnel.full_name || "غير محدد"}
-                  </p>
-                </div>
-              </>
+                <p
+                  className="font-bold text-[#344736]"
+                  style={{ fontFamily: "'Almarai', sans-serif" }}
+                >
+                  {currentUser.personnel.military_number}
+                </p>
+              </div>
             )}
+
+            <div>
+              <p
+                className="text-gray-500 text-sm mb-1"
+                style={{ fontFamily: "'Almarai', sans-serif" }}
+              >
+                الدرجة
+              </p>
+
+              <p
+                className="font-bold text-[#344736]"
+                style={{ fontFamily: "'Almarai', sans-serif" }}
+              >
+                {currentUser.personnel?.rank?.name ||
+                  currentUser.rank_name ||
+                  "غير محدد"}
+              </p>
+            </div>
+
+            <div>
+              <p
+                className="text-gray-500 text-sm mb-1"
+                style={{ fontFamily: "'Almarai', sans-serif" }}
+              >
+                الاسم الكامل
+              </p>
+
+              <p
+                className="font-bold text-[#344736]"
+                style={{ fontFamily: "'Almarai', sans-serif" }}
+              >
+                {currentUser.personnel?.full_name ||
+                  currentUser.full_name ||
+                  "غير محدد"}
+              </p>
+            </div>
           </div>
         </div>
       )}

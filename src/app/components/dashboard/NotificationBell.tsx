@@ -28,8 +28,8 @@ const TYPE_DOT_COLOR: Record<string, string> = {
 
 export function NotificationBell() {
   const navigate = useNavigate();
-    const [selectedNotification, setSelectedNotification] =
-  useState<NotificationRow | null>(null);
+  const [selectedNotification, setSelectedNotification] =
+    useState<NotificationRow | null>(null);
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
@@ -154,6 +154,73 @@ export function NotificationBell() {
     }
   }
 
+  // ============================================================
+  // إعادة تعيين كلمة المرور من الإشعار
+  // ============================================================
+
+  async function handleResetPasswordFromNotification() {
+    if (!selectedNotification) return;
+
+    try {
+      console.log("Notification:", selectedNotification);
+      console.log("Action Data:", selectedNotification.action_data);
+
+      const { data, error } = await supabase.functions.invoke(
+        "reset-user-password",
+        {
+          body: {
+            user_id: selectedNotification.action_data.user_id,
+          },
+        }
+      );
+
+      if (error) throw error;
+
+      if (!data?.success) {
+        throw new Error(
+          data?.error || data?.message || "فشل إعادة تعيين كلمة المرور"
+        );
+      }
+
+      // ✅ إجبار المستخدم على تغيير كلمة المرور في أول تسجيل دخول
+      const { error: forceChangeError } = await supabase
+        .from("profiles")
+        .update({
+          must_change_password: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", selectedNotification.action_data.user_id);
+
+      if (forceChangeError) {
+        console.error(
+          "FORCE PASSWORD CHANGE FLAG ERROR:",
+          forceChangeError
+        );
+      }
+
+      await supabase
+        .from("notifications")
+        .update({
+          status: "completed",
+        })
+        .eq("id", selectedNotification.id);
+
+      alert("تم إعادة تعيين كلمة المرور");
+
+      setSelectedNotification(null);
+
+      loadNotifications();
+    } catch (err: any) {
+      console.error("ERROR:", err);
+
+      alert(
+        err?.message ||
+          JSON.stringify(err) ||
+          "فشل إعادة تعيين كلمة المرور"
+      );
+    }
+  }
+
   const unreadCount = notifications.filter(
     (n) => !readIds.has(n.id)
   ).length;
@@ -174,7 +241,6 @@ export function NotificationBell() {
 
   return (
     <div className="relative shrink-0" ref={wrapperRef}>
-
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -238,9 +304,9 @@ export function NotificationBell() {
                     key={n.id}
                     type="button"
                     onClick={() => {
-  markAsRead(n.id);
-  setSelectedNotification(n);
-}}
+                      markAsRead(n.id);
+                      setSelectedNotification(n);
+                    }}
                     className="w-full flex items-start gap-2.5 px-4 py-3 text-right border-b border-[#f5f6fb] hover:bg-[#fafbff] transition-colors"
                     style={{
                       background: isUnread ? "#f7f9ff" : "#fff",
@@ -290,7 +356,7 @@ export function NotificationBell() {
                     </div>
                   </button>
                 );
-           })
+              })
             )}
           </div>
 
@@ -317,92 +383,56 @@ export function NotificationBell() {
           </div>
         </div>
       )}
+
       {selectedNotification && (
-  <div
-    className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999]"
-    onClick={() => setSelectedNotification(null)}
-  >
-    <div
-      className="bg-white rounded-xl p-6 w-[420px] max-w-[95vw]"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <h2
-        style={{
-          ...F,
-          fontSize: 18,
-          fontWeight: 700,
-          marginBottom: 15,
-        }}
-      >
-        {selectedNotification.title}
-      </h2>
-
-      <p
-        style={{
-          ...F,
-          fontSize: 14,
-          marginBottom: 20,
-        }}
-      >
-        {selectedNotification.body}
-      </p>
-
-      {selectedNotification.action_type === "password_reset" &&
-        selectedNotification.status === "pending" && (
-          <button
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-            onClick={async () => {
-  try {
-    console.log("Notification:", selectedNotification);
-console.log("Action Data:", selectedNotification.action_data);
-    const { data, error } = await supabase.functions.invoke(
-      "reset-user-password",
-      {
-        body: {
-          user_id: selectedNotification.action_data.user_id,
-        },
-      }
-    );
-
-
-    if (error) throw error;
-
-    await supabase
-      .from("notifications")
-      .update({
-        status: "completed",
-      })
-      .eq("id", selectedNotification.id);
-
-    alert("تم إعادة تعيين كلمة المرور");
-
-    setSelectedNotification(null);
-
-    loadNotifications();
-  } catch (err: any) {
-  console.error("ERROR:", err);
-
-  alert(
-    err?.message ||
-    JSON.stringify(err) ||
-    "فشل إعادة تعيين كلمة المرور"
-  );
-}
-}}
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999]"
+          onClick={() => setSelectedNotification(null)}
+        >
+          <div
+            className="bg-white rounded-xl p-6 w-[420px] max-w-[95vw]"
+            onClick={(e) => e.stopPropagation()}
           >
-            إعادة تعيين كلمة المرور
-          </button>
-        )}
+            <h2
+              style={{
+                ...F,
+                fontSize: 18,
+                fontWeight: 700,
+                marginBottom: 15,
+              }}
+            >
+              {selectedNotification.title}
+            </h2>
 
-      <button
-        className="mr-3 px-4 py-2 rounded-lg border"
-        onClick={() => setSelectedNotification(null)}
-      >
-        إغلاق
-      </button>
-    </div>
-  </div>
-)}
+            <p
+              style={{
+                ...F,
+                fontSize: 14,
+                marginBottom: 20,
+              }}
+            >
+              {selectedNotification.body}
+            </p>
+
+            {selectedNotification.action_type === "password_reset" &&
+              selectedNotification.status === "pending" && (
+                <button
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                  onClick={handleResetPasswordFromNotification}
+                >
+                  إعادة تعيين كلمة المرور
+                </button>
+              )}
+
+            <button
+              className="mr-3 px-4 py-2 rounded-lg border"
+              onClick={() => setSelectedNotification(null)}
+            >
+              إغلاق
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

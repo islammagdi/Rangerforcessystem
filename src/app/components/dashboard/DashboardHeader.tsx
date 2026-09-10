@@ -663,6 +663,8 @@ export function DashboardHeader({
       const { data, error } = await supabase
         .from("profiles")
         .select(`
+          full_name,
+          rank_name,
           personnel:personnel_id (
             full_name,
             rank:ranks (
@@ -751,13 +753,15 @@ export function DashboardHeader({
   // ============================================================
 
   const fullName =
-    currentUser?.personnel?.full_name;
+    currentUser?.personnel?.full_name ||
+    currentUser?.full_name;
 
   const displayName =
     getFirstTwoNames(fullName);
 
   const rankName =
     currentUser?.personnel?.rank?.name ||
+    currentUser?.rank_name ||
     "غير محدد";
 
   return (

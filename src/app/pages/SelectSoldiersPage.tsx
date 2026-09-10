@@ -319,6 +319,7 @@ export function SelectSoldiersPage() {
     | "undocumented-letter"
     | "not-attached"
     | "already-joined"
+    | "not-conscript"
     | null
   >(null);
 
@@ -351,40 +352,47 @@ async function handleAdd() {
     setSearching(true);
     setErrorType(null);
 
-        const { data, error } = await supabase
-      .from("personnel")
-      .select(`
-        id,
-        military_number,
-        full_name,
-        rank_id,
-        discharge_date,
-        is_active,
-        service_status_id,
+const { data, error } = await supabase
+  .from("personnel")
+  .select(`
+    id,
+    military_number,
+    full_name,
+    rank_id,
+    discharge_date,
+    is_active,
+    service_status_id,
+    personnel_category_id,
 
-        rank:ranks!personnel_rank_id_fkey(
-          id,
-          name
-        ),
+    rank:ranks!personnel_rank_id_fkey(
+      id,
+      name
+    ),
 
-        primary_unit:units!personnel_primary_unit_id_fkey(
-          id,
-          name
-        ),
+    category:personnel_categories!personnel_personnel_category_id_fkey(
+      id,
+      name,
+      code
+    ),
 
-        attachment_unit:units!personnel_attachment_unit_id_fkey(
-          id,
-          name
-        ),
+    primary_unit:units!personnel_primary_unit_id_fkey(
+      id,
+      name
+    ),
 
-        service_status:service_statuses!personnel_service_status_id_fkey(
-          id,
-          name,
-          code
-        )
-      `)
-      .eq("military_number", trimmed)
-      .maybeSingle();
+    attachment_unit:units!personnel_attachment_unit_id_fkey(
+      id,
+      name
+    ),
+
+    service_status:service_statuses!personnel_service_status_id_fkey(
+      id,
+      name,
+      code
+    )
+  `)
+  .eq("military_number", trimmed)
+  .maybeSingle();
 
     setSearching(false);
 
@@ -434,44 +442,59 @@ async function handleAdd() {
       // ✅ خطاب الضم (صاعقة/إدارات) بيصدر للفرد مرة واحدة فقط
     // مدى الحياة — بغض النظر عن حالة التوثيق. نتحقق من وجود أي
     // خطاب ضم سابق لهذا الفرد (من أي النوعين) قبل السماح بإضافته.
-    if (isJoinLetter) {
-      const {
-        data: previousJoinLetters,
-        error: joinCheckError,
-      } = await supabase
-        .from("letter_personnel")
-        .select(
-          "letter_id, letters!inner(letter_number, letter_type_id, letter_types!inner(code))"
-        )
-        .eq("personnel_id", data.id)
-        .in("letters.letter_types.code", [
-          "JOIN_SAEQA",
-          "JOIN_EXTERNAL",
-        ]);
+if (isJoinLetter) {
+  // ✅ خطاب الضم (صاعقة/إدارات خارجية) لازم يكون للفرد المجند فقط
+  const categoryRecord = Array.isArray(data.category)
+    ? data.category[0]
+    : data.category;
 
-      if (joinCheckError) {
-        console.error(joinCheckError);
-        setErrorType("database");
-        return;
-      }
+  const isConscript =
+    categoryRecord?.code?.toUpperCase() === "CONSCRIPT" ||
+    categoryRecord?.name === "مجند";
 
-      if (previousJoinLetters && previousJoinLetters.length > 0) {
-        const firstJoin = previousJoinLetters[0] as any;
+  if (!isConscript) {
+    setErrorType("not-conscript");
+    return;
+  }
 
-        const letterRecord = Array.isArray(firstJoin.letters)
-          ? firstJoin.letters[0]
-          : firstJoin.letters;
+  // ✅ خطاب الضم بيصدر للفرد مرة واحدة فقط مدى الحياة
+  const {
+    data: previousJoinLetters,
+    error: joinCheckError,
+  } = await supabase
+    .from("letter_personnel")
+    .select(
+      "letter_id, letters!inner(letter_number, letter_type_id, letter_types!inner(code))"
+    )
+    .eq("personnel_id", data.id)
+    .in("letters.letter_types.code", [
+      "JOIN_SAEQA",
+      "JOIN_EXTERNAL",
+    ]);
 
-        setPreviousJoinLetterNumber(
-          letterRecord?.letter_number != null
-            ? String(letterRecord.letter_number)
-            : null
-        );
+  if (joinCheckError) {
+    console.error(joinCheckError);
+    setErrorType("database");
+    return;
+  }
 
-        setErrorType("already-joined");
-        return;
-      }
-    }
+  if (previousJoinLetters && previousJoinLetters.length > 0) {
+    const firstJoin = previousJoinLetters[0] as any;
+
+    const letterRecord = Array.isArray(firstJoin.letters)
+      ? firstJoin.letters[0]
+      : firstJoin.letters;
+
+    setPreviousJoinLetterNumber(
+      letterRecord?.letter_number != null
+        ? String(letterRecord.letter_number)
+        : null
+    );
+
+    setErrorType("already-joined");
+    return;
+  }
+}
 
     const rank = Array.isArray(data.rank)
       ? data.rank[0]
@@ -551,13 +574,14 @@ async function handleAdd() {
       ? "اصدار خطاب ضم أفراد إدارات خارجية"
       : "اصدار خطاب إلحاق";
 
-    const hasError =
-    errorType === "not-found" ||
-    errorType === "duplicate" ||
-    errorType === "database" ||
-    errorType === "undocumented-letter" ||
-    errorType === "not-attached" ||
-    errorType === "already-joined";
+const hasError =
+  errorType === "not-found" ||
+  errorType === "duplicate" ||
+  errorType === "database" ||
+  errorType === "undocumented-letter" ||
+  errorType === "not-attached" ||
+  errorType === "already-joined" ||
+  errorType === "not-conscript";
 
   return (
     <div
@@ -769,6 +793,39 @@ async function handleAdd() {
             </div>
           </div>
         )}
+        {errorType === "not-conscript" && (
+  <div
+    className="flex items-start gap-3 px-4 py-3 rounded-[10px]"
+    style={{
+      background: "#fef2f2",
+      border: "1px solid #fecaca",
+    }}
+  >
+    <AlertCircle color="#ef4444" />
+
+    <div>
+      <p
+        style={{
+          ...F,
+          fontWeight: 700,
+          color: "#991b1b",
+        }}
+      >
+        الفرد غير مجند
+      </p>
+
+      <p
+        style={{
+          ...F,
+          fontSize: 13,
+          color: "#b91c1c",
+        }}
+      >
+        لا يمكن إصدار خطاب ضم إلا لفرد مجند.
+      </p>
+    </div>
+  </div>
+)}
                 {errorType === "already-joined" && (
           <div
             className="flex items-start gap-3 px-4 py-3 rounded-[10px]"
