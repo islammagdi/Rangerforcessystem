@@ -10,7 +10,7 @@ import {
   Search,
   RotateCcw,
 } from "lucide-react";
-
+import { usePermissions } from "../../lib/usePermissions";
 import { logActivity } from "../../lib/logActivity";
 import { DeleteConfirmDialog } from "../components/dashboard/DeleteConfirmDialog";
 import { supabase } from "../../lib/supabase";
@@ -733,28 +733,32 @@ function Checkbox({
 function ActionButtons({
   onDelete,
   onView,
+  canDelete,
 }: {
   onDelete: () => void;
   onView: () => void;
+  canDelete: boolean;
 }) {
   return (
     <div className="flex items-center gap-2 justify-end">
-      <button
-        type="button"
-        onClick={onDelete}
-        title="حذف"
-        className="w-[30px] h-[30px] rounded-[4px] flex items-center justify-center hover:opacity-80"
-        style={{
-          backgroundColor: "#fce8f1",
-        }}
-      >
-        <Trash2
-          size={14}
+      {canDelete && (
+        <button
+          type="button"
+          onClick={onDelete}
+          title="حذف"
+          className="w-[30px] h-[30px] rounded-[4px] flex items-center justify-center hover:opacity-80"
           style={{
-            color: "#E3282C",
+            backgroundColor: "#fce8f1",
           }}
-        />
-      </button>
+        >
+          <Trash2
+            size={14}
+            style={{
+              color: "#E3282C",
+            }}
+          />
+        </button>
+      )}
 
       <button
         type="button"
@@ -803,6 +807,7 @@ function ResultsTable({
   onToggleRow,
   onDelete,
   onView,
+  canDelete,
 }: {
   records: SoldierRecord[];
   selectedIds: Set<string>;
@@ -810,6 +815,7 @@ function ResultsTable({
   onToggleRow: (id: string) => void;
   onDelete: (id: string) => void;
   onView: (id: string) => void;
+  canDelete: boolean;
 }) {
   const allSelected =
     records.length > 0 &&
@@ -947,7 +953,7 @@ function ResultsTable({
                   />
                 </td>
 
-                <td className={cellClass}>
+                             <td className={cellClass}>
                   <ActionButtons
                     onDelete={() =>
                       onDelete(record.id)
@@ -955,6 +961,7 @@ function ResultsTable({
                     onView={() =>
                       onView(record.id)
                     }
+                    canDelete={canDelete}
                   />
                 </td>
               </tr>
@@ -972,7 +979,7 @@ function ResultsTable({
 
 export function IndividualQueryPage() {
   const navigate = useNavigate();
-
+const { hasPermission } = usePermissions();
   // ═══════════════════════════════════════════════════════════════════════════
   // Current User
   // ═══════════════════════════════════════════════════════════════════════════
@@ -2265,6 +2272,7 @@ export function IndividualQueryPage() {
                 onView={
                   handleView
                 }
+                canDelete={hasPermission("individual_query:delete")}
               />
             )}
 

@@ -8,9 +8,9 @@ import {
   X,
   Loader2,
 } from "lucide-react";
-
+import { usePermissions } from "../../lib/usePermissions";
 import { supabase } from "../../lib/supabase";
-
+import { DeleteConfirmDialog } from "../components/dashboard/DeleteConfirmDialog";
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
@@ -721,7 +721,10 @@ function UploadArea({
 export function LetterDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+const [deleting, setDeleting] = useState(false);
+const [deleteError, setDeleteError] = useState("");
+const { hasPermission } = usePermissions();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -1336,6 +1339,36 @@ function measureImageHeightMM(url: string): Promise<number> {
     img.src = url;
   });
 }
+async function handleConfirmDelete() {
+  if (!id) return;
+
+  setDeleting(true);
+  setDeleteError("");
+
+  try {
+    const { error } = await supabase
+      .from("letters")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      throw error;
+    }
+
+    navigate("/dashboard/letters-archive");
+  } catch (error) {
+    console.error("DELETE LETTER ERROR:", error);
+
+    setDeleteError(
+      error instanceof Error
+        ? error.message
+        : "حدث خطأ أثناء حذف الخطاب."
+    );
+
+    setDeleting(false);
+    setShowDeleteDialog(false);
+  }
+}
    async function handleTopPrint() {
     const printUrl = isVerified
       ? signedFileUrl
@@ -1566,6 +1599,27 @@ function measureImageHeightMM(url: string): Promise<number> {
       dir="rtl"
     >
 
+      <DeleteConfirmDialog
+        open={showDeleteDialog}
+        onCancel={() => setShowDeleteDialog(false)}
+        onConfirm={handleConfirmDelete}
+      />
+
+      {deleteError && (
+        <div
+          className="w-full rounded-[10px] px-5 py-4"
+          style={{
+            background: "#fef2f2",
+            border: "1px solid #fecaca",
+            color: "#991b1b",
+            ...F,
+            fontSize: 14,
+          }}
+        >
+          {deleteError}
+        </div>
+      )}
+
       {/* ===================================================
           TITLE
       =================================================== */}
@@ -1605,7 +1659,7 @@ function measureImageHeightMM(url: string): Promise<number> {
 
           <div className="flex items-center gap-3">
 
-            <button
+                       <button
               type="button"
               title="طباعة"
               onClick={handleTopPrint}
@@ -1622,26 +1676,24 @@ function measureImageHeightMM(url: string): Promise<number> {
               />
             </button>
 
-            <button
-              type="button"
-              title="حذف"
-              onClick={() =>
-                navigate(
-                  "/dashboard/letters-archive"
-                )
-              }
-              className="w-9 h-9 rounded-[8px] flex items-center justify-center"
-              style={{
-                backgroundColor: "#fce8f1",
-              }}
-            >
-              <Trash2
-                size={15}
+                  {hasPermission("letters_archive:delete") && (
+              <button
+                type="button"
+                title="حذف"
+                onClick={() => setShowDeleteDialog(true)}
+                className="w-9 h-9 rounded-[8px] flex items-center justify-center"
                 style={{
-                  color: "#e3282c",
+                  backgroundColor: "#fce8f1",
                 }}
-              />
-            </button>
+              >
+                <Trash2
+                  size={15}
+                  style={{
+                    color: "#e3282c",
+                  }}
+                />
+              </button>
+            )}
 
           </div>
         </div>

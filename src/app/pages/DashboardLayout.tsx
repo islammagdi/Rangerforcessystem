@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router";
 
 import { Sidebar } from "../components/dashboard/Sidebar";
 import { DashboardHeader } from "../components/dashboard/DashboardHeader";
 import { SessionManager } from "../components/auth/SessionManager";
-import { supabase } from "../../lib/supabase";
 import { UnauthorizedPage } from "./UnauthorizedPage";
+import { usePermissions } from "../../lib/usePermissions";
+
 // ============================================================
 // عناوين الصفحات
 // ============================================================
@@ -45,78 +46,75 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/archive/outgoing": "الأرشيف / صادر",
   "/dashboard/archive/incoming": "الأرشيف / وارد",
   "/dashboard/manage-unified-registry": "إدارة ملف القيد الموحّد",
+  "/dashboard/manage-roles": "إدارة الأدوار",
+  "/dashboard/manage-branch-heads": "رؤساء فرع التنظيم",
 };
-// ============================================================
-// صلاحيات الوصول لكل مسار — نفس الأدوار المستخدمة في Sidebar
-// ============================================================
 
-type RoleCode =
-  | "ADMIN"
-  | "PERSONNEL_OFFICER"
-  | "ARCHIVE_OFFICER"
-  | "USER"
-  | null;
+// ============================================================
+// صلاحيات الوصول لكل مسار (بدل الأدوار الثابتة)
+// ============================================================
+//
+// كل مسار مرتبط بصلاحية "view" بتاعة الـ module المسؤول عنه.
+// أي مستخدم عنده الصلاحية دي (من أي دور) هيدخل الصفحة، وأي حد
+// من غيرها هيتحول لصفحة "غير مصرح". محدش محتاج يتعدل هنا لما
+// نضيف دور جديد من صفحة "إدارة الأدوار" - الدور الجديد هيرث
+// نفس المنطق تلقائيًا حسب الصلاحيات المعطاة له.
 
-const ALL_ROLES: RoleCode[] = [
-  "ADMIN",
-  "PERSONNEL_OFFICER",
-  "ARCHIVE_OFFICER",
-  "USER",
+const PATH_PERMISSION_MAP: { prefix: string; permission: string }[] = [
+  { prefix: "/dashboard/individual-query", permission: "individual_query:view" },
+  { prefix: "/dashboard/units-report", permission: "units_report:view" },
+  { prefix: "/dashboard/daily-reports", permission: "daily_reports:view" },
+
+  { prefix: "/dashboard/add-soldier", permission: "add_soldier:view" },
+  { prefix: "/dashboard/issue-letter", permission: "issue_letter:view" },
+
+  { prefix: "/dashboard/letters-archive", permission: "letters_archive:view" },
+  { prefix: "/dashboard/reserve-batches", permission: "reserve_batches:view" },
+
+  { prefix: "/dashboard/manage-units", permission: "manage_units:view" },
+  { prefix: "/dashboard/manage-users", permission: "manage_users:view" },
+  { prefix: "/dashboard/manage-roles", permission: "manage_roles:view" },
+  { prefix: "/dashboard/data-backup", permission: "data_backup:view" },
+  { prefix: "/dashboard/activity-log", permission: "activity_log:view" },
+  { prefix: "/dashboard/manage-branch-heads", permission: "manage_branch_heads:view" },
+  { prefix: "/dashboard/manage-reserve-batches", permission: "manage_reserve_batches:view" },
+
+  { prefix: "/dashboard/archive", permission: "archive_outgoing:view" },
+
+  // الفورم (إضافة/تعديل) يطلب صلاحية "create" - لازم يتحقق قبل
+  // القاعدة العامة الأقصر بتاعة "view"، وبما إن isPathAllowed
+  // بتختار أطول prefix متطابق تلقائيًا، وضعه هنا كافي
+  { prefix: "/dashboard/training-recommendations/", permission: "training_recommendations:create" },
+  { prefix: "/dashboard/training-recommendations", permission: "training_recommendations:view" },
+
+  { prefix: "/dashboard/manage-unified-registry", permission: "manage_unified_registry:view" },
+  // صفحات متاحة لأي مستخدم مسجل دخول (مفيش صلاحية module خاصة بيها)
+  { prefix: "/dashboard/notifications", permission: "general_status:view" },
+  { prefix: "/dashboard/user-guide", permission: "general_status:view" },
 ];
 
-const PATH_ROLE_MAP: { prefix: string; roles: RoleCode[] }[] = [
-  { prefix: "/dashboard/individual-query", roles: ALL_ROLES },
-  { prefix: "/dashboard/units-report", roles: ALL_ROLES },
-  { prefix: "/dashboard/daily-reports", roles: ALL_ROLES },
-
-  { prefix: "/dashboard/add-soldier", roles: ["ADMIN", "PERSONNEL_OFFICER"] },
-  { prefix: "/dashboard/issue-letter", roles: ["ADMIN", "PERSONNEL_OFFICER"] },
-
-  { prefix: "/dashboard/letters-archive", roles: ["ADMIN", "ARCHIVE_OFFICER"] },
-  { prefix: "/dashboard/reserve-batches", roles: ["ADMIN", "ARCHIVE_OFFICER"] },
-
-  { prefix: "/dashboard/manage-units", roles: ["ADMIN"] },
-  { prefix: "/dashboard/manage-users", roles: ["ADMIN"] },
-  { prefix: "/dashboard/data-backup", roles: ["ADMIN"] },
-  { prefix: "/dashboard/activity-log", roles: ["ADMIN"] },
-  { prefix: "/dashboard/manage-branch-heads", roles: ["ADMIN"] },
-  {
-  prefix: "/dashboard/manage-reserve-batches",
-  roles: ["ADMIN"],
-},
-{ prefix: "/dashboard/notifications", roles: ALL_ROLES },
-{ prefix: "/dashboard/user-guide", roles: ALL_ROLES },
-
-{
-  prefix: "/dashboard/archive",
-   roles: ["ADMIN", "ARCHIVE_OFFICER",'USER'],
-},
-  {
-    prefix: "/dashboard/training-recommendations",
-    roles: ALL_ROLES,
-  },
-  {
-  prefix: "/dashboard/manage-unified-registry",
-  roles: ["ADMIN"],
-},
-
-];
-
-function isPathAllowed(pathname: string, role: RoleCode): boolean {
-  // الصفحة الرئيسية /dashboard متاحة للجميع
+function isPathAllowed(
+  pathname: string,
+  hasPermission: (code: string) => boolean
+): boolean {
+  // الصفحة الرئيسية /dashboard متاحة لأي مستخدم مسجل دخول
   if (pathname === "/dashboard") {
     return true;
   }
 
-  const rule = PATH_ROLE_MAP.find((r) => pathname.startsWith(r.prefix));
+  // أطول تطابق بادئة (prefix) عشان نتجنب تصادم مسارات متشابهة
+  const rule = [...PATH_PERMISSION_MAP]
+    .sort((a, b) => b.prefix.length - a.prefix.length)
+    .find((r) => pathname.startsWith(r.prefix));
 
-  // لو المسار مش موجود في الخريطة، نمنعه افتراضيًا (Fail closed) بدل ما نسمح بيه بالغلط
+  // لو المسار مش موجود في الخريطة، نمنعه افتراضيًا (Fail closed)
   if (!rule) {
     return false;
   }
 
-  return role !== null && rule.roles.includes(role);
+  return hasPermission(rule.permission);
 }
+
 // ============================================================
 // تحديد عنوان الصفحة الحالية
 // ============================================================
@@ -138,20 +136,12 @@ function resolvePageTitle(pathname: string): string {
   }
 
   // أفراد الوحدة
-  if (
-    pathname.match(
-      /\/dashboard\/units-report\/\d+\/soldiers/
-    )
-  ) {
+  if (pathname.match(/\/dashboard\/units-report\/\d+\/soldiers/)) {
     return "بيان الوحدات / بيانات الوحدة / افراد الوحده";
   }
 
   // تفاصيل الوحدة
-  if (
-    pathname.match(
-      /\/dashboard\/units-report\/\d+/
-    )
-  ) {
+  if (pathname.match(/\/dashboard\/units-report\/\d+/)) {
     return "بيان الوحدات / بيانات الوحدة";
   }
 
@@ -184,22 +174,31 @@ function resolvePageTitle(pathname: string): string {
   if (pathname.includes("/manage-users")) {
     return "ادارة المستخدمين";
   }
-  if (pathname.includes("/activity-log")) {
-  return "سجل العمليات";
-}
-if (pathname.includes("/data-backup")) {
-  return "النسخ الاحتياطي للبيانات";
-}
-if (pathname.includes("/manage-reserve-batches")) {
-  return "إدارة دفعات الرديف";
-}
-if (pathname.includes("/archive/outgoing")) {
-  return "الأرشيف / صادر";
-}
 
-if (pathname.includes("/archive/incoming")) {
-  return "الأرشيف / وارد";
-}
+  if (pathname.includes("/manage-roles")) {
+    return "إدارة الأدوار";
+  }
+
+  if (pathname.includes("/activity-log")) {
+    return "سجل العمليات";
+  }
+
+  if (pathname.includes("/data-backup")) {
+    return "النسخ الاحتياطي للبيانات";
+  }
+
+  if (pathname.includes("/manage-reserve-batches")) {
+    return "إدارة دفعات الرديف";
+  }
+
+  if (pathname.includes("/archive/outgoing")) {
+    return "الأرشيف / صادر";
+  }
+
+  if (pathname.includes("/archive/incoming")) {
+    return "الأرشيف / وارد";
+  }
+
   // القيمة الافتراضية
   return "الموقف العام";
 }
@@ -209,79 +208,19 @@ if (pathname.includes("/archive/incoming")) {
 // ============================================================
 
 export function DashboardLayout() {
-  const [sidebarCollapsed, setSidebarCollapsed] =
-    useState(false);
-
-  const [roleCode, setRoleCode] = useState<RoleCode>(null);
-  const [roleLoading, setRoleLoading] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const navigate = useNavigate();
   const location = useLocation();
 
-  const pageTitle = resolvePageTitle(
-    location.pathname
-  );
+  const pageTitle = resolvePageTitle(location.pathname);
 
   // ==========================================================
-  // جلب دور المستخدم الحالي — مطلوب لحماية المسارات فعليًا
+  // صلاحيات المستخدم الحالي - مصدر واحد للحقيقة يستخدمه
+  // كل من الـ Sidebar وحماية المسارات هنا
   // ==========================================================
 
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadRole() {
-      setRoleLoading(true);
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        if (mounted) {
-          setRoleCode(null);
-          setRoleLoading(false);
-        }
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("user_roles")
-        .select(`
-          role_id,
-          roles (
-            id,
-            name,
-            code
-          )
-        `)
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (error) {
-        console.error("LOAD ROLE ERROR (guard):", error);
-      }
-
-      const role = Array.isArray(data?.roles)
-        ? data?.roles[0]
-        : data?.roles;
-
-      if (mounted) {
-        setRoleCode((role?.code as RoleCode) ?? null);
-        setRoleLoading(false);
-      }
-    }
-
-    loadRole();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  // ==========================================================
-  // التحقق من صلاحية الوصول للمسار الحالي
-  // ==========================================================
-
+  const { loading: permsLoading, hasPermission } = usePermissions();
 
   // ==========================================================
   // التنقل من الـ Sidebar
@@ -290,55 +229,43 @@ export function DashboardLayout() {
   function handleNavSelect(label: string) {
     if (label === "الاستعلام عن فرد") {
       navigate("/dashboard/individual-query");
-
     } else if (label === "الموقف العام") {
       navigate("/dashboard");
-
     } else if (label === "اضافة قوة جديدة") {
       navigate("/dashboard/add-soldier");
-
     } else if (label === "بيان الوحدات") {
       navigate("/dashboard/units-report");
-
     } else if (label === "إصدار خطاب") {
       navigate("/dashboard/issue-letter");
-
     } else if (label === "سجل الخطابات") {
       navigate("/dashboard/letters-archive");
-
     } else if (label === "اليوميات") {
       navigate("/dashboard/daily-reports");
-
     } else if (label === "دفعات الرديف") {
       navigate("/dashboard/reserve-batches");
-
     } else if (label === "ادارة الوحدات") {
       navigate("/dashboard/manage-units");
-
     } else if (label === "ادارة المستخدمين") {
       navigate("/dashboard/manage-users");
+    } else if (label === "إدارة الأدوار") {
+      navigate("/dashboard/manage-roles");
     } else if (label === "سجل العمليات") {
       navigate("/dashboard/activity-log");
+    } else if (label === "النسخ الاحتياطي للبيانات") {
+      navigate("/dashboard/data-backup");
+    } else if (label === "رؤساء فرع التنظيم") {
+      navigate("/dashboard/manage-branch-heads");
+    } else if (label === "إدارة دفعات الرديف") {
+      navigate("/dashboard/manage-reserve-batches");
+    } else if (label === "الفاكسات - الصادر") {
+      navigate("/dashboard/archive/outgoing");
+    } else if (label === "الفاكسات - الوارد") {
+      navigate("/dashboard/archive/incoming");
+    } else if (label === "إدارة ملف القيد الموحّد") {
+      navigate("/dashboard/manage-unified-registry");
+    } else if (label === "كشوف التوصيات") {
+      navigate("/dashboard/training-recommendations");
     }
-    else if (label === "النسخ الاحتياطي للبيانات") {
-  navigate("/dashboard/data-backup");
-}
-  else if (label === "رؤساء فرع التنظيم") {
-  navigate("/dashboard/manage-branch-heads");
-}
-else if (label === "إدارة دفعات الرديف") {
-  navigate("/dashboard/manage-reserve-batches");
-}
-else if (label === "صادر") {
-  navigate("/dashboard/archive/outgoing");
-}
-
-else if (label === "وارد") {
-  navigate("/dashboard/archive/incoming");
-}
-else if (label === "إدارة ملف القيد الموحّد") {
-  navigate("/dashboard/manage-unified-registry");
-}
   }
 
   // ==========================================================
@@ -349,59 +276,35 @@ else if (label === "إدارة ملف القيد الموحّد") {
     <div
       className="flex h-screen overflow-hidden bg-[#f7f9fc]"
       dir="rtl"
-      style={{
-        fontFamily: "'Almarai', sans-serif",
-      }}
+      style={{ fontFamily: "'Almarai', sans-serif" }}
     >
-      {/* ======================================================
-          Session Manager
-          
-          مهم:
-          هذا المكون مسؤول عن مراقبة الـ Session
-          وعدم وجود تفاعل لمدة 5 دقائق.
-          
-          يفضل وضعه داخل الـ Dashboard وليس داخل Login.
-          ====================================================== */}
-
       <SessionManager />
-
-      {/* ======================================================
-          Sidebar
-          ====================================================== */}
 
       <Sidebar
         collapsed={sidebarCollapsed}
-        onToggle={() =>
-          setSidebarCollapsed((previous) => !previous)
-        }
+        onToggle={() => setSidebarCollapsed((previous) => !previous)}
         onNavSelect={handleNavSelect}
         activePath={location.pathname}
       />
 
-      {/* ======================================================
-          Main Content
-          ====================================================== */}
-
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Header */}
+        <DashboardHeader pageTitle={pageTitle} />
 
-        <DashboardHeader
-          pageTitle={pageTitle}
-        />
-
-        {/* ====================================================
-            Page Content
-            ==================================================== */}
-
-<main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto">
           <div className="flex flex-col gap-6 p-6">
-            {roleLoading ? (
+            {permsLoading ? (
               <div className="flex items-center justify-center py-20">
-                <span style={{ fontFamily: "'Almarai', sans-serif", fontSize: 16, color: "#717d96" }}>
+                <span
+                  style={{
+                    fontFamily: "'Almarai', sans-serif",
+                    fontSize: 16,
+                    color: "#717d96",
+                  }}
+                >
                   جاري التحقق من الصلاحيات...
                 </span>
               </div>
-            ) : isPathAllowed(location.pathname, roleCode) ? (
+            ) : isPathAllowed(location.pathname, hasPermission) ? (
               <Outlet />
             ) : (
               <UnauthorizedPage />

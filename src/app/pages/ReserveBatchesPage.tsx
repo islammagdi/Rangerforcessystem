@@ -13,7 +13,7 @@ import {
   Search,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
-
+import { usePermissions } from "../../lib/usePermissions";
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
@@ -924,6 +924,7 @@ function SortIcon() {
 
 export function ReserveBatchesPage() {
   const location = useLocation();
+  const { hasPermission } = usePermissions();
   const [autoLoadPending, setAutoLoadPending] = useState<boolean>(
     Boolean((location.state as any)?.batchDate)
   );
@@ -2569,68 +2570,74 @@ await createNotification({
                 BUTTONS
                 ================================================= */}
 
-            <div className="flex flex-wrap items-end gap-3 mt-4 no-print">
+               <div className="flex flex-wrap items-end gap-3 mt-4 no-print">
 
               {/* إنهاء الخدمة */}
 
-              <button
-                type="button"
-                onClick={
-                  handleEndService
-                }
-                disabled={saving}
-                className="h-[44px] px-5 rounded-[8px] flex items-center justify-center shrink-0 disabled:opacity-50"
-                style={{
-                  background:
-                    "linear-gradient(to bottom, #00b867, #00522e)",
-                  ...F,
-                  fontSize: 15,
-                  color: "#fff",
-                  cursor: saving
-                    ? "not-allowed"
-                    : "pointer",
-                }}
-              >
-                إنهاء خدمة الأفراد
-              </button>
+              {hasPermission("reserve_batches:end_service") && (
+                <button
+                  type="button"
+                  onClick={
+                    handleEndService
+                  }
+                  disabled={saving}
+                  className="h-[44px] px-5 rounded-[8px] flex items-center justify-center shrink-0 disabled:opacity-50"
+                  style={{
+                    background:
+                      "linear-gradient(to bottom, #00b867, #00522e)",
+                    ...F,
+                    fontSize: 15,
+                    color: "#fff",
+                    cursor: saving
+                      ? "not-allowed"
+                      : "pointer",
+                  }}
+                >
+                  إنهاء خدمة الأفراد
+                </button>
+              )}
 
               {/* ترحيل الدفعة */}
 
-              <button
-                type="button"
-                onClick={
-                  handleTransfer
-                }
-                disabled={saving}
-                className="h-[44px] px-5 rounded-[8px] border border-[#e2e7f0] bg-white disabled:opacity-50"
-                style={{
-                  ...F,
-                  fontSize: 15,
-                  color: "#2d3648",
-                  cursor: saving
-                    ? "not-allowed"
-                    : "pointer",
-                }}
-              >
-                ترحيل دفعة
-              </button>
+              {hasPermission("reserve_batches:transfer") && (
+                <button
+                  type="button"
+                  onClick={
+                    handleTransfer
+                  }
+                  disabled={saving}
+                  className="h-[44px] px-5 rounded-[8px] border border-[#e2e7f0] bg-white disabled:opacity-50"
+                  style={{
+                    ...F,
+                    fontSize: 15,
+                    color: "#2d3648",
+                    cursor: saving
+                      ? "not-allowed"
+                      : "pointer",
+                  }}
+                >
+                  ترحيل دفعة
+                </button>
+              )}
 
               {/* طباعة */}
 
-              <button
-                type="button"
-                onClick={
-                  handlePrint
-                }
-                className="h-[44px] px-5 rounded-[8px] border border-[#e2e7f0] bg-white"
-                style={{
-                  ...F,
-                  fontSize: 15,
-                  color: "#2d3648",
-                }}
-              >
-                طباعة الكشف
-              </button>
+              {hasPermission("reserve_batches:print") && (
+                <button
+                  type="button"
+                  onClick={
+                    handlePrint
+                  }
+                  className="h-[44px] px-5 rounded-[8px] border border-[#e2e7f0] bg-white"
+                  style={{
+                    ...F,
+                    fontSize: 15,
+                    color: "#2d3648",
+                  }}
+                >
+                  طباعة الكشف
+                </button>
+              )}
                    {/* =================================================
                 SAVE
                 ================================================= */}
@@ -2644,23 +2651,25 @@ await createNotification({
         >
          افراد دفعة الرديف
         </h2>
-              <button
-                type="button"
-                onClick={
-                  handleSaveChanges
-                }
-                disabled={saving}
-                className="h-[44px] px-6 rounded-[8px] border border-[#e2e7f0] bg-white disabled:opacity-50"
-                style={{
-                  ...F,
-                  fontSize: 15,
-                  color: "#2d3648",
-                }}
-              >
-                {saving
-                  ? "جاري الحفظ..."
-                  : "حفظ التعديلات"}
-              </button>
+              {hasPermission("reserve_batches:update_documents") && (
+                <button
+                  type="button"
+                  onClick={
+                    handleSaveChanges
+                  }
+                  disabled={saving}
+                  className="h-[44px] px-6 rounded-[8px] border border-[#e2e7f0] bg-white disabled:opacity-50"
+                  style={{
+                    ...F,
+                    fontSize: 15,
+                    color: "#2d3648",
+                  }}
+                >
+                  {saving
+                    ? "جاري الحفظ..."
+                    : "حفظ التعديلات"}
+                </button>
+              )}
             </div>
             {/* =================================================
                 TABLE
@@ -2926,7 +2935,7 @@ await createNotification({
                               </span>
                             </td>
 
-                            {/* الكارنيه */}
+                                 {/* الكارنيه */}
 
                             <td
                               className={`${tdClass} text-center`}
@@ -2934,6 +2943,11 @@ await createNotification({
                               <DocumentDropdown
                                 value={
                                   soldier.receivedKariza
+                                }
+                                disabled={
+                                  !hasPermission(
+                                    "reserve_batches:update_documents"
+                                  )
                                 }
                                 onChange={(
                                   value
@@ -2957,7 +2971,10 @@ await createNotification({
                                   soldier.receivedLicense
                                 }
                                 disabled={
-                                  !licenseEnabled
+                                  !licenseEnabled ||
+                                  !hasPermission(
+                                    "reserve_batches:update_documents"
+                                  )
                                 }
                                 onChange={(
                                   value

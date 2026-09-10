@@ -15,7 +15,7 @@ import { supabase } from "../../lib/supabase";
 const FONT = {
   fontFamily: "'Almarai', sans-serif",
 };
-
+import { usePermissions } from "../../lib/usePermissions";
 /* =========================================================
    Types
 ========================================================= */
@@ -652,7 +652,7 @@ function printSoldier(
 export function SoldierDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-
+const { hasPermission } = usePermissions();
   const [showDelete, setShowDelete] = useState(false);
   const [loading, setLoading] = useState(true);
   const [soldier, setSoldier] = useState<Soldier | null>(null);
@@ -1050,29 +1050,31 @@ export function SoldierDetailPage() {
 
           <div className="flex-1" />
 
-          <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3">
 
             {/* Delete */}
 
-            <button
-              type="button"
-              onClick={() =>
-                setShowDelete(true)
-              }
-              title="حذف"
-              className="w-9 h-9 rounded-[8px] flex items-center justify-center hover:opacity-80 transition-opacity"
-              style={{
-                backgroundColor:
-                  "#fce8f1",
-              }}
-            >
-              <Trash2
-                size={16}
+            {hasPermission("individual_query:delete") && (
+              <button
+                type="button"
+                onClick={() =>
+                  setShowDelete(true)
+                }
+                title="حذف"
+                className="w-9 h-9 rounded-[8px] flex items-center justify-center hover:opacity-80 transition-opacity"
                 style={{
-                  color: "#E3282C",
+                  backgroundColor:
+                    "#fce8f1",
                 }}
-              />
-            </button>
+              >
+                <Trash2
+                  size={16}
+                  style={{
+                    color: "#E3282C",
+                  }}
+                />
+              </button>
+            )}
 
             {/* Print */}
 
@@ -1101,27 +1103,29 @@ export function SoldierDetailPage() {
 
             {/* Edit */}
 
-            <button
-              type="button"
-              onClick={() =>
-                navigate(
-                  `/dashboard/individual-query/soldier/${soldier.id}/edit`,
-                )
-              }
-              title="تعديل"
-              className="w-9 h-9 rounded-[8px] flex items-center justify-center hover:opacity-80 transition-opacity"
-              style={{
-                backgroundColor:
-                  "#ebedfd",
-              }}
-            >
-              <Pencil
-                size={16}
+            {hasPermission("individual_query:edit") && (
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(
+                    `/dashboard/individual-query/soldier/${soldier.id}/edit`,
+                  )
+                }
+                title="تعديل"
+                className="w-9 h-9 rounded-[8px] flex items-center justify-center hover:opacity-80 transition-opacity"
                 style={{
-                  color: "#2D3648",
+                  backgroundColor:
+                    "#ebedfd",
                 }}
-              />
-            </button>
+              >
+                <Pencil
+                  size={16}
+                  style={{
+                    color: "#2D3648",
+                  }}
+                />
+              </button>
+            )}
 
           </div>
         </div>
@@ -1227,39 +1231,40 @@ export function SoldierDetailPage() {
             سجل الخطابات
           </SectionTitle>
 
-          <div className="flex-1" />
+                    <div className="flex-1" />
 
-          <button
-            type="button"
-            onClick={() => {
-              navigate(
-                `/dashboard/issue-letter?personnel_id=${soldier.id}`,
-              );
-            }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-[8px] transition-opacity hover:opacity-90"
-            style={{
-              background:
-                "linear-gradient(to bottom, #00b867, #00522e)",
-            }}
-          >
-            <span
+          {hasPermission("issue_letter:create") && (
+            <button
+              type="button"
+              onClick={() => {
+                navigate(
+                  `/dashboard/issue-letter?personnel_id=${soldier.id}`,
+                );
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-[8px] transition-opacity hover:opacity-90"
               style={{
-                ...FONT,
-                fontSize: 14,
-                color: "#f5f5f5",
+                background:
+                  "linear-gradient(to bottom, #00b867, #00522e)",
               }}
             >
-              إصدار خطاب
-            </span>
+              <span
+                style={{
+                  ...FONT,
+                  fontSize: 14,
+                  color: "#f5f5f5",
+                }}
+              >
+                إصدار خطاب
+              </span>
 
-            <Plus
-              size={14}
-              className="text-white"
-            />
-          </button>
+              <Plus
+                size={14}
+                className="text-white"
+              />
+            </button>
+          )}
 
         </div>
-
         {/* Letters Table */}
 
         <LettersTable

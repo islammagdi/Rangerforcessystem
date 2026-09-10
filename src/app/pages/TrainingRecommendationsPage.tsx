@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import { Printer, Plus, Pencil, Trash2, X } from "lucide-react";
 
 import { supabase } from "../../lib/supabase";
-
+import { usePermissions } from "../../lib/usePermissions";
 import {
   fetchRecommendations,
   deleteRecommendation,
@@ -218,7 +218,7 @@ function PrintColumnsModal({
 
 export function TrainingRecommendationsPage() {
   const navigate = useNavigate();
-
+  const { hasPermission } = usePermissions();   // ⬅️ السطر الجديد
   const currentYear = new Date().getFullYear();
 
   const yearOptions = useMemo(
@@ -659,21 +659,23 @@ export function TrainingRecommendationsPage() {
           كشوف التوصيات
         </h1>
 
-        <button
-          type="button"
-          onClick={() =>
-            navigate("/dashboard/training-recommendations/new")
-          }
-          className="flex items-center gap-2 h-[46px] px-5 rounded-[8px]"
-          style={{
-            background: "linear-gradient(to bottom,#00b867,#00522e)",
-          }}
-        >
-          <Plus size={18} color="#fff" />
-          <span style={{ ...F, fontSize: 15, color: "#fff" }}>
-            إضافة توصية جديدة
-          </span>
-        </button>
+        {hasPermission("training_recommendations:create") && (
+          <button
+            type="button"
+            onClick={() =>
+              navigate("/dashboard/training-recommendations/new")
+            }
+            className="flex items-center gap-2 h-[46px] px-5 rounded-[8px]"
+            style={{
+              background: "linear-gradient(to bottom,#00b867,#00522e)",
+            }}
+          >
+            <Plus size={18} color="#fff" />
+            <span style={{ ...F, fontSize: 15, color: "#fff" }}>
+              إضافة توصية جديدة
+            </span>
+          </button>
+        )}
       </div>
 
       {error && (
@@ -937,30 +939,41 @@ export function TrainingRecommendationsPage() {
                         </span>
                       </td>
 
-                      <td className={tdClass}>
+                                   <td className={tdClass}>
                         <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              navigate(
-                                `/dashboard/training-recommendations/${row.id}`
-                              )
-                            }
-                            className="w-8 h-8 rounded-[6px] flex items-center justify-center"
-                            style={{ background: "#ebedfd" }}
-                          >
-                            <Pencil size={13} color="#1f3d97" />
-                          </button>
+                          {hasPermission("training_recommendations:create") && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                navigate(
+                                  `/dashboard/training-recommendations/${row.id}`
+                                )
+                              }
+                              className="w-8 h-8 rounded-[6px] flex items-center justify-center"
+                              style={{ background: "#ebedfd" }}
+                            >
+                              <Pencil size={13} color="#1f3d97" />
+                            </button>
+                          )}
 
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(row)}
-                            disabled={deletingId === row.id}
-                            className="w-8 h-8 rounded-[6px] flex items-center justify-center disabled:opacity-50"
-                            style={{ background: "#fce8f1" }}
-                          >
-                            <Trash2 size={13} color="#e3282c" />
-                          </button>
+                          {hasPermission("training_recommendations:delete") && (
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(row)}
+                              disabled={deletingId === row.id}
+                              className="w-8 h-8 rounded-[6px] flex items-center justify-center disabled:opacity-50"
+                              style={{ background: "#fce8f1" }}
+                            >
+                              <Trash2 size={13} color="#e3282c" />
+                            </button>
+                          )}
+
+                          {!hasPermission("training_recommendations:create") &&
+                            !hasPermission("training_recommendations:delete") && (
+                              <span style={{ ...F, fontSize: 12, color: "#a1aebe" }}>
+                                —
+                              </span>
+                            )}
                         </div>
                       </td>
                     </tr>

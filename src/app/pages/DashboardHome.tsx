@@ -17,6 +17,8 @@ import {
   PersonCheckIcon,
 } from "../components/dashboard/DashboardIcons";
 
+import { usePermissions } from "../../lib/usePermissions"; // عدّل المسار حسب مكان الصفحة
+
 
 // ============================================================
 // عنوان القسم
@@ -102,6 +104,7 @@ function DeliveredOfTotalLabel({
 // ============================================================
 
 export function DashboardHome() {
+
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loadingUser, setLoadingUser] = useState(true);
