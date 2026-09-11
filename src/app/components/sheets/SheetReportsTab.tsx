@@ -9,11 +9,13 @@ import {
   createReport,
   deleteReport,
   buildGroupTree,
+  buildPivotTable,
   type Sheet,
   type SheetColumn,
   type SheetRow,
   type SheetReport,
   type GroupNode,
+  type PivotTable,
 } from "../../../lib/sheets";
 
 const F: React.CSSProperties = {
@@ -355,6 +357,172 @@ function GroupTreeView({
 }
 
 // =====================================================
+// عرض الجدول المتقاطع (Pivot Table)
+// =====================================================
+
+function PivotTableView({
+  pivot,
+  rowColumnName,
+}: {
+  pivot: PivotTable;
+  rowColumnName: string;
+}) {
+  const headerLevelsCount = pivot.headerLevels.length;
+
+  function groupSize(level: number) {
+    let size = 1;
+    for (let j = level + 1; j < pivot.headerLevels.length; j++) {
+      size *= pivot.headerLevels[j].length;
+    }
+    return size;
+  }
+
+  function renderHeaderCells(level: number) {
+    const size = groupSize(level);
+    const repeatCount = pivot.headerLevels
+      .slice(0, level)
+      .reduce((acc, arr) => acc * arr.length, 1);
+
+    const cells: { value: string; span: number }[] = [];
+
+    for (let r = 0; r < repeatCount; r++) {
+      pivot.headerLevels[level].forEach((value) => {
+        cells.push({ value, span: size });
+      });
+    }
+
+    return cells;
+  }
+
+  const thBase = "border border-[#e2e7f0] px-3 py-2 text-center";
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse" dir="rtl">
+        <thead>
+          {headerLevelsCount === 0 ? (
+            <tr>
+              <th className={thBase} style={{ ...F, fontSize: 13, background: "#f7f9fc" }}>
+                {rowColumnName}
+              </th>
+              <th className={thBase} style={{ ...F, fontSize: 13, background: "#f7f9fc" }}>
+                العدد
+              </th>
+              <th className={thBase} style={{ ...F, fontSize: 13, background: "#DCF4DF" }}>
+                الإجمالي
+              </th>
+            </tr>
+          ) : (
+            Array.from({ length: headerLevelsCount }).map((_, level) => (
+              <tr key={level}>
+                {level === 0 && (
+                  <th
+                    rowSpan={headerLevelsCount}
+                    className={thBase}
+                    style={{ ...F, fontSize: 13, fontWeight: 700, background: "#f7f9fc" }}
+                  >
+                    {rowColumnName}
+                  </th>
+                )}
+
+                {renderHeaderCells(level).map((cell, index) => (
+                  <th
+                    key={index}
+                    colSpan={cell.span}
+                    className={thBase}
+                    style={{ ...F, fontSize: 13, fontWeight: 700, background: "#f7f9fc" }}
+                  >
+                    {cell.value}
+                  </th>
+                ))}
+
+                {level === 0 && (
+                  <th
+                    rowSpan={headerLevelsCount}
+                    className={thBase}
+                    style={{ ...F, fontSize: 13, fontWeight: 700, background: "#DCF4DF" }}
+                  >
+                    الإجمالي
+                  </th>
+                )}
+              </tr>
+            ))
+          )}
+        </thead>
+
+        <tbody>
+          {pivot.rowValues.map((rowValue, rowIndex) => (
+            <tr key={rowValue}>
+              <th
+                className={thBase}
+                style={{ ...F, fontSize: 13, fontWeight: 700, background: "#fafbff" }}
+              >
+                {rowValue}
+              </th>
+
+              {pivot.matrix[rowIndex].map((value, colIndex) => (
+                <td
+                  key={colIndex}
+                  className={thBase}
+                  style={{ ...F, fontSize: 13, color: "#2d3648" }}
+                >
+                  {value}
+                </td>
+              ))}
+
+              <td
+                className={thBase}
+                style={{
+                  ...F,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  background: "#f0fdf6",
+                  color: "#00522e",
+                }}
+              >
+                {pivot.rowTotals[rowIndex]}
+              </td>
+            </tr>
+          ))}
+
+          <tr>
+            <th
+              className={thBase}
+              style={{ ...F, fontSize: 13, fontWeight: 700, background: "#DCF4DF" }}
+            >
+              إجمالي
+            </th>
+
+            {pivot.columnTotals.map((value, index) => (
+              <td
+                key={index}
+                className={thBase}
+                style={{ ...F, fontSize: 13, fontWeight: 700, background: "#DCF4DF" }}
+              >
+                {value}
+              </td>
+            ))}
+
+            <td
+              className={thBase}
+              style={{
+                ...F,
+                fontSize: 14,
+                fontWeight: 700,
+                background: "#00522e",
+                color: "#fff",
+              }}
+            >
+              {pivot.grandTotal}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// =====================================================
 // المكوّن الرئيسي
 // =====================================================
 
@@ -383,6 +551,7 @@ export function SheetReportsTab({
     []
   );
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"list" | "table">("list");
 
   useEffect(() => {
     loadReports();
@@ -433,6 +602,12 @@ export function SheetReportsTab({
     }
   }
 
+
+  const pivotTable = useMemo(() => {
+    if (!selectedReport || selectedReportColumnIds.length === 0) return null;
+    return buildPivotTable(rows, cellMap, selectedReportColumnIds);
+  }, [selectedReport, selectedReportColumnIds, rows, cellMap]);
+
   const groupTree = useMemo(() => {
     if (!selectedReport || selectedReportColumnIds.length === 0) return [];
     return buildGroupTree(rows, cellMap, selectedReportColumnIds);
@@ -470,11 +645,104 @@ export function SheetReportsTab({
         .join("");
     }
 
+    function buildPivotPrintHtml(pivot: PivotTable, rowColumnName: string): string {
+      const headerLevelsCount = pivot.headerLevels.length;
+
+      function groupSize(level: number) {
+        let size = 1;
+        for (let j = level + 1; j < pivot.headerLevels.length; j++) {
+          size *= pivot.headerLevels[j].length;
+        }
+        return size;
+      }
+
+      function renderHeaderCellsHtml(level: number): string {
+        const size = groupSize(level);
+        const repeatCount = pivot.headerLevels
+          .slice(0, level)
+          .reduce((acc, arr) => acc * arr.length, 1);
+
+        let html = "";
+
+        for (let r = 0; r < repeatCount; r++) {
+          pivot.headerLevels[level].forEach((value) => {
+            html += `<th colspan="${size}">${value}</th>`;
+          });
+        }
+
+        return html;
+      }
+
+      let theadHtml = "";
+
+      if (headerLevelsCount === 0) {
+        theadHtml = `
+          <tr>
+            <th>${rowColumnName}</th>
+            <th>العدد</th>
+            <th>الإجمالي</th>
+          </tr>
+        `;
+      } else {
+        for (let level = 0; level < headerLevelsCount; level++) {
+          theadHtml += "<tr>";
+
+          if (level === 0) {
+            theadHtml += `<th rowspan="${headerLevelsCount}">${rowColumnName}</th>`;
+          }
+
+          theadHtml += renderHeaderCellsHtml(level);
+
+          if (level === 0) {
+            theadHtml += `<th rowspan="${headerLevelsCount}">الإجمالي</th>`;
+          }
+
+          theadHtml += "</tr>";
+        }
+      }
+
+      const bodyRowsHtml = pivot.rowValues
+        .map((rowValue, rowIndex) => {
+          const cells = pivot.matrix[rowIndex]
+            .map((value) => `<td>${value}</td>`)
+            .join("");
+
+          return `<tr><th>${rowValue}</th>${cells}<td>${pivot.rowTotals[rowIndex]}</td></tr>`;
+        })
+        .join("");
+
+      const totalsRowHtml = `
+        <tr>
+          <th>إجمالي</th>
+          ${pivot.columnTotals.map((v) => `<td>${v}</td>`).join("")}
+          <td>${pivot.grandTotal}</td>
+        </tr>
+      `;
+
+      return `
+        <table>
+          <thead>${theadHtml}</thead>
+          <tbody>${bodyRowsHtml}${totalsRowHtml}</tbody>
+        </table>
+      `;
+    }
+
     const formattedDate = new Intl.DateTimeFormat("ar-EG", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
     }).format(new Date());
+
+    const bodyHtml =
+      viewMode === "table" && pivotTable
+        ? buildPivotPrintHtml(
+            pivotTable,
+            columnsById.get(selectedReportColumnIds[0])?.name ?? ""
+          )
+        : `
+            <div class="total">إجمالي العدد: ${totalCount}</div>
+            <div>${renderNodesHtml(groupTree, 0)}</div>
+          `;
 
     printWindow.document.open();
 
@@ -485,12 +753,15 @@ export function SheetReportsTab({
           <meta charset="UTF-8" />
           <title>${selectedReport.name}</title>
           <style>
-            @page { size: A4 portrait; margin: 12mm; }
+            @page { size: A4 ${viewMode === "table" ? "landscape" : "portrait"}; margin: 12mm; }
             body { font-family: 'Times New Roman', Times, serif; direction: rtl; }
             .header { text-align: center; margin-bottom: 20px; }
             .header h1 { font-size: 18px; margin: 0 0 6px; }
             .header p { font-size: 13px; color: #555; margin: 0; }
             .total { text-align: center; margin: 16px 0; font-size: 15px; font-weight: 700; }
+            table { width: 100%; border-collapse: collapse; font-size: 13px; }
+            th, td { border: 1px solid #999; padding: 6px; text-align: center; }
+            th { background: #f0f0f0; }
           </style>
         </head>
         <body>
@@ -499,9 +770,7 @@ export function SheetReportsTab({
             <p>كشف: ${sheet.name} — التاريخ: ${formattedDate}</p>
           </div>
 
-          <div class="total">إجمالي العدد: ${totalCount}</div>
-
-          <div>${renderNodesHtml(groupTree, 0)}</div>
+          ${bodyHtml}
         </body>
       </html>
     `);
@@ -521,7 +790,6 @@ export function SheetReportsTab({
       printWindow.onload = doPrint;
     }
   }
-
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -604,17 +872,51 @@ export function SheetReportsTab({
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={handlePrintReport}
-              className="flex items-center gap-1.5 h-[38px] px-4 rounded-[7px]"
-              style={{ background: "#DCF4DF" }}
-            >
-              <Printer size={14} color="#2d3648" />
-              <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>
-                طباعة اليومية
-              </span>
-            </button>
+            <div className="flex items-center gap-2">
+              <div className="flex gap-1 p-1 bg-[#f1f5f9] rounded-[8px]">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("list")}
+                  className="px-3 h-[34px] rounded-[6px] text-sm transition-colors"
+                  style={{
+                    ...F,
+                    background: viewMode === "list" ? "#fff" : "transparent",
+                    color: viewMode === "list" ? "#00522e" : "#717d96",
+                    fontWeight: viewMode === "list" ? 700 : 400,
+                    boxShadow: viewMode === "list" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                  }}
+                >
+                  عرض قائمة
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setViewMode("table")}
+                  className="px-3 h-[34px] rounded-[6px] text-sm transition-colors"
+                  style={{
+                    ...F,
+                    background: viewMode === "table" ? "#fff" : "transparent",
+                    color: viewMode === "table" ? "#00522e" : "#717d96",
+                    fontWeight: viewMode === "table" ? 700 : 400,
+                    boxShadow: viewMode === "table" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                  }}
+                >
+                  عرض جدول
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handlePrintReport}
+                className="flex items-center gap-1.5 h-[38px] px-4 rounded-[7px]"
+                style={{ background: "#DCF4DF" }}
+              >
+                <Printer size={14} color="#2d3648" />
+                <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>
+                  طباعة اليومية
+                </span>
+              </button>
+            </div>
           </div>
 
           <div
@@ -630,7 +932,18 @@ export function SheetReportsTab({
             </span>
           </div>
 
-          <GroupTreeView nodes={groupTree} />
+          {viewMode === "list" ? (
+            <GroupTreeView nodes={groupTree} />
+          ) : (
+            pivotTable && (
+              <PivotTableView
+                pivot={pivotTable}
+                rowColumnName={
+                  columnsById.get(selectedReportColumnIds[0])?.name ?? ""
+                }
+              />
+            )
+          )}
         </div>
       )}
 

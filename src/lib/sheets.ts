@@ -372,3 +372,101 @@ export function buildGroupTree(
   const allRowIds = rows.map((r) => r.id);
   return groupLevel(allRowIds, 0);
 }
+
+// =====================================================
+// تجميع Pivot Table (جدول متقاطع)
+// =====================================================
+
+export interface PivotTable {
+  rowValues: string[];
+  headerLevels: string[][];
+  leafCombos: string[][];
+  matrix: number[][];
+  rowTotals: number[];
+  columnTotals: number[];
+  grandTotal: number;
+}
+
+export function buildPivotTable(
+  rows: { id: string }[],
+  cellMap: Map<string, string>,
+  columnIds: string[]
+): PivotTable {
+  function getValue(rowId: string, columnId: string): string {
+    const raw = cellMap.get(`${rowId}:${columnId}`);
+    const trimmed = (raw ?? "").trim();
+    return trimmed || "(بدون قيمة)";
+  }
+
+  const rowColumnId = columnIds[0];
+  const headerColumnIds = columnIds.slice(1);
+  const allRowIds = rows.map((r) => r.id);
+
+  const rowValuesSet = new Set<string>();
+  allRowIds.forEach((id) => rowValuesSet.add(getValue(id, rowColumnId)));
+  const rowValues = Array.from(rowValuesSet).sort((a, b) =>
+    a.localeCompare(b, "ar")
+  );
+
+  const headerLevels: string[][] = headerColumnIds.map((colId) => {
+    const set = new Set<string>();
+    allRowIds.forEach((id) => set.add(getValue(id, colId)));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "ar"));
+  });
+
+  function cartesian(arrays: string[][]): string[][] {
+    if (arrays.length === 0) return [[]];
+    const [first, ...rest] = arrays;
+    const restProduct = cartesian(rest);
+    const result: string[][] = [];
+
+    first.forEach((val) => {
+      restProduct.forEach((combo) => {
+        result.push([val, ...combo]);
+      });
+    });
+
+    return result;
+  }
+
+  const leafCombos = cartesian(headerLevels);
+
+  const matrix: number[][] = rowValues.map(() =>
+    leafCombos.map(() => 0)
+  );
+
+  allRowIds.forEach((id) => {
+    const rowVal = getValue(id, rowColumnId);
+    const rowIndex = rowValues.indexOf(rowVal);
+
+    if (rowIndex === -1) return;
+
+    const combo = headerColumnIds.map((colId) => getValue(id, colId));
+
+    const comboIndex = leafCombos.findIndex((c) =>
+      c.every((v, i) => v === combo[i])
+    );
+
+    if (comboIndex === -1) return;
+
+    matrix[rowIndex][comboIndex] += 1;
+  });
+
+  const rowTotals = matrix.map((row) => row.reduce((a, b) => a + b, 0));
+
+  const columnTotals = leafCombos.map((_, comboIndex) =>
+    matrix.reduce((sum, row) => sum + row[comboIndex], 0)
+  );
+
+  const grandTotal = rowTotals.reduce((a, b) => a + b, 0);
+
+  return {
+    rowValues,
+    headerLevels,
+    leafCombos,
+    matrix,
+    rowTotals,
+    columnTotals,
+    grandTotal,
+  };
+}
