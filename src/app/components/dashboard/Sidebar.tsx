@@ -18,6 +18,7 @@ import {
   FileSpreadsheet,
   ShieldCheck,
   Landmark,
+  ClipboardList,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { supabase } from "../../../lib/supabase";
@@ -71,6 +72,7 @@ const LABEL_TO_PATH: Record<string, string> = {
   "إدارة ملف القيد الموحّد": "/dashboard/manage-unified-registry",
   "إدارة الأدوار": "/dashboard/manage-roles",
   "الإدارات الخارجية": "/dashboard/manage-external-administrations",
+  "كشوفات": "/dashboard/sheets",
 };
 
 // =====================================================
@@ -340,6 +342,12 @@ export function Sidebar({ collapsed, onToggle, onNavSelect, activePath }: Sideba
         label: "كشوف التوصيات",
         section: "الخطابات",
         permission: "training_recommendations:view",
+      },
+            {
+        icon: <ClipboardList size={18} />,
+        label: "كشوفات",
+        section: "الخطابات",
+        permission: "sheets:view",
       },
 
       // -------------------------------

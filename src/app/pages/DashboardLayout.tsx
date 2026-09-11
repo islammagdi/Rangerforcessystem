@@ -50,6 +50,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/manage-unified-registry": "إدارة ملف القيد الموحّد",
   "/dashboard/manage-roles": "إدارة الأدوار",
   "/dashboard/manage-branch-heads": "رؤساء فرع التنظيم",
+  "/dashboard/sheets": "كشوفات",
   "/dashboard/manage-external-administrations": "الإدارات الخارجية",
 };
 
@@ -92,6 +93,7 @@ const PATH_PERMISSION_MAP: { prefix: string; permission: string }[] = [
   { prefix: "/dashboard/training-recommendations", permission: "training_recommendations:view" },
 
   { prefix: "/dashboard/manage-unified-registry", permission: "manage_unified_registry:view" },
+   { prefix: "/dashboard/sheets", permission: "sheets:view" },
   // صفحات متاحة لأي مستخدم مسجل دخول (مفيش صلاحية module خاصة بيها)
   { prefix: "/dashboard/notifications", permission: "general_status:view" },
   { prefix: "/dashboard/user-guide", permission: "general_status:view" },
@@ -202,7 +204,9 @@ function resolvePageTitle(pathname: string): string {
   if (pathname.includes("/archive/incoming")) {
     return "الأرشيف / وارد";
   }
-
+  if (pathname.includes("/sheets")) {
+    return "كشوفات";
+  }
   if (pathname.includes("/manage-external-administrations")) {
     return "الإدارات الخارجية";
   }
@@ -366,6 +370,9 @@ export function DashboardLayout() {
       navigate("/dashboard/training-recommendations");
     } else if (label === "الإدارات الخارجية") {
       navigate("/dashboard/manage-external-administrations");
+    }
+    else if (label === "كشوفات") {
+      navigate("/dashboard/sheets");
     }
   }
 
