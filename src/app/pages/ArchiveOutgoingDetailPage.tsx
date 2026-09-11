@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router";
 import { Plus, Trash2, Upload, ArrowRight, Printer } from "lucide-react";
 
 import { supabase } from "../../lib/supabase";
+import { logActivity } from "../../lib/logActivity";
 import {
   fetchOutgoingMailById,
   updateOutgoingMail,
@@ -126,6 +127,18 @@ export function ArchiveOutgoingDetailPage() {
     };
   }
 
+  // نص وصفي موحّد لحالة استلام الأصل، يُستخدم في تسجيل التعديل
+  function describeReceiptState(
+    received: boolean,
+    receivedBy: string
+  ): string {
+    if (!received) {
+      return "غير مستلم";
+    }
+
+    return `مستلم بواسطة: ${receivedBy || "غير محدد"}`;
+  }
+
   /* =======================================================
      حفظ ملخص الفاكس
   ======================================================= */
@@ -137,9 +150,27 @@ export function ArchiveOutgoingDetailPage() {
     setError("");
 
     try {
+      const oldSummary = mail.fax_summary?.trim() || "بدون ملخص";
+      const newSummary = faxSummary.trim() || "بدون ملخص";
+
       await updateOutgoingMail(mail.id, {
         fax_summary: faxSummary.trim() || null,
       });
+
+      try {
+        const { userId, userName } = await getCurrentUserInfo();
+
+        await logActivity({
+          userId,
+          userName,
+          actionType: "UPDATE",
+          action: "تعديل ملخص الفاكس",
+          entity: "outgoing_mail",
+          details: `القيمة القديمة: ${oldSummary} - القيمة الجديدة: ${newSummary}`,
+        });
+      } catch (auditError) {
+        console.error("Audit log error:", auditError);
+      }
 
       setSuccessMsg("تم حفظ ملخص الفاكس بنجاح");
       setTimeout(() => setSuccessMsg(""), 3000);
@@ -169,12 +200,37 @@ export function ArchiveOutgoingDetailPage() {
     setError("");
 
     try {
+      const oldState = describeReceiptState(
+        mail.is_original_received,
+        mail.original_received_by ?? ""
+      );
+
+      const newState = describeReceiptState(
+        isOriginalReceived,
+        originalReceivedBy.trim()
+      );
+
       await updateOutgoingMail(mail.id, {
         is_original_received: isOriginalReceived,
         original_received_by: isOriginalReceived
           ? originalReceivedBy.trim()
           : null,
       });
+
+      try {
+        const { userId, userName } = await getCurrentUserInfo();
+
+        await logActivity({
+          userId,
+          userName,
+          actionType: "UPDATE",
+          action: "تعديل استلام الأصل",
+          entity: "outgoing_mail",
+          details: `القيمة القديمة: ${oldState} - القيمة الجديدة: ${newState}`,
+        });
+      } catch (auditError) {
+        console.error("Audit log error:", auditError);
+      }
 
       setSuccessMsg("تم تحديث حالة استلام الأصل بنجاح");
       setTimeout(() => setSuccessMsg(""), 3000);
@@ -205,13 +261,22 @@ export function ArchiveOutgoingDetailPage() {
 
     try {
       const { userId, userName } = await getCurrentUserInfo();
+      const noteText = newNote.trim();
 
-      await addOutgoingMailNote(
-        mail.id,
-        newNote.trim(),
-        userId,
-        userName
-      );
+      await addOutgoingMailNote(mail.id, noteText, userId, userName);
+
+      try {
+        await logActivity({
+          userId,
+          userName,
+          actionType: "CREATE",
+          action: "اضافة الملاحظات",
+          entity: "outgoing_mail",
+          details: `الملاحظة: ${noteText}`,
+        });
+      } catch (auditError) {
+        console.error("Audit log error:", auditError);
+      }
 
       setNewNote("");
       await loadMail(mail.id);
@@ -239,11 +304,31 @@ export function ArchiveOutgoingDetailPage() {
     setError("");
 
     try {
+      const recipientName = newRecipientName.trim();
+      const recipientEntity = newRecipientEntity.trim();
+
       await addOutgoingMailRecipient(
         mail.id,
-        newRecipientName.trim(),
-        newRecipientEntity.trim() || null
+        recipientName,
+        recipientEntity || null
       );
+
+      try {
+        const { userId, userName } = await getCurrentUserInfo();
+
+        await logActivity({
+          userId,
+          userName,
+          actionType: "CREATE",
+          action: "اضافة الأشخاص المستلمين للفاكس",
+          entity: "outgoing_mail",
+          details: `الاسم: ${recipientName} - الجهة: ${
+            recipientEntity || "غير محددة"
+          }`,
+        });
+      } catch (auditError) {
+        console.error("Audit log error:", auditError);
+      }
 
       setNewRecipientName("");
       setNewRecipientEntity("");
@@ -274,6 +359,21 @@ export function ArchiveOutgoingDetailPage() {
     try {
       const filePath = await uploadOutgoingScanFile(mail.id, file);
       await addOutgoingMailScan(mail.id, filePath, null);
+
+      try {
+        const { userId, userName } = await getCurrentUserInfo();
+
+        await logActivity({
+          userId,
+          userName,
+          actionType: "CREATE",
+          action: "رفع الصور الضوئية للفاكس",
+          entity: "outgoing_mail",
+          details: "عدد الصور المرفوعة: 1",
+        });
+      } catch (auditError) {
+        console.error("Audit log error:", auditError);
+      }
 
       await loadMail(mail.id);
     } catch (err: any) {

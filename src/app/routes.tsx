@@ -40,6 +40,7 @@ import { TrainingRecommendationsPage } from "./pages/TrainingRecommendationsPage
 import { TrainingRecommendationFormPage } from "./pages/TrainingRecommendationFormPage";
 import { ManageUnifiedRegistryPage } from "./pages/ManageUnifiedRegistryPage";
 import { ManageRolesPage } from "./pages/ManageRolesPage";
+import { ManageExternalAdministrationsPage } from "./pages/ManageExternalAdministrationsPage";
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -92,6 +93,7 @@ export const router = createBrowserRouter([
               { path: "training-recommendations/:id", Component: TrainingRecommendationFormPage },
       { path: "manage-unified-registry", Component: ManageUnifiedRegistryPage,},
       { path: "manage-roles", Component: ManageRolesPage,},
+       { path: "manage-external-administrations", Component: ManageExternalAdministrationsPage,},
     ],
   },
 ]);

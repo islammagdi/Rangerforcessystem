@@ -17,6 +17,7 @@ import {
   LogOut,
   FileSpreadsheet,
   ShieldCheck,
+  Landmark,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { supabase } from "../../../lib/supabase";
@@ -69,6 +70,7 @@ const LABEL_TO_PATH: Record<string, string> = {
   "كشوف التوصيات": "/dashboard/training-recommendations",
   "إدارة ملف القيد الموحّد": "/dashboard/manage-unified-registry",
   "إدارة الأدوار": "/dashboard/manage-roles",
+  "الإدارات الخارجية": "/dashboard/manage-external-administrations",
 };
 
 // =====================================================
@@ -422,6 +424,12 @@ export function Sidebar({ collapsed, onToggle, onNavSelect, activePath }: Sideba
         label: "إدارة ملف القيد الموحّد",
         section: "ادارة المنظومة",
         permission: "manage_unified_registry:view",
+      },
+      {
+        icon: <Landmark size={18} />,
+        label: "الإدارات الخارجية",
+        section: "ادارة المنظومة",
+        permission: "external_administrations:view",
       },
     ],
     []

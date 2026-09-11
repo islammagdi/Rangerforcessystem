@@ -27,10 +27,17 @@ export function ForceChangePasswordModal({
       e.current = "كلمة المرور الحالية مطلوبة";
     }
 
+    const hasLetter = /[a-zA-Z]/.test(form.next);
+    const hasNumber = /[0-9]/.test(form.next);
+
     if (!form.next) {
       e.next = "كلمة المرور الجديدة مطلوبة";
     } else if (form.next.length < 6) {
       e.next = "كلمة المرور يجب أن تكون 6 أحرف على الأقل";
+    } else if (!hasLetter || !hasNumber) {
+      e.next = "كلمة المرور يجب أن تحتوي على حروف وأرقام معاً";
+    } else if (form.current && form.next === form.current) {
+      e.next = "لا يمكن استخدام نفس كلمة المرور الافتراضية";
     }
 
     if (!form.confirm) {
@@ -96,13 +103,22 @@ export function ForceChangePasswordModal({
 
       // إلغاء علامة "لازم يغيّر كلمة المرور"
 
-      const { error: flagError } = await supabase
+      const { data: updatedRows, error: flagError } = await supabase
         .from("profiles")
         .update({ must_change_password: false })
-        .eq("id", user.id);
+        .eq("id", user.id)
+        .select("id, must_change_password");
 
       if (flagError) {
         throw flagError;
+      }
+
+      // لو الـ update رجع من غير error لكن من غير ما يعدل أي صف
+      // (بسبب RLS أو اختلاف اسم العمود) هنكتشف المشكلة هنا بدل ما تفشل بصمت
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error(
+          "تم تغيير كلمة المرور، لكن تعذّر تحديث حالة الحساب. يرجى مراجعة صلاحيات الجدول (RLS)."
+        );
       }
 
       onSuccess();
@@ -217,9 +233,13 @@ export function ForceChangePasswordModal({
               style={{ ...F, fontSize: 14, color: "#2d3648" }}
             />
 
-            {errors.next && (
+            {errors.next ? (
               <span style={{ ...F, fontSize: 12, color: "#e3282c" }}>
                 {errors.next}
+              </span>
+            ) : (
+              <span style={{ ...F, fontSize: 11, color: "#a0abc0" }}>
+                6 أحرف على الأقل، وتحتوي على حروف وأرقام معاً
               </span>
             )}
           </div>

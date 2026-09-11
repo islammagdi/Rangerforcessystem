@@ -9,6 +9,7 @@ import {
   getScanSignedUrl,
   type IncomingMailFull,
 } from "../../lib/mailArchive";
+import { logActivity } from "../../lib/logActivity";
 import { supabase } from "../../lib/supabase";
 
 const F: React.CSSProperties = {
@@ -94,6 +95,42 @@ export function ArchiveIncomingDetailPage() {
     }
   }
 
+  async function getCurrentUserInfo(): Promise<{
+    userId: string | null;
+    userName: string;
+  }> {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { userId: null, userName: "غير معروف" };
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("username")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    return {
+      userId: user.id,
+      userName: profile?.username ?? "غير معروف",
+    };
+  }
+
+  // نص وصفي موحّد لحالة توزيع النسخة، يُستخدم في تسجيل التعديل
+  function describeDistributionState(
+    distributed: boolean,
+    name: string
+  ): string {
+    if (!distributed) {
+      return "لم يتم التوزيع";
+    }
+
+    return `تم التوزيع على: ${name || "غير محدد"}`;
+  }
+
   function validate(): string | null {
     if (isCopyDistributed && !distributedToName.trim()) {
       return "يجب إدخال اسم المختص الذي استلم النسخة";
@@ -116,7 +153,34 @@ export function ArchiveIncomingDetailPage() {
     setError("");
 
     try {
-          await updateIncomingMail(mail.id, {
+      // ═══════════════════════════════════════════════════════════════════
+      // التقاط القيم القديمة قبل الحفظ، عشان نقدر نسجل الفرق بعد كده
+      // ═══════════════════════════════════════════════════════════════════
+
+      const oldFaxSummary = mail.fax_summary?.trim() || "بدون ملخص";
+      const newFaxSummary = faxSummary.trim() || "بدون ملخص";
+
+      const oldNotes = mail.notes?.trim() || "بدون ملاحظات";
+      const newNotes = notes.trim() || "بدون ملاحظات";
+
+      const oldDistributionState = describeDistributionState(
+        mail.is_copy_distributed,
+        mail.distributed_to_name ?? ""
+      );
+      const newDistributionState = describeDistributionState(
+        isCopyDistributed,
+        distributedToName.trim()
+      );
+
+      const oldActionTaken = mail.action_taken?.trim() || "بدون إجراء مسجل";
+      const newActionTaken = actionTaken.trim() || "بدون إجراء مسجل";
+
+      const oldBranchDecision =
+        mail.branch_head_decision?.trim() || "بدون قرار مسجل";
+      const newBranchDecision =
+        branchHeadDecision.trim() || "بدون قرار مسجل";
+
+      await updateIncomingMail(mail.id, {
         fax_summary: faxSummary.trim() || null,
         notes: notes.trim() || null,
         is_copy_distributed: isCopyDistributed,
@@ -126,6 +190,64 @@ export function ArchiveIncomingDetailPage() {
         action_taken: actionTaken.trim() || null,
         branch_head_decision: branchHeadDecision.trim() || null,
       });
+
+      // ═══════════════════════════════════════════════════════════════════
+      // Audit Log — سطر منفصل لكل حقل اتغيّر فعليًا
+      // ═══════════════════════════════════════════════════════════════════
+
+      try {
+        const { userId, userName } = await getCurrentUserInfo();
+
+        const changes: { action: string; details: string }[] = [];
+
+        if (oldFaxSummary !== newFaxSummary) {
+          changes.push({
+            action: "تعديل ملخص الفاكس",
+            details: `القيمة القديمة: ${oldFaxSummary} - القيمة الجديدة: ${newFaxSummary}`,
+          });
+        }
+
+        if (oldNotes !== newNotes) {
+          changes.push({
+            action: "تعديل الملاحظات",
+            details: `القيمة القديمة: ${oldNotes} - القيمة الجديدة: ${newNotes}`,
+          });
+        }
+
+        if (oldDistributionState !== newDistributionState) {
+          changes.push({
+            action: "تعديل توزيع النسخة على المختص",
+            details: `القيمة القديمة: ${oldDistributionState} - القيمة الجديدة: ${newDistributionState}`,
+          });
+        }
+
+        if (oldActionTaken !== newActionTaken) {
+          changes.push({
+            action: "تعديل ما تم حياله من المختص",
+            details: `القيمة القديمة: ${oldActionTaken} - القيمة الجديدة: ${newActionTaken}`,
+          });
+        }
+
+        if (oldBranchDecision !== newBranchDecision) {
+          changes.push({
+            action: "تعديل قرار رئيس الفرع",
+            details: `القيمة القديمة: ${oldBranchDecision} - القيمة الجديدة: ${newBranchDecision}`,
+          });
+        }
+
+        for (const change of changes) {
+          await logActivity({
+            userId,
+            userName,
+            actionType: "UPDATE",
+            action: change.action,
+            entity: "incoming_mail",
+            details: change.details,
+          });
+        }
+      } catch (auditError) {
+        console.error("Audit log error:", auditError);
+      }
 
       setSuccessMsg("تم حفظ التعديلات بنجاح");
       setTimeout(() => setSuccessMsg(""), 3000);
@@ -153,6 +275,21 @@ export function ArchiveIncomingDetailPage() {
     try {
       const filePath = await uploadIncomingScanFile(mail.id, file);
       await addIncomingMailScan(mail.id, filePath, null);
+
+      try {
+        const { userId, userName } = await getCurrentUserInfo();
+
+        await logActivity({
+          userId,
+          userName,
+          actionType: "CREATE",
+          action: "رفع الصور الضوئية للفاكس",
+          entity: "incoming_mail",
+          details: "عدد الصور المرفوعة: 1",
+        });
+      } catch (auditError) {
+        console.error("Audit log error:", auditError);
+      }
 
       await loadMail(mail.id);
     } catch (err: any) {

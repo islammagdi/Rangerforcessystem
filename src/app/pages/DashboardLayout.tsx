@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router";
 
 import { Sidebar } from "../components/dashboard/Sidebar";
@@ -50,6 +50,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/manage-unified-registry": "إدارة ملف القيد الموحّد",
   "/dashboard/manage-roles": "إدارة الأدوار",
   "/dashboard/manage-branch-heads": "رؤساء فرع التنظيم",
+  "/dashboard/manage-external-administrations": "الإدارات الخارجية",
 };
 
 // ============================================================
@@ -80,6 +81,7 @@ const PATH_PERMISSION_MAP: { prefix: string; permission: string }[] = [
   { prefix: "/dashboard/activity-log", permission: "activity_log:view" },
   { prefix: "/dashboard/manage-branch-heads", permission: "manage_branch_heads:view" },
   { prefix: "/dashboard/manage-reserve-batches", permission: "manage_reserve_batches:view" },
+  { prefix: "/dashboard/manage-external-administrations", permission: "external_administrations:view" },
 
   { prefix: "/dashboard/archive", permission: "archive_outgoing:view" },
 
@@ -201,6 +203,10 @@ function resolvePageTitle(pathname: string): string {
     return "الأرشيف / وارد";
   }
 
+  if (pathname.includes("/manage-external-administrations")) {
+    return "الإدارات الخارجية";
+  }
+
   // القيمة الافتراضية
   return "الموقف العام";
 }
@@ -211,86 +217,100 @@ function resolvePageTitle(pathname: string): string {
 
 export function DashboardLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-const [accountDisabled, setAccountDisabled] = useState(false);
+  const [accountDisabled, setAccountDisabled] = useState(false);
   const [checkingPasswordFlag, setCheckingPasswordFlag] = useState(true);
   const [mustChangePassword, setMustChangePassword] = useState(false);
+
+  // رقم نسخة لكل عملية فحص لحالة الحساب، عشان لو أكتر من فحص
+  // اتنفذوا في نفس الوقت (مثلاً بسبب حدث SIGNED_IN)، نتجاهل أي
+  // نتيجة قديمة توصل متأخرة بعد نتيجة أحدث منها.
+  const checkIdRef = useRef(0);
 
   const navigate = useNavigate();
   const location = useLocation();
 
-useEffect(() => {
-  let mounted = true;
-  let intervalId: number | undefined;
+  useEffect(() => {
+    let mounted = true;
+    let intervalId: number | undefined;
 
-  async function checkAccountStatus() {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+    async function checkAccountStatus() {
+      const currentCheckId = ++checkIdRef.current;
 
-      if (!user) {
-        if (mounted) setCheckingPasswordFlag(false);
-        return;
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+          if (mounted) setCheckingPasswordFlag(false);
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("must_change_password, is_active")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        // لو فيه فحص أحدث اتشغّل بعد الفحص ده، نتجاهل النتيجة القديمة
+        if (currentCheckId !== checkIdRef.current) {
+          return;
+        }
+
+        if (error) {
+          console.error("CHECK ACCOUNT STATUS ERROR:", error);
+          if (mounted) setCheckingPasswordFlag(false);
+          return;
+        }
+
+        if (!mounted) return;
+
+        // ✅ لو الحساب اتقفل من صفحة إدارة المستخدمين، سجّل خروج فورًا
+        if (data && data.is_active === false) {
+          if (intervalId) window.clearInterval(intervalId);
+          setAccountDisabled(true);
+
+          await supabase.auth.signOut();
+
+          // نستنى شوية عشان المستخدم يشوف الرسالة قبل التحويل
+          window.setTimeout(() => {
+            window.location.href = "/login";
+          }, 2500);
+
+          return;
+        }
+
+        setMustChangePassword(Boolean(data?.must_change_password));
+      } catch (err) {
+        console.error("CHECK ACCOUNT STATUS EXCEPTION:", err);
+      } finally {
+        if (mounted && currentCheckId === checkIdRef.current) {
+          setCheckingPasswordFlag(false);
+        }
       }
-
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("must_change_password, is_active")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (error) {
-        console.error("CHECK ACCOUNT STATUS ERROR:", error);
-        if (mounted) setCheckingPasswordFlag(false);
-        return;
-      }
-
-      if (!mounted) return;
-
-      // ✅ لو الحساب اتقفل من صفحة إدارة المستخدمين، سجّل خروج فورًا
-      if (data && data.is_active === false) {
-        if (intervalId) window.clearInterval(intervalId);
-        setAccountDisabled(true);
-
-        await supabase.auth.signOut();
-
-        // نستنى شوية عشان المستخدم يشوف الرسالة قبل التحويل
-        window.setTimeout(() => {
-          window.location.href = "/login";
-        }, 2500);
-
-        return;
-      }
-
-      setMustChangePassword(Boolean(data?.must_change_password));
-    } catch (err) {
-      console.error("CHECK ACCOUNT STATUS EXCEPTION:", err);
-    } finally {
-      if (mounted) setCheckingPasswordFlag(false);
     }
-  }
 
-  // تحقق فوري عند تحميل الصفحة
-  checkAccountStatus();
+    // تحقق فوري عند تحميل الصفحة
+    checkAccountStatus();
 
-  // تحقق دوري كل 30 ثانية طول ما المستخدم فاتح الصفحة
-  intervalId = window.setInterval(checkAccountStatus, 30000);
+    // تحقق دوري كل 30 ثانية طول ما المستخدم فاتح الصفحة
+    intervalId = window.setInterval(checkAccountStatus, 30000);
 
-  // تحقق فوري لما المستخدم يرجع للتبويب (بعد ما يكون سايبه شوية)
-  function handleVisibilityChange() {
-    if (document.visibilityState === "visible") {
-      checkAccountStatus();
+    // تحقق فوري لما المستخدم يرجع للتبويب (بعد ما يكون سايبه شوية)
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        checkAccountStatus();
+      }
     }
-  }
 
-  document.addEventListener("visibilitychange", handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
-  return () => {
-    mounted = false;
-    if (intervalId) window.clearInterval(intervalId);
-    document.removeEventListener("visibilitychange", handleVisibilityChange);
-  };
-}, []);
+    return () => {
+      mounted = false;
+      if (intervalId) window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   const pageTitle = resolvePageTitle(location.pathname);
 
@@ -344,6 +364,8 @@ useEffect(() => {
       navigate("/dashboard/manage-unified-registry");
     } else if (label === "كشوف التوصيات") {
       navigate("/dashboard/training-recommendations");
+    } else if (label === "الإدارات الخارجية") {
+      navigate("/dashboard/manage-external-administrations");
     }
   }
 
@@ -366,7 +388,7 @@ useEffect(() => {
         activePath={location.pathname}
       />
 
-          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <DashboardHeader pageTitle={pageTitle} />
 
         <main className="flex-1 overflow-y-auto">
@@ -394,57 +416,60 @@ useEffect(() => {
 
       {!checkingPasswordFlag && mustChangePassword && (
         <ForceChangePasswordModal
-          onSuccess={() => setMustChangePassword(false)}
-          
+          onSuccess={() => {
+            // نلغي أي نتيجة فحص قديمة لسه في الطريق قبل ما نأكد النجاح محليًا
+            checkIdRef.current++;
+            setMustChangePassword(false);
+          }}
         />
-        
       )}
+
       {accountDisabled && (
-  <div
-    className="fixed inset-0 z-[100] flex items-center justify-center"
-    style={{ background: "rgba(0,0,0,.55)" }}
-    dir="rtl"
-  >
-    <div
-      className="bg-white rounded-[20px] flex flex-col items-center text-center"
-      style={{
-        width: "clamp(300px,45vw,480px)",
-        padding: "48px 32px",
-        fontFamily: "'Almarai', sans-serif",
-      }}
-    >
-      <div
-        className="w-16 h-16 rounded-full flex items-center justify-center"
-        style={{ background: "#fce8e8" }}
-      >
-        <span style={{ color: "#e3282c", fontSize: 30, fontWeight: 700 }}>
-          !
-        </span>
-      </div>
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,.55)" }}
+          dir="rtl"
+        >
+          <div
+            className="bg-white rounded-[20px] flex flex-col items-center text-center"
+            style={{
+              width: "clamp(300px,45vw,480px)",
+              padding: "48px 32px",
+              fontFamily: "'Almarai', sans-serif",
+            }}
+          >
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center"
+              style={{ background: "#fce8e8" }}
+            >
+              <span style={{ color: "#e3282c", fontSize: 30, fontWeight: 700 }}>
+                !
+              </span>
+            </div>
 
-      <p
-        style={{
-          fontWeight: 700,
-          fontSize: 22,
-          color: "#2d3648",
-          marginTop: 20,
-        }}
-      >
-        تم إيقاف حسابك
-      </p>
+            <p
+              style={{
+                fontWeight: 700,
+                fontSize: 22,
+                color: "#2d3648",
+                marginTop: 20,
+              }}
+            >
+              تم إيقاف حسابك
+            </p>
 
-      <p
-        style={{
-          fontSize: 15,
-          color: "#717d96",
-          marginTop: 10,
-        }}
-      >
-        تم إيقاف هذا الحساب من قبل الإدارة. سيتم تسجيل خروجك الآن.
-      </p>
-    </div>
-  </div>
-)}
+            <p
+              style={{
+                fontSize: 15,
+                color: "#717d96",
+                marginTop: 10,
+              }}
+            >
+              تم إيقاف هذا الحساب من قبل الإدارة. سيتم تسجيل خروجك الآن.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

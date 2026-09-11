@@ -308,9 +308,18 @@ export interface CreateOutgoingMailInput {
   created_by_name: string | null;
 }
 
+// نتيجة الإنشاء: بترجع الـ id (للاستخدام الداخلي زي الرفع
+// والتنقل) بالإضافة إلى fax_number و fax_year (للعرض والتسجيل
+// في سجل العمليات بدل الاعتماد على الـ UUID الداخلي)
+export interface CreateOutgoingMailResult {
+  id: string;
+  fax_number: number;
+  fax_year: number;
+}
+
 export async function createOutgoingMail(
   input: CreateOutgoingMailInput
-): Promise<string> {
+): Promise<CreateOutgoingMailResult> {
   const year = new Date(input.fax_date).getFullYear();
 
   const faxNumber = await getNextMailNumber("OUT", year);
@@ -328,7 +337,7 @@ export async function createOutgoingMail(
       created_by: input.created_by,
       created_by_name: input.created_by_name,
     })
-    .select("id")
+    .select("id, fax_number, fax_year")
     .single();
 
   if (insertError) throw insertError;
@@ -386,7 +395,11 @@ export async function createOutgoingMail(
     if (error) throw error;
   }
 
-  return faxId;
+  return {
+    id: faxId,
+    fax_number: newMail.fax_number as number,
+    fax_year: newMail.fax_year as number,
+  };
 }
 
 /* =========================================================
@@ -638,9 +651,17 @@ export interface CreateIncomingMailInput {
   created_by_name: string | null;
 }
 
+// نتيجة الإنشاء: بترجع id (للاستخدام الداخلي) بالإضافة إلى
+// fax_number و fax_year (للعرض والتسجيل في سجل العمليات)
+export interface CreateIncomingMailResult {
+  id: string;
+  fax_number: number;
+  fax_year: number;
+}
+
 export async function createIncomingMail(
   input: CreateIncomingMailInput
-): Promise<string> {
+): Promise<CreateIncomingMailResult> {
   const year = new Date(input.fax_date).getFullYear();
 
   const faxNumber = await getNextMailNumber("IN", year);
@@ -662,12 +683,16 @@ export async function createIncomingMail(
       created_by: input.created_by,
       created_by_name: input.created_by_name,
     })
-    .select("id")
+    .select("id, fax_number, fax_year")
     .single();
 
   if (insertError) throw insertError;
 
-  return newMail.id as string;
+  return {
+    id: newMail.id as string,
+    fax_number: newMail.fax_number as number,
+    fax_year: newMail.fax_year as number,
+  };
 }
 
 /* =========================================================

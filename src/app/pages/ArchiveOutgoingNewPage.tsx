@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { Plus, Trash2, Upload, X } from "lucide-react";
 
 import { supabase } from "../../lib/supabase";
+import { logActivity } from "../../lib/logActivity";
 import {
   fetchMailOffices,
   createOutgoingMail,
@@ -228,10 +229,12 @@ export function ArchiveOutgoingNewPage() {
         createdByName = profile?.username ?? "غير معروف";
       }
 
-       const faxId = await createOutgoingMail({
+      const faxSummaryTrimmed = faxSummary.trim();
+
+       const newMail = await createOutgoingMail({
         fax_date: faxDate,
         issuing_office_id: officeId,
-        fax_summary: faxSummary.trim() || null,
+        fax_summary: faxSummaryTrimmed || null,
         destinations: destinations.filter((d) => d.trim()),
         notes: notes.filter((n) => n.trim()),
         recipients: recipients
@@ -248,6 +251,9 @@ export function ArchiveOutgoingNewPage() {
         created_by_name: createdByName,
       });
 
+      const faxId = newMail.id;
+      const faxDisplayNumber = `${newMail.fax_number}/${newMail.fax_year}`;
+
       // رفع الصور (لو موجودة) بعد إنشاء الفاكس
       for (const scan of pendingScans) {
         const filePath = await uploadOutgoingScanFile(
@@ -260,6 +266,23 @@ export function ArchiveOutgoingNewPage() {
           filePath,
           scan.label.trim() || null
         );
+      }
+
+      // ═════════════════════════════════════════════════════════════════════
+      // Audit Log
+      // ═════════════════════════════════════════════════════════════════════
+
+      try {
+        await logActivity({
+          userId: user?.id ?? null,
+          userName: createdByName,
+          actionType: "CREATE",
+          action: `تم اضافة فاكس رقم ${faxDisplayNumber}`,
+          entity: "outgoing_mail",
+          details: `ملخص الفاكس: ${faxSummaryTrimmed || "بدون ملخص"}`,
+        });
+      } catch (auditError) {
+        console.error("Audit log error:", auditError);
       }
 
       navigate(`/dashboard/archive/outgoing/${faxId}`);

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { Upload, X } from "lucide-react";
 
 import { supabase } from "../../lib/supabase";
+import { logActivity } from "../../lib/logActivity";
 import {
   fetchMailOffices,
   createIncomingMail,
@@ -141,11 +142,14 @@ export function ArchiveIncomingNewPage() {
 
         createdByName = profile?.username ?? "غير معروف";
       }
-      const faxId = await createIncomingMail({
+
+      const faxSummaryTrimmed = faxSummary.trim();
+
+      const newMail = await createIncomingMail({
         fax_date: faxDate,
         source_entity: sourceEntity.trim(),
         receiving_office_id: officeId,
-        fax_summary: faxSummary.trim() || null,
+        fax_summary: faxSummaryTrimmed || null,
         notes: notes.trim() || null,
         is_copy_distributed: isCopyDistributed,
         distributed_to_name: isCopyDistributed
@@ -156,6 +160,9 @@ export function ArchiveIncomingNewPage() {
         created_by: user?.id ?? null,
         created_by_name: createdByName,
       });
+
+      const faxId = newMail.id;
+      const faxDisplayNumber = `${newMail.fax_number}/${newMail.fax_year}`;
 
       for (const scan of pendingScans) {
         const filePath = await uploadIncomingScanFile(
@@ -168,6 +175,23 @@ export function ArchiveIncomingNewPage() {
           filePath,
           scan.label.trim() || null
         );
+      }
+
+      // ═════════════════════════════════════════════════════════════════════
+      // Audit Log
+      // ═════════════════════════════════════════════════════════════════════
+
+      try {
+        await logActivity({
+          userId: user?.id ?? null,
+          userName: createdByName,
+          actionType: "CREATE",
+          action: `تم اضافة فاكس وارد رقم ${faxDisplayNumber}`,
+          entity: "incoming_mail",
+          details: `ملخص الفاكس: ${faxSummaryTrimmed || "بدون ملخص"}`,
+        });
+      } catch (auditError) {
+        console.error("Audit log error:", auditError);
       }
 
       navigate(`/dashboard/archive/incoming/${faxId}`);
