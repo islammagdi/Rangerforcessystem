@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Plus, Trash2, Printer, ArrowRight, Pencil, Check, X } from "lucide-react";
-
+import { Plus, Trash2, Printer, ArrowRight, Pencil, Check, X, GripVertical } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { usePermissions } from "../../lib/usePermissions";
 import { logActivity } from "../../lib/logActivity";
@@ -29,6 +28,200 @@ const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
 
+// =====================================================
+// نافذة اختيار وترتيب أعمدة الطباعة (Drag & Drop)
+// =====================================================
+
+function PrintColumnsModal({
+  columnIds,
+  columnsById,
+  onClose,
+  onConfirm,
+}: {
+  columnIds: string[];
+  columnsById: Map<string, SheetColumn>;
+  onClose: () => void;
+  onConfirm: (
+    orderedSelectedIds: string[],
+    includeSignature: boolean
+  ) => void;
+}) {
+  const [order, setOrder] = useState<string[]>(columnIds);
+  const [checked, setChecked] = useState<Set<string>>(new Set(columnIds));
+  const [includeSignature, setIncludeSignature] = useState(true);
+  const [error, setError] = useState("");
+
+  const dragIndexRef = useState<{ current: number | null }>({
+    current: null,
+  })[0];
+
+  function toggleChecked(id: string) {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function handleDragStart(index: number) {
+    dragIndexRef.current = index;
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+  }
+
+  function handleDrop(targetIndex: number) {
+    const sourceIndex = dragIndexRef.current;
+
+    if (sourceIndex === null || sourceIndex === targetIndex) return;
+
+    setOrder((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+
+    dragIndexRef.current = null;
+  }
+
+  function handleConfirm() {
+    const finalIds = order.filter((id) => checked.has(id));
+
+    if (finalIds.length === 0) {
+      setError("اختر عمود واحد على الأقل للطباعة");
+      return;
+    }
+
+    onConfirm(finalIds, includeSignature);
+    onClose();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        dir="rtl"
+        className="bg-white rounded-[16px] w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#eff0f6]">
+          <h2 style={{ ...F, fontWeight: 700, fontSize: 17, color: "#2d3648" }}>
+            اختر أعمدة الطباعة وترتيبها
+          </h2>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-[#aaa] hover:text-[#555]"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-4">
+          <p style={{ ...F, fontSize: 12, color: "#a1aebe" }}>
+            اسحب العناصر لترتيبها، وألغِ تحديد أي عمود مش عايزه يظهر في الطباعة.
+          </p>
+
+          {error && (
+            <div
+              className="rounded-[8px] px-4 py-2"
+              style={{
+                background: "#fef2f2",
+                border: "1px solid #fecaca",
+                color: "#991b1b",
+                ...F,
+                fontSize: 13,
+              }}
+            >
+              {error}
+            </div>
+          )}
+
+          <div className="flex flex-col gap-2">
+            {order.map((id, index) => {
+              const col = columnsById.get(id);
+
+              return (
+                <div
+                  key={id}
+                  draggable
+                  onDragStart={() => handleDragStart(index)}
+                  onDragOver={handleDragOver}
+                  onDrop={() => handleDrop(index)}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-[8px] border border-[#e2e7f0] bg-white cursor-move"
+                  style={{ opacity: checked.has(id) ? 1 : 0.5 }}
+                >
+                  <GripVertical size={16} className="text-[#a1aebe] shrink-0" />
+
+                  <input
+                    type="checkbox"
+                    checked={checked.has(id)}
+                    onChange={() => toggleChecked(id)}
+                    className="w-4 h-4 accent-[#00b867] shrink-0"
+                  />
+
+                  <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
+                    {index + 1}. {col?.name}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="w-full h-px bg-[#eff0f6]" />
+
+          <label className="flex items-center gap-2.5 cursor-pointer px-1 py-1.5 rounded-[6px] hover:bg-[#f5f6fb]">
+            <input
+              type="checkbox"
+              checked={includeSignature}
+              onChange={() => setIncludeSignature((v) => !v)}
+              className="w-4 h-4 accent-[#00b867]"
+            />
+
+            <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
+              إظهار بلوك التوقيع في الكشف
+            </span>
+          </label>
+        </div>
+
+        <div className="px-6 py-4 border-t border-[#eff0f6] flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleConfirm}
+            className="px-6 h-11 rounded-[8px]"
+            style={{
+              background: "linear-gradient(to bottom,#00b867,#00522e)",
+              ...F,
+              fontSize: 14,
+              color: "#fff",
+            }}
+          >
+            طباعة
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 h-11 rounded-[8px] border border-[#cbd5e1]"
+            style={{ ...F, fontSize: 14, color: "#475569" }}
+          >
+            إلغاء
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SheetDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -44,10 +237,10 @@ export function SheetDetailPage() {
 
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
-
   const [showAddColumn, setShowAddColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
   const [newColumnType, setNewColumnType] = useState<SheetColumnType>("TEXT");
+  const [showPrintModal, setShowPrintModal] = useState(false);
 
   const canEdit = hasPermission("sheets:create");
   const canDelete = hasPermission("sheets:delete");
@@ -97,6 +290,11 @@ export function SheetDetailPage() {
     return map;
   }, [cells]);
 
+  const columnsById = useMemo(() => {
+    const map = new Map<string, SheetColumn>();
+    columns.forEach((c) => map.set(c.id, c));
+    return map;
+  }, [columns]);
   function getCellValue(rowId: string, columnId: string) {
     return cellMap.get(`${rowId}:${columnId}`) ?? "";
   }
@@ -233,8 +431,44 @@ export function SheetDetailPage() {
     }
   }
 
-  function handlePrint() {
+   function toArabicDigitsStr(value: string): string {
+    return value.replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[Number(d)]);
+  }
+
+  async function executePrint(
+    printColumnIds: string[],
+    includeSignature: boolean
+  ) {
     if (!sheet) return;
+
+    let branchHeadName = "جاري تحميل الاسم";
+    let branchHeadRank = "جاري تحميل الرتبة";
+
+    if (includeSignature) {
+      try {
+        const { data: branchHead, error: branchError } = await supabase
+          .from("branch_heads")
+          .select(`
+            full_name,
+            rank:letter_officer_ranks!branch_heads_rank_id_fkey(name)
+          `)
+          .eq("is_active", true)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!branchError && branchHead) {
+          const rank = Array.isArray(branchHead.rank)
+            ? branchHead.rank[0]
+            : branchHead.rank;
+
+          branchHeadName = branchHead.full_name ?? "-";
+          branchHeadRank = rank?.name ?? "";
+        }
+      } catch (err) {
+        console.error("Load branch head error:", err);
+      }
+    }
 
     const printWindow = window.open("", "_blank", "width=1000,height=1200");
 
@@ -243,26 +477,36 @@ export function SheetDetailPage() {
       return;
     }
 
+    const printColumns = printColumnIds
+      .map((id) => columnsById.get(id))
+      .filter((c): c is SheetColumn => Boolean(c));
+
     const tableHeaders = `
       <th>م</th>
-      ${columns.map((col) => `<th>${col.name}</th>`).join("")}
+      ${printColumns.map((col) => `<th>${col.name}</th>`).join("")}
     `;
 
     const tableRows = rows
       .map((row, index) => {
-        const cellsHtml = columns
-          .map((col) => `<td>${getCellValue(row.id, col.id) || "-"}</td>`)
+        const cellsHtml = printColumns
+          .map((col) => {
+            const rawValue = getCellValue(row.id, col.id);
+            const displayValue = rawValue ? toArabicDigitsStr(rawValue) : "-";
+            return `<td>${displayValue}</td>`;
+          })
           .join("");
 
-        return `<tr><td>${index + 1}</td>${cellsHtml}</tr>`;
+        return `<tr><td>${toArabicDigitsStr(String(index + 1))}</td>${cellsHtml}</tr>`;
       })
       .join("");
 
-    const formattedDate = new Intl.DateTimeFormat("ar-EG", {
+    const rawDate = new Intl.DateTimeFormat("ar-EG", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
     }).format(new Date());
+
+    const formattedDate = toArabicDigitsStr(rawDate);
 
     printWindow.document.open();
 
@@ -274,7 +518,10 @@ export function SheetDetailPage() {
           <title>${sheet.name}</title>
 
           <style>
-            @page { size: A4 landscape; margin: 10mm; }
+            @page {
+              size: A4 landscape;
+              margin: 10mm;
+            }
 
             * {
               box-sizing: border-box;
@@ -282,11 +529,23 @@ export function SheetDetailPage() {
               print-color-adjust: exact !important;
             }
 
-            body {
+            html, body {
+              height: 100%;
               margin: 0;
               padding: 0;
+            }
+
+            body {
               direction: rtl;
               font-family: 'Times New Roman', Times, serif;
+            }
+
+            .page-frame {
+              border: 2px solid #000;
+              height: 100%;
+              padding: 5mm;
+              display: flex;
+              flex-direction: column;
             }
 
             .header {
@@ -298,28 +557,114 @@ export function SheetDetailPage() {
               border-bottom: 1px solid #999;
             }
 
-            .title { text-align: center; margin: 16px 0; }
-            .title h1 { font-size: 18px; margin: 0; }
+            .header-text p {
+              margin: 2px 0;
+              font-size: 14px;
+              font-weight: bold;
+              text-align: center;
+            }
 
-            table { width: 100%; border-collapse: collapse; font-size: 12px; }
-            th, td { border: 1px solid #999; padding: 6px; text-align: center; }
-            th { background: #f0f0f0; }
+            .header-text {
+              text-align: right;
+            }
+
+            .logo {
+              width: 70px;
+              height: 70px;
+              object-fit: contain;
+            }
+
+            .title {
+              text-align: center;
+              margin: 16px 0;
+            }
+
+            .title h1 {
+              font-size: 18px;
+              margin: 0;
+            }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 12px;
+            }
+
+            th, td {
+              border: 1px solid #999;
+              padding: 6px;
+              text-align: center;
+            }
+
+            th {
+              background: #f0f0f0;
+            }
+
+            .signature-block {
+              margin-top: auto;
+              width: fit-content;
+              max-width: 60%;
+              display: flex;
+              flex-direction: column;
+              align-items: stretch;
+              margin-left: 0;
+              margin-right: auto;
+              text-align: right;
+              padding-top: 16px;
+            }
+
+            .signature-block p {
+              margin: 4px 0;
+              font-weight: 700;
+              font-size: 14px;
+              text-align: justify;
+              text-align-last: justify;
+              width: 100%;
+            }
+
+            .sig-line {
+              white-space: pre;
+            }
           </style>
         </head>
 
         <body>
-          <div class="header">
-            <span>التاريخ: ${formattedDate}</span>
-          </div>
+          <div class="page-frame">
+            <div class="header">
+              <div class="header-text">
+                <p>قيـادة قـوات الصـاعقـــة</p>
+                <p>فـــرع التنظيـــم والإدارة</p>
+                <p>التاريخ: ${formattedDate}</p>
+              </div>
 
-          <div class="title">
-            <h1>${sheet.name}</h1>
-          </div>
+              <img
+                src="https://qgsqlqlkdppxljyjujsq.supabase.co/storage/v1/object/sign/images/Logo_Ranger.png?token=eyJraWQiOiJlZTY4MzBjYi1hMmVmLTQyN2EtOWRiZi1hNWZmZmY0MjFjY2QiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJpbWFnZXMvTG9nb19SYW5nZXIucG5nIiwic2NvcGUiOiJkb3dubG9hZCIsImlhdCI6MTc4OTIwNTUyNSwiZXhwIjozMzMyNTIwNTUyNX0.j85GdkKQ9LXcQB5xJ4_kntFjea-WRjomsKk2Padi2kI"
+                class="logo"
+                alt="Logo"
+              />
+            </div>
 
-          <table>
-            <thead><tr>${tableHeaders}</tr></thead>
-            <tbody>${tableRows}</tbody>
-          </table>
+            <div class="title">
+              <h1>${sheet.name}</h1>
+            </div>
+
+            <table>
+              <thead><tr>${tableHeaders}</tr></thead>
+              <tbody>${tableRows}</tbody>
+            </table>
+
+            ${
+              includeSignature
+                ? `
+            <div class="signature-block">
+              <p class="sig-line">التوقيع (                                  )</p>
+              <p class="sig-name">${branchHeadRank} / ${branchHeadName}</p>
+              <p class="sig-title">رئيـــــس فــــــرع التنظيــــم والإدارة</p>
+            </div>
+            `
+                : ""
+            }
+          </div>
         </body>
       </html>
     `);
@@ -339,7 +684,6 @@ export function SheetDetailPage() {
       printWindow.onload = doPrint;
     }
   }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20" dir="rtl">
@@ -443,7 +787,7 @@ export function SheetDetailPage() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={handlePrint}
+            onClick={() => setShowPrintModal(true)}
             className="flex items-center gap-1.5 h-[42px] px-4 rounded-[8px]"
             style={{ background: "#DCF4DF" }}
           >
@@ -670,6 +1014,15 @@ export function SheetDetailPage() {
           </div>
         )}
       </div>
+      )}
+
+      {showPrintModal && (
+        <PrintColumnsModal
+          columnIds={columns.map((c) => c.id)}
+          columnsById={columnsById}
+          onClose={() => setShowPrintModal(false)}
+          onConfirm={executePrint}
+        />
       )}
     </div>
   );

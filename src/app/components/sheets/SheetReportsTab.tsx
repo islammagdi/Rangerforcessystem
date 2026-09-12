@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2, Printer, X, ChevronLeft } from "lucide-react";
+import { Plus, Trash2, Printer, X, ChevronLeft, GripVertical } from "lucide-react";
 
 import { supabase } from "../../../lib/supabase";
 import { logActivity } from "../../../lib/logActivity";
@@ -523,6 +523,196 @@ function PivotTableView({
 }
 
 // =====================================================
+// نافذة اختيار وترتيب أعمدة الطباعة (Drag & Drop)
+// =====================================================
+
+function PrintReportModal({
+  columnIds,
+  columnsById,
+  onClose,
+  onConfirm,
+}: {
+  columnIds: string[];
+  columnsById: Map<string, SheetColumn>;
+  onClose: () => void;
+  onConfirm: (orderedSelectedIds: string[]) => void;
+}) {
+  const [order, setOrder] = useState<string[]>(columnIds);
+  const [checked, setChecked] = useState<Set<string>>(new Set(columnIds));
+  const [error, setError] = useState("");
+
+  const dragIndexRef = useState<{ current: number | null }>({
+    current: null,
+  })[0];
+
+  function toggleChecked(id: string) {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function handleDragStart(index: number) {
+    dragIndexRef.current = index;
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+  }
+
+  function handleDrop(targetIndex: number) {
+    const sourceIndex = dragIndexRef.current;
+
+    if (sourceIndex === null || sourceIndex === targetIndex) return;
+
+    setOrder((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+
+    dragIndexRef.current = null;
+  }
+
+  function handleConfirm() {
+    const finalIds = order.filter((id) => checked.has(id));
+
+    if (finalIds.length === 0) {
+      setError("اختر عمود واحد على الأقل للطباعة");
+      return;
+    }
+
+    onConfirm(finalIds);
+    onClose();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        dir="rtl"
+        className="bg-white rounded-[16px] w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#eff0f6]">
+          <h2 style={{ ...F, fontWeight: 700, fontSize: 17, color: "#2d3648" }}>
+            اختر أعمدة الطباعة وترتيبها
+          </h2>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-[#aaa] hover:text-[#555]"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-4">
+          <p style={{ ...F, fontSize: 12, color: "#a1aebe" }}>
+            اسحب العناصر لترتيبها (أول عمود = الصفوف، الباقي = الأعمدة)، وألغِ
+            تحديد أي عمود مش عايزه يظهر في الطباعة.
+          </p>
+
+          {error && (
+            <div
+              className="rounded-[8px] px-4 py-2"
+              style={{
+                background: "#fef2f2",
+                border: "1px solid #fecaca",
+                color: "#991b1b",
+                ...F,
+                fontSize: 13,
+              }}
+            >
+              {error}
+            </div>
+          )}
+
+          <div className="flex flex-col gap-2">
+            {order.map((id, index) => {
+              const col = columnsById.get(id);
+
+              return (
+                <div
+                  key={id}
+                  draggable
+                  onDragStart={() => handleDragStart(index)}
+                  onDragOver={handleDragOver}
+                  onDrop={() => handleDrop(index)}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-[8px] border border-[#e2e7f0] bg-white cursor-move"
+                  style={{ opacity: checked.has(id) ? 1 : 0.5 }}
+                >
+                  <GripVertical size={16} className="text-[#a1aebe] shrink-0" />
+
+                  <input
+                    type="checkbox"
+                    checked={checked.has(id)}
+                    onChange={() => toggleChecked(id)}
+                    className="w-4 h-4 accent-[#00b867] shrink-0"
+                  />
+
+                  <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
+                    {index + 1}. {col?.name}
+                  </span>
+
+                  {index === 0 && checked.has(id) && (
+                    <span
+                      className="mr-auto px-2 py-0.5 rounded-full"
+                      style={{
+                        ...F,
+                        fontSize: 10,
+                        background: "#DCF4DF",
+                        color: "#00522e",
+                      }}
+                    >
+                      صفوف
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-[#eff0f6] flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleConfirm}
+            className="px-6 h-11 rounded-[8px]"
+            style={{
+              background: "linear-gradient(to bottom,#00b867,#00522e)",
+              ...F,
+              fontSize: 14,
+              color: "#fff",
+            }}
+          >
+            طباعة
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 h-11 rounded-[8px] border border-[#cbd5e1]"
+            style={{ ...F, fontSize: 14, color: "#475569" }}
+          >
+            إلغاء
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =====================================================
 // المكوّن الرئيسي
 // =====================================================
 
@@ -552,6 +742,7 @@ export function SheetReportsTab({
   );
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "table">("list");
+  const [showPrintModal, setShowPrintModal] = useState(false);
 
   useEffect(() => {
     loadReports();
@@ -621,10 +812,14 @@ export function SheetReportsTab({
     return map;
   }, [columns]);
 
-  function handlePrintReport() {
+   function toArabicDigitsStr(value: string): string {
+    return value.replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[Number(d)]);
+  }
+
+  function executePrint(printColumnIds: string[]) {
     if (!selectedReport) return;
 
-    const printWindow = window.open("", "_blank", "width=800,height=1000");
+    const printWindow = window.open("", "_blank", "width=900,height=1100");
 
     if (!printWindow) {
       alert("يرجى السماح بالنوافذ المنبثقة للمتصفح حتى تتم الطباعة.");
@@ -636,8 +831,8 @@ export function SheetReportsTab({
         .map(
           (node) => `
             <div style="margin-right: ${depth * 24}px; padding: 6px 10px; border-bottom: 1px solid #eee; display:flex; justify-content: space-between;">
-              <span style="font-weight:${depth === 0 ? 700 : 400};">${node.value}</span>
-              <span style="font-weight:700;">${node.count}</span>
+              <span style="font-weight:${depth === 0 ? 700 : 400};">${toArabicDigitsStr(node.value)}</span>
+              <span style="font-weight:700;">${toArabicDigitsStr(String(node.count))}</span>
             </div>
             ${renderNodesHtml(node.children, depth + 1)}
           `
@@ -666,20 +861,18 @@ export function SheetReportsTab({
 
         for (let r = 0; r < repeatCount; r++) {
           pivot.headerLevels[level].forEach((value) => {
-            html += `<th colspan="${size}">${value}</th>`;
+            html += `<th colspan="${size}">${toArabicDigitsStr(value)}</th>`;
           });
         }
 
         return html;
       }
-
       let theadHtml = "";
 
       if (headerLevelsCount === 0) {
         theadHtml = `
           <tr>
-            <th>${rowColumnName}</th>
-            <th>العدد</th>
+            <th>${toArabicDigitsStr(rowColumnName)}</th>
             <th>الإجمالي</th>
           </tr>
         `;
@@ -688,7 +881,7 @@ export function SheetReportsTab({
           theadHtml += "<tr>";
 
           if (level === 0) {
-            theadHtml += `<th rowspan="${headerLevelsCount}">${rowColumnName}</th>`;
+            theadHtml += `<th rowspan="${headerLevelsCount}">${toArabicDigitsStr(rowColumnName)}</th>`;
           }
 
           theadHtml += renderHeaderCellsHtml(level);
@@ -700,22 +893,21 @@ export function SheetReportsTab({
           theadHtml += "</tr>";
         }
       }
-
       const bodyRowsHtml = pivot.rowValues
         .map((rowValue, rowIndex) => {
           const cells = pivot.matrix[rowIndex]
-            .map((value) => `<td>${value}</td>`)
+            .map((value) => `<td>${toArabicDigitsStr(String(value))}</td>`)
             .join("");
 
-          return `<tr><th>${rowValue}</th>${cells}<td>${pivot.rowTotals[rowIndex]}</td></tr>`;
+          return `<tr><th>${toArabicDigitsStr(rowValue)}</th>${cells}<td>${toArabicDigitsStr(String(pivot.rowTotals[rowIndex]))}</td></tr>`;
         })
         .join("");
 
       const totalsRowHtml = `
         <tr>
           <th>إجمالي</th>
-          ${pivot.columnTotals.map((v) => `<td>${v}</td>`).join("")}
-          <td>${pivot.grandTotal}</td>
+          ${pivot.columnTotals.map((v) => `<td>${toArabicDigitsStr(String(v))}</td>`).join("")}
+          <td>${toArabicDigitsStr(String(pivot.grandTotal))}</td>
         </tr>
       `;
 
@@ -727,22 +919,30 @@ export function SheetReportsTab({
       `;
     }
 
-    const formattedDate = new Intl.DateTimeFormat("ar-EG", {
+    const rawDate = new Intl.DateTimeFormat("ar-EG", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
     }).format(new Date());
 
-    const bodyHtml =
-      viewMode === "table" && pivotTable
-        ? buildPivotPrintHtml(
-            pivotTable,
-            columnsById.get(selectedReportColumnIds[0])?.name ?? ""
-          )
-        : `
-            <div class="total">إجمالي العدد: ${totalCount}</div>
-            <div>${renderNodesHtml(groupTree, 0)}</div>
-          `;
+    const formattedDate = toArabicDigitsStr(rawDate);
+
+    const isTableView = viewMode === "table" && printColumnIds.length > 1;
+
+    const bodyHtml = isTableView
+      ? buildPivotPrintHtml(
+          buildPivotTable(rows, cellMap, printColumnIds),
+          columnsById.get(printColumnIds[0])?.name ?? ""
+        )
+      : `
+          <div class="total">إجمالي العدد: ${toArabicDigitsStr(String(rows.length))}</div>
+          <div>${renderNodesHtml(
+            buildGroupTree(rows, cellMap, printColumnIds),
+            0
+          )}</div>
+        `;
+
+    const orientation = isTableView ? "landscape" : "portrait";
 
     printWindow.document.open();
 
@@ -752,25 +952,127 @@ export function SheetReportsTab({
         <head>
           <meta charset="UTF-8" />
           <title>${selectedReport.name}</title>
+
           <style>
-            @page { size: A4 ${viewMode === "table" ? "landscape" : "portrait"}; margin: 12mm; }
-            body { font-family: 'Times New Roman', Times, serif; direction: rtl; }
-            .header { text-align: center; margin-bottom: 20px; }
-            .header h1 { font-size: 18px; margin: 0 0 6px; }
-            .header p { font-size: 13px; color: #555; margin: 0; }
-            .total { text-align: center; margin: 16px 0; font-size: 15px; font-weight: 700; }
-            table { width: 100%; border-collapse: collapse; font-size: 13px; }
-            th, td { border: 1px solid #999; padding: 6px; text-align: center; }
-            th { background: #f0f0f0; }
+            @page {
+              size: A4 ${orientation};
+              margin: 10mm;
+            }
+
+            * {
+              box-sizing: border-box;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+
+            html, body {
+              height: 100%;
+              margin: 0;
+              padding: 0;
+            }
+
+            body {
+              direction: rtl;
+              font-family: 'Times New Roman', Times, serif;
+            }
+
+            .page-frame {
+              border: 2px solid #000;
+              height: 100%;
+              padding: 5mm;
+            }
+
+            .header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 16px;
+              padding-bottom: 10px;
+              border-bottom: 1px solid #999;
+            }
+
+            .header-text p {
+              margin: 2px 0;
+              font-size: 14px;
+              font-weight: bold;
+              text-align: center;
+            }
+
+            .header-text {
+              text-align: right;
+            }
+
+            .logo {
+              width: 70px;
+              height: 70px;
+              object-fit: contain;
+            }
+
+            .title {
+              text-align: center;
+              margin: 16px 0;
+            }
+
+            .title h1 {
+              font-size: 18px;
+              margin: 0;
+            }
+
+            .title h2 {
+              font-size: 14px;
+              margin: 4px 0 0;
+              font-weight: 400;
+              color: #555;
+            }
+
+            .total {
+              text-align: center;
+              margin: 16px 0;
+              font-size: 15px;
+              font-weight: 700;
+            }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 13px;
+            }
+
+            th, td {
+              border: 1px solid #999;
+              padding: 6px;
+              text-align: center;
+            }
+
+            th {
+              background: #f0f0f0;
+            }
           </style>
         </head>
-        <body>
-          <div class="header">
-            <h1>${selectedReport.name}</h1>
-            <p>كشف: ${sheet.name} — التاريخ: ${formattedDate}</p>
-          </div>
 
-          ${bodyHtml}
+        <body>
+          <div class="page-frame">
+            <div class="header">
+              <div class="header-text">
+                <p>قيـادة قـوات الصـاعقـــة</p>
+                <p>فـــرع التنظيـــم والإدارة</p>
+                <p>التاريخ: ${formattedDate}</p>
+              </div>
+
+              <img
+                src="https://qgsqlqlkdppxljyjujsq.supabase.co/storage/v1/object/sign/images/Logo_Ranger.png?token=eyJraWQiOiJlZTY4MzBjYi1hMmVmLTQyN2EtOWRiZi1hNWZmZmY0MjFjY2QiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJpbWFnZXMvTG9nb19SYW5nZXIucG5nIiwic2NvcGUiOiJkb3dubG9hZCIsImlhdCI6MTc4OTIwNTUyNSwiZXhwIjozMzMyNTIwNTUyNX0.j85GdkKQ9LXcQB5xJ4_kntFjea-WRjomsKk2Padi2kI"
+                class="logo"
+                alt="Logo"
+              />
+            </div>
+
+            <div class="title">
+              <h1>${selectedReport.name}</h1>
+              <h2>كشف: ${sheet.name}</h2>
+            </div>
+
+            ${bodyHtml}
+          </div>
         </body>
       </html>
     `);
@@ -907,7 +1209,7 @@ export function SheetReportsTab({
 
               <button
                 type="button"
-                onClick={handlePrintReport}
+                onClick={() => setShowPrintModal(true)}
                 className="flex items-center gap-1.5 h-[38px] px-4 rounded-[7px]"
                 style={{ background: "#DCF4DF" }}
               >
@@ -953,6 +1255,15 @@ export function SheetReportsTab({
           columns={columns}
           onClose={() => setShowCreateModal(false)}
           onCreated={loadReports}
+        />
+      )}
+
+      {showPrintModal && selectedReport && (
+        <PrintReportModal
+          columnIds={selectedReportColumnIds}
+          columnsById={columnsById}
+          onClose={() => setShowPrintModal(false)}
+          onConfirm={executePrint}
         />
       )}
     </div>
