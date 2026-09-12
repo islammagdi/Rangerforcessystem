@@ -10,6 +10,8 @@ import {
   deleteReport,
   buildGroupTree,
   buildPivotTable,
+  logReportCreated,
+  logReportDeleted,
   type Sheet,
   type SheetColumn,
   type SheetRow,
@@ -119,6 +121,12 @@ function CreateReportModal({
         });
       } catch (auditError) {
         console.error("Audit log error:", auditError);
+      }
+
+      try {
+        await logReportCreated(sheet.id, userName, name.trim());
+      } catch (logErr) {
+        console.error("Log report created error:", logErr);
       }
 
       onCreated();
@@ -784,6 +792,28 @@ export function SheetReportsTab({
 
       if (selectedReport?.id === report.id) {
         setSelectedReport(null);
+      }
+
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        let userName = "غير معروف";
+
+        if (user) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("username")
+            .eq("id", user.id)
+            .maybeSingle();
+
+          userName = profile?.username ?? "غير معروف";
+        }
+
+        await logReportDeleted(sheet.id, userName, report.name);
+      } catch (logErr) {
+        console.error("Log report deleted error:", logErr);
       }
     } catch (err: any) {
       console.error("Delete report error:", err);

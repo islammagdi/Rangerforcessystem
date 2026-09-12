@@ -52,6 +52,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/manage-branch-heads": "رؤساء فرع التنظيم",
   "/dashboard/sheets": "كشوفات",
   "/dashboard/manage-external-administrations": "الإدارات الخارجية",
+  "/dashboard/manage-education-levels": "المستويات التعليمية",
 };
 
 // ============================================================
@@ -94,6 +95,8 @@ const PATH_PERMISSION_MAP: { prefix: string; permission: string }[] = [
 
   { prefix: "/dashboard/manage-unified-registry", permission: "manage_unified_registry:view" },
    { prefix: "/dashboard/sheets", permission: "sheets:view" },
+
+     { prefix: "/dashboard/manage-education-levels", permission: "education_levels:view" },
   // صفحات متاحة لأي مستخدم مسجل دخول (مفيش صلاحية module خاصة بيها)
   { prefix: "/dashboard/notifications", permission: "general_status:view" },
   { prefix: "/dashboard/user-guide", permission: "general_status:view" },

@@ -40,7 +40,7 @@ import { TrainingRecommendationsPage } from "./pages/TrainingRecommendationsPage
 import { TrainingRecommendationFormPage } from "./pages/TrainingRecommendationFormPage";
 import { ManageUnifiedRegistryPage } from "./pages/ManageUnifiedRegistryPage";
 import { ManageRolesPage } from "./pages/ManageRolesPage";
-
+import { ManageEducationLevelsPage } from "./pages/ManageEducationLevelsPage";
 import { ManageExternalAdministrationsPage } from "./pages/ManageExternalAdministrationsPage";
 import { SheetsPage } from "./pages/SheetsPage";
 import { SheetDetailPage } from "./pages/SheetDetailPage";
@@ -99,6 +99,7 @@ export const router = createBrowserRouter([
           { path: "manage-external-administrations", Component: ManageExternalAdministrationsPage,},
        { path: "sheets", Component: SheetsPage },
        { path: "sheets/:id", Component: SheetDetailPage },
+              { path: "manage-education-levels", Component: ManageEducationLevelsPage,},
     ],
   },
 ]);

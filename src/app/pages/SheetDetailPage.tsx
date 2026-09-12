@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Plus, Trash2, Printer, ArrowRight, Pencil, Check, X, GripVertical } from "lucide-react";
+import { Plus, Trash2, Printer, ArrowRight, Pencil, Check, X, GripVertical, History } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { usePermissions } from "../../lib/usePermissions";
 import { logActivity } from "../../lib/logActivity";
@@ -15,11 +15,19 @@ import {
   deleteRow,
   upsertCell,
   updateSheetName,
+  fetchSheetLogs,
+  logSheetRowAdded,
+  logSheetRowDeleted,
+  logSheetCellChanged,
+  logSheetColumnAdded,
+  logSheetColumnDeleted,
+  logSheetNameChanged,
   type Sheet,
   type SheetColumn,
   type SheetRow,
   type SheetCell,
   type SheetColumnType,
+  type SheetLog,
   COLUMN_TYPE_LABELS,
 } from "../../lib/sheets";
 import { SheetReportsTab } from "../components/sheets/SheetReportsTab";
@@ -27,6 +35,104 @@ import { SheetReportsTab } from "../components/sheets/SheetReportsTab";
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
+
+async function getCurrentUserName(): Promise<string> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return "غير معروف";
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("username")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  return profile?.username ?? "غير معروف";
+}
+
+// =====================================================
+// نافذة سجل تعديلات الكشف
+// =====================================================
+
+function SheetLogsModal({
+  logs,
+  loading,
+  onClose,
+}: {
+  logs: SheetLog[];
+  loading: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        dir="rtl"
+        className="bg-white rounded-[16px] w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#eff0f6]">
+          <h2 style={{ ...F, fontWeight: 700, fontSize: 17, color: "#2d3648" }}>
+            سجل تعديلات الكشف
+          </h2>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-[#aaa] hover:text-[#555]"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto px-6 py-4 flex flex-col gap-3 flex-1">
+          {loading && (
+            <p style={{ ...F, fontSize: 13, color: "#a1aebe" }}>
+              جاري تحميل السجل...
+            </p>
+          )}
+
+          {!loading && logs.length === 0 && (
+            <p style={{ ...F, fontSize: 13, color: "#a1aebe" }}>
+              لا يوجد سجل تعديلات لهذا الكشف
+            </p>
+          )}
+
+          {!loading &&
+            logs.map((log) => (
+              <div
+                key={log.id}
+                className="rounded-[8px] px-3 py-2.5"
+                style={{ background: "#f8fafc" }}
+              >
+                <p style={{ ...F, fontSize: 13, color: "#2d3648" }}>
+                  {log.message}
+                </p>
+
+                <p
+                  style={{
+                    ...F,
+                    fontSize: 11,
+                    color: "#a1aebe",
+                    marginTop: 4,
+                  }}
+                >
+                  {new Date(log.created_at).toLocaleString("ar-EG", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                </p>
+              </div>
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // =====================================================
 // نافذة اختيار وترتيب أعمدة الطباعة (Drag & Drop)
@@ -241,6 +347,11 @@ export function SheetDetailPage() {
   const [newColumnName, setNewColumnName] = useState("");
   const [newColumnType, setNewColumnType] = useState<SheetColumnType>("TEXT");
   const [showPrintModal, setShowPrintModal] = useState(false);
+  const [showLogsModal, setShowLogsModal] = useState(false);
+  const [logs, setLogs] = useState<SheetLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+
+  const originalCellValuesRef = useRef<Map<string, string>>(new Map());
 
   const canEdit = hasPermission("sheets:create");
   const canDelete = hasPermission("sheets:delete");
@@ -295,6 +406,59 @@ export function SheetDetailPage() {
     columns.forEach((c) => map.set(c.id, c));
     return map;
   }, [columns]);
+
+  async function openLogsModal() {
+    if (!id) return;
+
+    setShowLogsModal(true);
+    setLoadingLogs(true);
+
+    try {
+      const data = await fetchSheetLogs(id);
+      setLogs(data);
+    } catch (err) {
+      console.error("Fetch sheet logs error:", err);
+    } finally {
+      setLoadingLogs(false);
+    }
+  }
+
+  function handleCellFocus(rowId: string, columnId: string) {
+    const key = `${rowId}:${columnId}`;
+    originalCellValuesRef.current.set(key, getCellValue(rowId, columnId));
+  }
+
+  async function handleCellBlur(
+    rowId: string,
+    columnId: string,
+    rowNumber: number,
+    columnName: string
+  ) {
+    const key = `${rowId}:${columnId}`;
+    const originalValue = originalCellValuesRef.current.get(key);
+    originalCellValuesRef.current.delete(key);
+
+    const currentValue = getCellValue(rowId, columnId);
+
+    if (!id || originalValue === undefined || originalValue === currentValue) {
+      return;
+    }
+
+    try {
+      const userName = await getCurrentUserName();
+      await logSheetCellChanged(
+        id,
+        userName,
+        rowNumber,
+        columnName,
+        originalValue,
+        currentValue
+      );
+    } catch (err) {
+      console.error("Log cell change error:", err);
+    }
+  }
+
   function getCellValue(rowId: string, columnId: string) {
     return cellMap.get(`${rowId}:${columnId}`) ?? "";
   }
@@ -334,9 +498,18 @@ export function SheetDetailPage() {
   async function handleAddRow() {
     if (!id) return;
 
+    const newRowNumber = rows.length + 1;
+
     try {
       const newRowId = await addRow(id, rows.length);
       setRows((prev) => [...prev, { id: newRowId, sheet_id: id, row_order: prev.length }]);
+
+      try {
+        const userName = await getCurrentUserName();
+        await logSheetRowAdded(id, userName, newRowNumber);
+      } catch (logErr) {
+        console.error("Log row add error:", logErr);
+      }
     } catch (err: any) {
       console.error("Add row error:", err);
       alert(err?.message || "حدث خطأ أثناء إضافة صف");
@@ -347,10 +520,21 @@ export function SheetDetailPage() {
     const confirmed = window.confirm("هل تريد حذف هذا الصف؟");
     if (!confirmed) return;
 
+    const rowNumber = rows.findIndex((r) => r.id === rowId) + 1;
+
     try {
       await deleteRow(rowId);
       setRows((prev) => prev.filter((r) => r.id !== rowId));
       setCells((prev) => prev.filter((c) => c.row_id !== rowId));
+
+      if (id) {
+        try {
+          const userName = await getCurrentUserName();
+          await logSheetRowDeleted(id, userName, rowNumber);
+        } catch (logErr) {
+          console.error("Log row delete error:", logErr);
+        }
+      }
     } catch (err: any) {
       console.error("Delete row error:", err);
       alert(err?.message || "حدث خطأ أثناء حذف الصف");
@@ -360,13 +544,22 @@ export function SheetDetailPage() {
   async function handleAddColumn() {
     if (!id || !newColumnName.trim()) return;
 
+    const columnNameToLog = newColumnName.trim();
+
     try {
-      await addColumn(id, newColumnName.trim(), newColumnType, columns.length);
+      await addColumn(id, columnNameToLog, newColumnType, columns.length);
       const updatedColumns = await fetchSheetColumns(id);
       setColumns(updatedColumns);
       setNewColumnName("");
       setNewColumnType("TEXT");
       setShowAddColumn(false);
+
+      try {
+        const userName = await getCurrentUserName();
+        await logSheetColumnAdded(id, userName, columnNameToLog);
+      } catch (logErr) {
+        console.error("Log column add error:", logErr);
+      }
     } catch (err: any) {
       console.error("Add column error:", err);
       alert(err?.message || "حدث خطأ أثناء إضافة العمود");
@@ -379,10 +572,21 @@ export function SheetDetailPage() {
     );
     if (!confirmed) return;
 
+    const columnName = columnsById.get(columnId)?.name ?? "عمود";
+
     try {
       await deleteColumn(columnId);
       setColumns((prev) => prev.filter((c) => c.id !== columnId));
       setCells((prev) => prev.filter((c) => c.column_id !== columnId));
+
+      if (id) {
+        try {
+          const userName = await getCurrentUserName();
+          await logSheetColumnDeleted(id, userName, columnName);
+        } catch (logErr) {
+          console.error("Log column delete error:", logErr);
+        }
+      }
     } catch (err: any) {
       console.error("Delete column error:", err);
       alert(err?.message || "حدث خطأ أثناء حذف العمود");
@@ -424,6 +628,14 @@ export function SheetDetailPage() {
         });
       } catch (auditError) {
         console.error("Audit log error:", auditError);
+      }
+
+      try {
+        if (id) {
+          await logSheetNameChanged(id, userName, sheet.name, nameDraft.trim());
+        }
+      } catch (logErr) {
+        console.error("Log name change error:", logErr);
       }
     } catch (err: any) {
       console.error("Update sheet name error:", err);
@@ -787,12 +999,23 @@ export function SheetDetailPage() {
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={openLogsModal}
+            className="flex items-center gap-1.5 h-[42px] px-4 rounded-[8px] border border-[#e2e7f0]"
+          >
+            <History size={15} color="#2d3648" />
+            <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>
+              سجل التعديلات
+            </span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setShowPrintModal(true)}
             className="flex items-center gap-1.5 h-[42px] px-4 rounded-[8px]"
             style={{ background: "#DCF4DF" }}
           >
             <Printer size={15} color="#2d3648" />
-            <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>طباعة</span>
+            <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>طباعة كشف اليومية</span>
           </button>
         </div>
       </div>
@@ -896,6 +1119,10 @@ export function SheetDetailPage() {
                         value={getCellValue(row.id, col.id)}
                         onChange={(e) =>
                           handleCellChange(row.id, col.id, e.target.value)
+                        }
+                        onFocus={() => handleCellFocus(row.id, col.id)}
+                        onBlur={() =>
+                          handleCellBlur(row.id, col.id, index + 1, col.name)
                         }
                         disabled={!canEdit}
                         dir="rtl"
@@ -1022,6 +1249,14 @@ export function SheetDetailPage() {
           columnsById={columnsById}
           onClose={() => setShowPrintModal(false)}
           onConfirm={executePrint}
+        />
+      )}
+
+      {showLogsModal && (
+        <SheetLogsModal
+          logs={logs}
+          loading={loadingLogs}
+          onClose={() => setShowLogsModal(false)}
         />
       )}
     </div>

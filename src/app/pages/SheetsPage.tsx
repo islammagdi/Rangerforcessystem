@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { Plus, Eye, Trash2, X, FileSpreadsheet } from "lucide-react";
+import { Plus, Eye, Trash2, X, FileSpreadsheet, Copy } from "lucide-react";
 
 import { supabase } from "../../lib/supabase";
 import { usePermissions } from "../../lib/usePermissions";
@@ -9,6 +9,7 @@ import {
   fetchSheets,
   createSheet,
   deleteSheet,
+  duplicateSheet,
   type Sheet,
   type SheetColumnType,
   COLUMN_TYPE_LABELS,
@@ -282,7 +283,7 @@ export function SheetsPage() {
   const [error, setError] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
+const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   useEffect(() => {
     loadSheets();
   }, []);
@@ -351,7 +352,60 @@ export function SheetsPage() {
       setDeletingId(null);
     }
   }
+async function handleDuplicate(sheet: Sheet) {
+  const confirmed = window.confirm(
+    `هل تريد عمل نسخة من كشف "${sheet.name}"؟`
+  );
 
+  if (!confirmed) return;
+
+  setDuplicatingId(sheet.id);
+
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    let userName = "غير معروف";
+
+    if (user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      userName = profile?.username ?? "غير معروف";
+    }
+
+    const newSheetId = await duplicateSheet({
+      sheetId: sheet.id,
+      createdBy: user?.id ?? null,
+      createdByName: userName,
+    });
+
+    try {
+      await logActivity({
+        userId: user?.id ?? null,
+        userName,
+        actionType: "CREATE",
+        action: `نسخ كشف: ${sheet.name}`,
+        entity: "sheets",
+        details: `تم إنشاء نسخة من الكشف "${sheet.name}"`,
+      });
+    } catch (auditError) {
+      console.error("Audit log error:", auditError);
+    }
+
+    await loadSheets();
+    void newSheetId;
+  } catch (err: any) {
+    console.error("Duplicate sheet error:", err);
+    alert(err?.message || "حدث خطأ أثناء نسخ الكشف");
+  } finally {
+    setDuplicatingId(null);
+  }
+}
   return (
     <div className="flex flex-col gap-6 w-full pb-10" dir="rtl">
       <div className="flex items-center justify-between w-full flex-wrap gap-3">
@@ -455,7 +509,18 @@ export function SheetsPage() {
                     فتح
                   </span>
                 </button>
-
+{hasPermission("sheets:create") && (
+  <button
+    type="button"
+    onClick={() => handleDuplicate(sheet)}
+    disabled={duplicatingId === sheet.id}
+    className="w-9 h-9 rounded-[7px] flex items-center justify-center shrink-0 disabled:opacity-50"
+    style={{ background: "#fff4de" }}
+    title="نسخ الكشف"
+  >
+    <Copy size={14} color="#b45309" />
+  </button>
+)}
                 {hasPermission("sheets:delete") && (
                   <button
                     type="button"

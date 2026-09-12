@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Landmark,
   ClipboardList,
+   GraduationCap,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { supabase } from "../../../lib/supabase";
@@ -73,6 +74,7 @@ const LABEL_TO_PATH: Record<string, string> = {
   "إدارة الأدوار": "/dashboard/manage-roles",
   "الإدارات الخارجية": "/dashboard/manage-external-administrations",
   "كشوفات": "/dashboard/sheets",
+  "المستويات التعليمية": "/dashboard/manage-education-levels",
 };
 
 // =====================================================
@@ -438,6 +440,12 @@ export function Sidebar({ collapsed, onToggle, onNavSelect, activePath }: Sideba
         label: "الإدارات الخارجية",
         section: "ادارة المنظومة",
         permission: "external_administrations:view",
+      },
+            {
+        icon: <GraduationCap size={18} />,
+        label: "المستويات التعليمية",
+        section: "ادارة المنظومة",
+        permission: "education_levels:view",
       },
     ],
     []

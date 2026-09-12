@@ -42,6 +42,8 @@ type Soldier = {
   unit: string;
   receivedKariza: DocumentState;
   receivedLicense: DocumentState;
+  receivedLiteracy: DocumentState;
+  requiresLiteracy: boolean;
   status: SoldierStatus;
 };
 
@@ -260,12 +262,14 @@ function DocumentDropdown({
   value,
   onChange,
   disabled = false,
+  options: customOptions,
 }: {
   value: DocumentState;
   onChange: (
     value: DocumentState
   ) => void;
   disabled?: boolean;
+  options?: DocumentState[];
 }) {
   const [open, setOpen] = useState(false);
 
@@ -279,12 +283,12 @@ function DocumentDropdown({
       openUp: true,
     });
 
-  const options: DocumentState[] = [
-    "تم الاستلام",
-    "لم يتم الاستلام",
-    "تالف",
-  ];
-
+  const options: DocumentState[] =
+    customOptions ?? [
+      "تم الاستلام",
+      "لم يتم الاستلام",
+      "تالف",
+    ];
   const colors: Record<
     DocumentState,
     string
@@ -599,7 +603,7 @@ function ProgressCard({
           <p
             style={{
               ...F,
-              fontSize: 18,
+              fontSize: 22,
               color: "#2d3648",
               fontWeight: 700,
             }}
@@ -609,7 +613,7 @@ function ProgressCard({
             )}{" "}
             <span
               style={{
-                fontSize: 14,
+                fontSize: 16,
                 color: "#717d96",
               }}
             >
@@ -623,7 +627,7 @@ function ProgressCard({
           <p
             style={{
               ...F,
-              fontSize: 13,
+              fontSize: 14,
               color: "#717d96",
             }}
           >
@@ -1104,9 +1108,14 @@ const [statusFilter, setStatusFilter] =
           service_status_id,
           rank_id,
           primary_unit_id,
+          education_level_id,
           units:primary_unit_id (
             id,
             name
+          ),
+          education_level:education_levels!education_level_id (
+            id,
+            requires_literacy_certificate
           )
         `)
         .eq(
@@ -1183,14 +1192,14 @@ const [statusFilter, setStatusFilter] =
       return;
     }
 
-    const documentMap =
-      new Map<
-        string,
-        {
-          kariza?: string;
-          license?: string;
-        }
-      >();
+    const documentMap = new Map<
+      string,
+      {
+        kariza?: string;
+        license?: string;
+        literacy?: string;
+      }
+    >();
 
     (documents ?? []).forEach(
       (doc: any) => {
@@ -1223,6 +1232,14 @@ const [statusFilter, setStatusFilter] =
           "LICENSE"
         ) {
           current.license =
+            doc.status;
+        }
+
+        if (
+          doc.document_type ===
+          "LITERACY"
+        ) {
+          current.literacy =
             doc.status;
         }
       }
@@ -1259,11 +1276,22 @@ const [statusFilter, setStatusFilter] =
                   null
               ),
 
-            receivedLicense:
+                       receivedLicense:
               dbStateToDocumentState(
                 docs?.license ||
                   null
               ),
+
+            receivedLiteracy:
+              dbStateToDocumentState(
+                docs?.literacy ||
+                  null
+              ),
+
+            requiresLiteracy:
+              person.education_level
+                ?.requires_literacy_certificate ===
+              true,
 
             // ✅ FIX: بنعتمد على service_status_id فقط كمصدر وحيد للحقيقة
             // بخصوص حالة الفرد (بالخدمة / منتهي خدمته)، بنفس المنطق
@@ -1425,7 +1453,8 @@ const filteredSoldierData = useMemo(() => {
     id: string,
     field:
       | "receivedKariza"
-      | "receivedLicense",
+      | "receivedLicense"
+      | "receivedLiteracy",
     value: DocumentState
   ) {
     setSoldierData((prev) =>
@@ -1494,7 +1523,7 @@ const filteredSoldierData = useMemo(() => {
               new Date().toISOString(),
           });
 
-          if (
+                  if (
             hasLicenseEligibility(
               soldier.militaryId
             )
@@ -1512,6 +1541,27 @@ const filteredSoldierData = useMemo(() => {
               status:
                 documentStateToDb(
                   soldier.receivedLicense
+                ),
+
+              updated_at:
+                new Date().toISOString(),
+            });
+          }
+
+          if (soldier.requiresLiteracy) {
+            documentsToSave.push({
+              personnel_id:
+                soldier.id,
+
+              reserve_batch_id:
+                selectedBatchObject.id,
+
+              document_type:
+                "LITERACY",
+
+              status:
+                documentStateToDb(
+                  soldier.receivedLiteracy
                 ),
 
               updated_at:
@@ -1675,14 +1725,14 @@ await logActivity({
         throw documentsFetchError;
       }
 
-      const existingMap =
-        new Map<
-          string,
-          {
-            kariza?: string;
-            license?: string;
-          }
-        >();
+      const existingMap = new Map<
+        string,
+        {
+          kariza?: string;
+          license?: string;
+          literacy?: string;
+        }
+      >();
 
       (
         existingDocuments ?? []
@@ -1716,6 +1766,14 @@ await logActivity({
           "LICENSE"
         ) {
           item.license =
+            doc.status;
+        }
+
+        if (
+          doc.document_type ===
+          "LITERACY"
+        ) {
+          item.literacy =
             doc.status;
         }
       });
@@ -1756,38 +1814,61 @@ await logActivity({
             ids.includes(soldier.id)
         );
 
-      selectedPersonnel.forEach(
+        selectedPersonnel.forEach(
         (soldier) => {
           if (
-            !hasLicenseEligibility(
+            hasLicenseEligibility(
               soldier.militaryId
             )
           ) {
-            return;
+            const existing =
+              existingMap.get(
+                soldier.id
+              );
+
+            documentsToUpsert.push({
+              personnel_id:
+                soldier.id,
+
+              reserve_batch_id:
+                selectedBatchObject.id,
+
+              document_type:
+                "LICENSE",
+
+              status:
+                existing?.license ||
+                "PENDING",
+
+              updated_at:
+                new Date().toISOString(),
+            });
           }
 
-          const existing =
-            existingMap.get(
-              soldier.id
-            );
+          if (soldier.requiresLiteracy) {
+            const existing =
+              existingMap.get(
+                soldier.id
+              );
 
-          documentsToUpsert.push({
-            personnel_id:
-              soldier.id,
+            documentsToUpsert.push({
+              personnel_id:
+                soldier.id,
 
-            reserve_batch_id:
-              selectedBatchObject.id,
+              reserve_batch_id:
+                selectedBatchObject.id,
 
-            document_type:
-              "LICENSE",
+              document_type:
+                "LITERACY",
 
-            status:
-              existing?.license ||
-              "PENDING",
+              status:
+                existing?.literacy ||
+                "PENDING",
 
-            updated_at:
-              new Date().toISOString(),
-          });
+              updated_at:
+                new Date().toISOString(),
+            });
+          }
         }
       );
 
@@ -2211,7 +2292,7 @@ await createNotification({
 
       {successMsg && (
         <div
-          className="w-full rounded-[10px] px-4 py-3 flex items-center gap-2 justify-end"
+          className="w-full rounded-[10px] px-4 py-3 flex items-center gap-2 justify-start"
           style={{
             background: "#dcfce7",
           }}
@@ -2337,109 +2418,149 @@ await createNotification({
                 PROGRESS
                 ================================================= */}
 
-            <div className="flex flex-wrap gap-4 w-full mt-4 no-print">
+               {/* الصف الأول: تم تسليم الكارنيه + تم تسليم الرخصة */}
 
-              <ProgressCard
-                icon={
-                  <CheckSquare
-                    size={20}
-                    color="#00b867"
-                  />
-                }
-                label="تم تسليم الكارنيه"
-                current={
-                  soldierData.filter(
-                    (s) =>
-                      s.receivedKariza ===
-                      "تم الاستلام"
-                  ).length
-                }
-                total={
-                  soldierData.length
-                }
-              />
+            <div className="flex gap-4 w-full mt-4 no-print">
 
-              <ProgressCard
-                icon={
-                  <CheckSquare
-                    size={20}
-                    color="#00b867"
-                  />
-                }
-                label="تم تسليم الرخصة"
-                current={
-                  soldierData.filter(
-                    (s) =>
-                      hasLicenseEligibility(
-                        s.militaryId
-                      ) &&
-                      s.receivedLicense ===
+              <div className="flex-1">
+                <ProgressCard
+                  icon={
+                    <CheckSquare
+                      size={20}
+                      color="#00b867"
+                    />
+                  }
+                  label="تم تسليم الكارنيه"
+                  current={
+                    soldierData.filter(
+                      (s) =>
+                        s.receivedKariza ===
                         "تم الاستلام"
-                  ).length
-                }
-                total={
-                  soldierData.filter(
-                    (s) =>
-                      hasLicenseEligibility(
-                        s.militaryId
-                      )
-                  ).length
-                }
-              />
+                    ).length
+                  }
+                  total={
+                    soldierData.length
+                  }
+                />
+              </div>
 
-              {/* ✅ جديد: عدد الأفراد اللي حالة الكارنيه بتاعتهم "تالف" */}
+              <div className="flex-1">
+                <ProgressCard
+                  icon={
+                    <CheckSquare
+                      size={20}
+                      color="#00b867"
+                    />
+                  }
+                  label="تم تسليم الرخصة"
+                  current={
+                    soldierData.filter(
+                      (s) =>
+                        hasLicenseEligibility(
+                          s.militaryId
+                        ) &&
+                        s.receivedLicense ===
+                          "تم الاستلام"
+                    ).length
+                  }
+                  total={
+                    soldierData.filter(
+                      (s) =>
+                        hasLicenseEligibility(
+                          s.militaryId
+                        )
+                    ).length
+                  }
+                />
+              </div>
+            </div>
 
-              <ProgressCard
-                icon={
-                  <AlertTriangle
-                    size={20}
-                    color="#3eb712"
-                  />
-                }
-                label="كارنيه تالف"
-                current={
-                  soldierData.filter(
-                    (s) =>
-                      s.receivedKariza ===
-                      "تالف"
-                  ).length
-                }
-                total={
-                  soldierData.length
-                }
-              />
+            {/* الصف الثاني: كارنيه تالف + رخصة تالفة + تم تسليم محو الأمية */}
 
-              {/* ✅ جديد: عدد الأفراد اللي حالة الرخصة بتاعتهم "تالف" */}
+            <div className="flex gap-4 w-full mt-4 no-print">
+
+              {/* ✅ عدد الأفراد اللي حالة الكارنيه بتاعتهم "تالف" */}
+
+              <div className="flex-1">
+                <ProgressCard
+                  icon={
+                    <AlertTriangle
+                      size={20}
+                      color="#3eb712"
+                    />
+                  }
+                  label="كارنيه تالف"
+                  current={
+                    soldierData.filter(
+                      (s) =>
+                        s.receivedKariza ===
+                        "تالف"
+                    ).length
+                  }
+                  total={
+                    soldierData.length
+                  }
+                />
+              </div>
+
+              {/* ✅ عدد الأفراد اللي حالة الرخصة بتاعتهم "تالف" */}
               {/* بنفس منطق كارت "تم تسليم الرخصة": الإجمالي بس الأفراد
                   اللي عندهم أهلية رخصة (الرقم 7-8 = 66) */}
 
-              <ProgressCard
-                icon={
-                  <AlertTriangle
-                    size={20}
-                    color="#3eb712"
-                  />
-                }
-                label="رخصة تالفة"
-                current={
-                  soldierData.filter(
-                    (s) =>
-                      hasLicenseEligibility(
-                        s.militaryId
-                      ) &&
-                      s.receivedLicense ===
-                        "تالف"
-                  ).length
-                }
-                total={
-                  soldierData.filter(
-                    (s) =>
-                      hasLicenseEligibility(
-                        s.militaryId
-                      )
-                  ).length
-                }
-              />
+              <div className="flex-1">
+                <ProgressCard
+                  icon={
+                    <AlertTriangle
+                      size={20}
+                      color="#3eb712"
+                    />
+                  }
+                  label="رخصة تالفة"
+                  current={
+                    soldierData.filter(
+                      (s) =>
+                        hasLicenseEligibility(
+                          s.militaryId
+                        ) &&
+                        s.receivedLicense ===
+                          "تالف"
+                    ).length
+                  }
+                  total={
+                    soldierData.filter(
+                      (s) =>
+                        hasLicenseEligibility(
+                          s.militaryId
+                        )
+                    ).length
+                  }
+                />
+              </div>
+
+              <div className="flex-1">
+                <ProgressCard
+                  icon={
+                    <CheckSquare
+                      size={20}
+                      color="#00b867"
+                    />
+                  }
+                  label="تم تسليم محو الأمية"
+                  current={
+                    soldierData.filter(
+                      (s) =>
+                        s.requiresLiteracy &&
+                        s.receivedLiteracy ===
+                          "تم الاستلام"
+                    ).length
+                  }
+                  total={
+                    soldierData.filter(
+                      (s) => s.requiresLiteracy
+                    ).length
+                  }
+                />
+              </div>
             </div>
 
             {/* =================================================
@@ -2712,7 +2833,7 @@ await createNotification({
                       </button>
                     </th>
 
-                    {[
+                                     {[
                       "م",
                       "رقم عسكري",
                       "درجة",
@@ -2720,6 +2841,7 @@ await createNotification({
                       "الوحدة",
                       "استلام كارنيه",
                       "استلام رخصة",
+                      "استلام محو الأمية",
                       "حالة الفرد",
                     ].map((h) => (
                       <th
@@ -2982,6 +3104,37 @@ await createNotification({
                                   toggleSoldierField(
                                     soldier.id,
                                     "receivedLicense",
+                                    value
+                                  )
+                                }
+                              />
+                            </td>
+
+                            {/* محو الأمية */}
+
+                            <td
+                              className={`${tdClass} text-center`}
+                            >
+                              <DocumentDropdown
+                                value={
+                                  soldier.receivedLiteracy
+                                }
+                                options={[
+                                  "تم الاستلام",
+                                  "لم يتم الاستلام",
+                                ]}
+                                disabled={
+                                  !soldier.requiresLiteracy ||
+                                  !hasPermission(
+                                    "reserve_batches:update_documents"
+                                  )
+                                }
+                                onChange={(
+                                  value
+                                ) =>
+                                  toggleSoldierField(
+                                    soldier.id,
+                                    "receivedLiteracy",
                                     value
                                   )
                                 }

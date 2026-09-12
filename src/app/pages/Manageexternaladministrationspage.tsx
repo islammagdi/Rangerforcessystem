@@ -12,10 +12,10 @@ const F: React.CSSProperties = {
 type ExternalAdministration = {
   id: string;
   name: string;
+  code: string | null;
   is_active: boolean;
   created_at: string;
 };
-
 async function getCurrentUserInfo(): Promise<{
   userId: string | null;
   userName: string;
@@ -66,6 +66,7 @@ export function ManageExternalAdministrationsPage() {
   // إضافة
   const [showAddModal, setShowAddModal] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newCode, setNewCode] = useState("");
   const [newIsActive, setNewIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -74,6 +75,7 @@ export function ManageExternalAdministrationsPage() {
   const [editingItem, setEditingItem] =
     useState<ExternalAdministration | null>(null);
   const [editName, setEditName] = useState("");
+  const [editCode, setEditCode] = useState("");
   const [editIsActive, setEditIsActive] = useState(true);
   const [editSaving, setEditSaving] = useState(false);
 
@@ -92,7 +94,7 @@ export function ManageExternalAdministrationsPage() {
     try {
       const { data, error: loadError } = await supabase
         .from("external_administrations")
-        .select("id, name, is_active, created_at")
+        .select("id, name, code, is_active, created_at")
         .order("created_at", { ascending: false });
 
       if (loadError) throw loadError;
@@ -114,6 +116,7 @@ export function ManageExternalAdministrationsPage() {
 
   function openAddModal() {
     setNewName("");
+    setNewCode("");
     setNewIsActive(true);
     setError("");
     setShowAddModal(true);
@@ -133,14 +136,15 @@ export function ManageExternalAdministrationsPage() {
     setSaving(true);
     setError("");
 
-    try {
+       try {
       const { data: inserted, error: insertError } = await supabase
         .from("external_administrations")
         .insert({
           name: newName.trim(),
+          code: newCode.trim() || null,
           is_active: newIsActive,
         })
-        .select("id, name")
+        .select("id, name, code")
         .single();
 
       if (insertError) throw insertError;
@@ -154,7 +158,9 @@ export function ManageExternalAdministrationsPage() {
           actionType: "CREATE",
           action: "إضافة إدارة خارجية جديدة",
           entity: "external_administrations",
-          details: `اسم الإدارة: ${inserted?.name ?? newName.trim()}`,
+          details: `اسم الإدارة: ${inserted?.name ?? newName.trim()}${
+            inserted?.code ? ` - كود الإدارة: ${inserted.code}` : ""
+          }`,
         });
       } catch (auditError) {
         console.error("Audit log error:", auditError);
@@ -180,6 +186,7 @@ export function ManageExternalAdministrationsPage() {
   function openEditModal(item: ExternalAdministration) {
     setEditingItem(item);
     setEditName(item.name);
+    setEditCode(item.code ?? "");
     setEditIsActive(item.is_active);
     setError("");
     setShowEditModal(true);
@@ -202,14 +209,16 @@ export function ManageExternalAdministrationsPage() {
     setEditSaving(true);
     setError("");
 
-    try {
+      try {
       const oldName = editingItem.name;
+      const oldCode = editingItem.code ?? "-";
       const oldIsActive = editingItem.is_active;
 
       const { error: updateError } = await supabase
         .from("external_administrations")
         .update({
           name: editName.trim(),
+          code: editCode.trim() || null,
           is_active: editIsActive,
         })
         .eq("id", editingItem.id);
@@ -225,11 +234,11 @@ export function ManageExternalAdministrationsPage() {
           actionType: "UPDATE",
           action: "تعديل بيانات إدارة خارجية",
           entity: "external_administrations",
-          details: `القيمة القديمة: ${oldName} (${
+          details: `القيمة القديمة: ${oldName} (${oldCode}) (${
             oldIsActive ? "مفعّلة" : "غير مفعّلة"
           }) - القيمة الجديدة: ${editName.trim()} (${
-            editIsActive ? "مفعّلة" : "غير مفعّلة"
-          })`,
+            editCode.trim() || "-"
+          }) (${editIsActive ? "مفعّلة" : "غير مفعّلة"})`,
         });
       } catch (auditError) {
         console.error("Audit log error:", auditError);
@@ -419,6 +428,12 @@ export function ManageExternalAdministrationsPage() {
                     className="px-5 py-3 text-right"
                     style={{ ...F, fontSize: 13, color: "#717d96" }}
                   >
+                    كود الإدارة
+                  </th>
+                  <th
+                    className="px-5 py-3 text-right"
+                    style={{ ...F, fontSize: 13, color: "#717d96" }}
+                  >
                     الحالة
                   </th>
                   <th
@@ -444,6 +459,13 @@ export function ManageExternalAdministrationsPage() {
                       style={{ ...F, fontSize: 14, color: "#2d3648" }}
                     >
                       {item.name}
+                    </td>
+
+                    <td
+                      className="px-5 py-3 whitespace-nowrap"
+                      style={{ ...F, fontSize: 14, color: "#2d3648" }}
+                    >
+                      {item.code || "-"}
                     </td>
 
                     <td className="px-5 py-3 whitespace-nowrap">
@@ -558,7 +580,7 @@ export function ManageExternalAdministrationsPage() {
                 </div>
               )}
 
-              <div className="flex flex-col gap-1.5">
+               <div className="flex flex-col gap-1.5">
                 <label style={{ ...F, fontSize: 14, color: "#2d3648" }}>
                   اسم الإدارة
                 </label>
@@ -566,6 +588,20 @@ export function ManageExternalAdministrationsPage() {
                   type="text"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
+                  dir="rtl"
+                  className="w-full h-[46px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867]"
+                  style={{ ...F, fontSize: 15, color: "#2d3648" }}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label style={{ ...F, fontSize: 14, color: "#2d3648" }}>
+                  كود الإدارة (اختياري)
+                </label>
+                <input
+                  type="text"
+                  value={newCode}
+                  onChange={(e) => setNewCode(e.target.value)}
                   dir="rtl"
                   className="w-full h-[46px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867]"
                   style={{ ...F, fontSize: 15, color: "#2d3648" }}
@@ -673,8 +709,23 @@ export function ManageExternalAdministrationsPage() {
                 />
               </div>
 
+              <div className="flex flex-col gap-1.5">
+                <label style={{ ...F, fontSize: 14, color: "#2d3648" }}>
+                  كود الإدارة (اختياري)
+                </label>
+                <input
+                  type="text"
+                  value={editCode}
+                  onChange={(e) => setEditCode(e.target.value)}
+                  dir="rtl"
+                  className="w-full h-[46px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867]"
+                  style={{ ...F, fontSize: 15, color: "#2d3648" }}
+                />
+              </div>
+
               <div className="flex items-center gap-2">
                 <input
+                  id="editIsActive"
                   id="editIsActive"
                   type="checkbox"
                   checked={editIsActive}

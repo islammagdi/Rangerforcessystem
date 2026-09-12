@@ -40,6 +40,8 @@ type Soldier = {
   serviceStatus: string;
   dischargeDate: string;
   attachmentPlace: string;
+  administration: string;
+  educationLevel: string;
   letters: Letter[];
 };
 
@@ -466,10 +468,26 @@ function printSoldier(
             margin: 25px 0;
           }
 
+          .section {
+            margin-top: 22px;
+          }
+
+          .section-title {
+            font-size: 17px;
+            font-weight: bold;
+            color: #4a5468;
+            margin-bottom: 10px;
+          }
+
+          .section-divider {
+            border: none;
+            border-top: 1px solid #eceef2;
+            margin: 22px 0 0 0;
+          }
+
           .info-table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 10px;
           }
 
           .info-table td {
@@ -533,81 +551,74 @@ function printSoldier(
             بيانات الفرد
           </div>
 
-          <table class="info-table">
+          <!-- Section 1: البيانات التعريفية -->
+          <div class="section">
+            <div class="section-title">
+              البيانات التعريفية
+            </div>
 
-            <tr>
-              <td class="label">
-                الرقم العسكري
-              </td>
+            <table class="info-table">
+              <tr>
+                <td class="label">الرقم العسكري</td>
+                <td class="value">${soldier.militaryId || "-"}</td>
+                <td class="label">الدرجة</td>
+                <td class="value">${soldier.rank || "-"}</td>
+              </tr>
 
-              <td class="value">
-                ${soldier.militaryId || "-"}
-              </td>
+              <tr>
+                <td class="label">الاسم</td>
+                <td class="value">${soldier.name || "-"}</td>
+                <td class="label">فئة الفرد</td>
+                <td class="value">${soldier.category || "-"}</td>
+              </tr>
+            </table>
+          </div>
 
-              <td class="label">
-                الدرجة
-              </td>
+          <hr class="section-divider" />
 
-              <td class="value">
-                ${soldier.rank || "-"}
-              </td>
-            </tr>
+          <!-- Section 2: بيانات الوحدة والإلحاق -->
+          <div class="section">
+            <div class="section-title">
+              بيانات الوحدة والإلحاق
+            </div>
 
-            <tr>
-              <td class="label">
-                الاسم
-              </td>
+            <table class="info-table">
+              <tr>
+                <td class="label">الوحدة الأساسية</td>
+                <td class="value">${soldier.unit || "-"}</td>
+                <td class="label">الموقف الخدمي</td>
+                <td class="value">${soldier.serviceStatus || "-"}</td>
+              </tr>
 
-              <td class="value">
-                ${soldier.name || "-"}
-              </td>
+              <tr>
+                <td class="label">جهة الإلحاق</td>
+                <td class="value" colspan="3">${soldier.attachmentPlace || "-"}</td>
+              </tr>
+            </table>
+          </div>
 
-              <td class="label">
-                فئة الفرد
-              </td>
+          <hr class="section-divider" />
 
-              <td class="value">
-                ${soldier.category || "-"}
-              </td>
-            </tr>
+          <!-- Section 3: بيانات إضافية -->
+          <div class="section">
+            <div class="section-title">
+              بيانات إضافية
+            </div>
 
-            <tr>
-              <td class="label">
-                الوحدة الأساسية
-              </td>
+            <table class="info-table">
+              <tr>
+                <td class="label">الإدارة</td>
+                <td class="value">${soldier.administration || "-"}</td>
+                <td class="label">تاريخ التسريح</td>
+                <td class="value">${soldier.dischargeDate || "-"}</td>
+              </tr>
 
-              <td class="value">
-                ${soldier.unit || "-"}
-              </td>
-
-              <td class="label">
-                الموقف الخدمي
-              </td>
-
-              <td class="value">
-                ${soldier.serviceStatus || "-"}
-              </td>
-            </tr>
-
-            <tr>
-              <td class="label">
-                تاريخ التسريح
-              </td>
-
-              <td class="value">
-                ${soldier.dischargeDate || "-"}
-              </td>
-
-              <td class="label">
-                جهة الإلحاق
-              </td>
-
-              <td class="value">
-                ${soldier.attachmentPlace || "-"}
-              </td>
-            </tr>
-
-          </table>
+              <tr>
+                <td class="label">المستوى التعليمي</td>
+                <td class="value" colspan="3">${soldier.educationLevel || "-"}</td>
+              </tr>
+            </table>
+          </div>
 
           <div class="footer-info">
             <div>
@@ -676,7 +687,7 @@ const { hasPermission } = usePermissions();
          1. تحميل بيانات الفرد
       --------------------------------------------------- */
 
-      const {
+          const {
         data: personnelData,
         error: personnelError,
       } = await supabase
@@ -691,6 +702,8 @@ const { hasPermission } = usePermissions();
           service_status_id,
           rank_id,
           discharge_date,
+                   administration_id,
+          education_level_id,
 
           personnel_categories (
             id,
@@ -717,6 +730,18 @@ const { hasPermission } = usePermissions();
           service_statuses (
             id,
             name
+          ),
+
+          administration:external_administrations!administration_id (
+            id,
+            name,
+            code
+          ),
+
+          education_level:education_levels!education_level_id (
+            id,
+            name,
+            code
           )
         `)
         .eq("id", id)
@@ -866,6 +891,12 @@ const { hasPermission } = usePermissions();
 
         attachmentPlace:
           raw.attachment_unit?.name ?? "-",
+
+        administration:
+          raw.administration?.name ?? "-",
+
+        educationLevel:
+          raw.education_level?.name ?? "-",
 
         letters: mappedLetters,
       };
@@ -1132,86 +1163,88 @@ const { hasPermission } = usePermissions();
 
         {/* Data */}
 
-        <div className="flex flex-col gap-4 px-6 py-5">
+        <div className="flex flex-col gap-5 px-6 py-5">
 
-          {/* Row 1 */}
+          {/* -------- Section 1: البيانات التعريفية -------- */}
+          <div className="flex flex-col gap-4">
+            <span
+              style={{
+                ...FONT,
+                fontSize: 15,
+                fontWeight: 600,
+                color: "#a0abc0",
+              }}
+            >
+              البيانات التعريفية
+            </span>
 
-          <div className="flex flex-wrap gap-4">
+            <div className="flex flex-wrap gap-4">
+              <InfoRow label="الرقم العسكري" value={soldier.militaryId} />
+              <InfoRow label="الدرجة" value={soldier.rank} />
+            </div>
 
-            <InfoRow
-              label="الرقم العسكري"
-              value={
-                soldier.militaryId
-              }
-            />
-
-            <InfoRow
-              label="الدرجة"
-              value={
-                soldier.rank
-              }
-            />
-
+            <div className="flex flex-wrap gap-4">
+              <InfoRow label="الاسم" value={soldier.name} />
+              <InfoRow label="فئة الفرد" value={soldier.category} />
+            </div>
           </div>
 
-          {/* Row 2 */}
+          {/* Divider */}
+          <div
+            className="w-full"
+            style={{ borderTop: "1px solid #f0f1f5" }}
+          />
 
-          <div className="flex flex-wrap gap-4">
+          {/* -------- Section 2: بيانات الوحدة والإلحاق -------- */}
+          <div className="flex flex-col gap-4">
+            <span
+              style={{
+                ...FONT,
+                fontSize: 15,
+                fontWeight: 600,
+                color: "#a0abc0",
+              }}
+            >
+              بيانات الوحدة والإلحاق
+            </span>
 
-            <InfoRow
-              label="الاسم"
-              value={
-                soldier.name
-              }
-            />
+            <div className="flex flex-wrap gap-4">
+              <InfoRow label="الوحدة الأساسية" value={soldier.unit} />
+              <InfoRow label="الموقف الخدمي" value={soldier.serviceStatus} />
+            </div>
 
-            <InfoRow
-              label="فئة الفرد"
-              value={
-                soldier.category
-              }
-            />
-
+            <div className="flex flex-wrap gap-4">
+              <InfoRow label="جهة الإلحاق" value={soldier.attachmentPlace} />
+            </div>
           </div>
 
-          {/* Row 3 */}
+          {/* Divider */}
+          <div
+            className="w-full"
+            style={{ borderTop: "1px solid #f0f1f5" }}
+          />
 
-          <div className="flex flex-wrap gap-4">
+          {/* -------- Section 3: بيانات إضافية -------- */}
+          <div className="flex flex-col gap-4">
+            <span
+              style={{
+                ...FONT,
+                fontSize: 15,
+                fontWeight: 600,
+                color: "#a0abc0",
+              }}
+            >
+              بيانات إضافية
+            </span>
 
-            <InfoRow
-              label="الوحدة الأساسية"
-              value={
-                soldier.unit
-              }
-            />
+            <div className="flex flex-wrap gap-4">
+              <InfoRow label="الإدارة" value={soldier.administration} />
+              <InfoRow label="تاريخ التسريح" value={soldier.dischargeDate} />
+            </div>
 
-            <InfoRow
-              label="الموقف الخدمي"
-              value={
-                soldier.serviceStatus
-              }
-            />
-
-          </div>
-
-          {/* Row 4 */}
-
-          <div className="flex flex-wrap gap-4">
-
-            <InfoRow
-              label="تاريخ التسريح"
-              value={
-                soldier.dischargeDate
-              }
-            />
-
-            <InfoRow
-              label="جهة الإلحاق"
-              value={
-                soldier.attachmentPlace
-              }
-            />
-
+            <div className="flex flex-wrap gap-4">
+              <InfoRow label="المستوى التعليمي" value={soldier.educationLevel} />
+            </div>
           </div>
 
         </div>

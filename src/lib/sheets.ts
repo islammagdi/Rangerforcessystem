@@ -96,6 +96,8 @@ export async function createSheet(params: {
 
   if (columnsError) throw columnsError;
 
+  await addSheetLog(sheet.id, `${params.createdByName} أنشأ الكشف`);
+
   return sheet.id;
 }
 
@@ -113,7 +115,172 @@ export async function deleteSheet(id: string) {
 
   if (error) throw error;
 }
+export async function duplicateSheet(params: {
+  sheetId: string;
+  createdBy: string | null;
+  createdByName: string;
+}): Promise<string> {
+  const original = await fetchSheetById(params.sheetId);
 
+  // 1) حساب رقم النسخة التالي بناءً على الأسماء الموجودة
+  const { data: existing, error: existingError } = await supabase
+    .from("sheets")
+    .select("name")
+    .ilike("name", `${original.name} - نسخة رقم%`);
+
+  if (existingError) throw existingError;
+
+  let maxNumber = 0;
+  (existing ?? []).forEach((s) => {
+    const match = s.name.match(/نسخة رقم\s*(\d+)$/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > maxNumber) maxNumber = num;
+    }
+  });
+
+  const newName = `${original.name} - نسخة رقم${maxNumber + 1}`;
+
+  // 2) إنشاء الكشف الجديد
+  const { data: newSheet, error: newSheetError } = await supabase
+    .from("sheets")
+    .insert({
+      name: newName,
+      created_by: params.createdBy,
+      created_by_name: params.createdByName,
+    })
+    .select("id")
+    .single();
+
+  if (newSheetError) throw newSheetError;
+  const newSheetId: string = newSheet.id;
+
+  // 3) نسخ الأعمدة
+  const originalColumns = await fetchSheetColumns(params.sheetId);
+  const columnIdMap = new Map<string, string>();
+
+  if (originalColumns.length > 0) {
+    const columnsPayload = originalColumns.map((col) => ({
+      sheet_id: newSheetId,
+      name: col.name,
+      column_type: col.column_type,
+      column_order: col.column_order,
+    }));
+
+    const { data: insertedColumns, error: columnsError } = await supabase
+      .from("sheet_columns")
+      .insert(columnsPayload)
+      .select("id, name, column_order");
+
+    if (columnsError) throw columnsError;
+
+    originalColumns.forEach((oldCol) => {
+      const newCol = insertedColumns?.find(
+        (c) => c.column_order === oldCol.column_order && c.name === oldCol.name
+      );
+      if (newCol) columnIdMap.set(oldCol.id, newCol.id);
+    });
+  }
+
+  // 4) نسخ الصفوف
+  const originalRows = await fetchSheetRows(params.sheetId);
+  const rowIdMap = new Map<string, string>();
+
+  if (originalRows.length > 0) {
+    const rowsPayload = originalRows.map((row) => ({
+      sheet_id: newSheetId,
+      row_order: row.row_order,
+    }));
+
+    const { data: insertedRows, error: rowsError } = await supabase
+      .from("sheet_rows")
+      .insert(rowsPayload)
+      .select("id, row_order");
+
+    if (rowsError) throw rowsError;
+
+    originalRows.forEach((oldRow) => {
+      const newRow = insertedRows?.find((r) => r.row_order === oldRow.row_order);
+      if (newRow) rowIdMap.set(oldRow.id, newRow.id);
+    });
+
+    // 5) نسخ الخلايا (القيم)
+    const originalCells = await fetchSheetCells(originalRows.map((r) => r.id));
+
+    if (originalCells.length > 0) {
+      const cellsPayload = originalCells
+        .map((cell) => {
+          const newRowId = rowIdMap.get(cell.row_id);
+          const newColumnId = columnIdMap.get(cell.column_id);
+          if (!newRowId || !newColumnId) return null;
+          return {
+            row_id: newRowId,
+            column_id: newColumnId,
+            value: cell.value,
+          };
+        })
+        .filter((c): c is NonNullable<typeof c> => c !== null);
+
+      if (cellsPayload.length > 0) {
+        const { error: cellsError } = await supabase
+          .from("sheet_cells")
+          .insert(cellsPayload);
+
+        if (cellsError) throw cellsError;
+      }
+    }
+  }
+
+  // 6) نسخ اليوميات (reports) وأعمدة التجميع الخاصة بها
+  const originalReports = await fetchSheetReports(params.sheetId);
+
+  for (const report of originalReports) {
+    const { data: newReport, error: newReportError } = await supabase
+      .from("sheet_reports")
+      .insert({
+        sheet_id: newSheetId,
+        name: report.name,
+        created_by: params.createdBy,
+        created_by_name: params.createdByName,
+      })
+      .select("id")
+      .single();
+
+    if (newReportError) throw newReportError;
+
+    const originalReportColumns = await fetchReportColumns(report.id);
+
+    if (originalReportColumns.length > 0) {
+      const reportColumnsPayload = originalReportColumns
+        .map((rc) => {
+          const newColumnId = columnIdMap.get(rc.column_id);
+          if (!newColumnId) return null;
+          return {
+            report_id: newReport.id,
+            column_id: newColumnId,
+            level_order: rc.level_order,
+          };
+        })
+        .filter((c): c is NonNullable<typeof c> => c !== null);
+
+      if (reportColumnsPayload.length > 0) {
+        const { error: reportColumnsError } = await supabase
+          .from("sheet_report_columns")
+          .insert(reportColumnsPayload);
+
+        if (reportColumnsError) throw reportColumnsError;
+      }
+    }
+  }
+
+  // 7) تسجيل عملية النسخ في سجل الكشف الجديد
+  await addSheetLog(
+    newSheetId,
+    `${params.createdByName} أنشأ هذا الكشف كنسخة من "${original.name}"`
+  );
+
+  return newSheetId;
+}
 // =====================================================
 // Columns
 // =====================================================
@@ -469,4 +636,114 @@ export function buildPivotTable(
     columnTotals,
     grandTotal,
   };
+}
+
+// =====================================================
+// سجل تعديلات الكشف
+// =====================================================
+
+export interface SheetLog {
+  id: string;
+  sheet_id: string;
+  message: string;
+  created_at: string;
+}
+
+export async function fetchSheetLogs(sheetId: string): Promise<SheetLog[]> {
+  const { data, error } = await supabase
+    .from("sheet_logs")
+    .select("*")
+    .eq("sheet_id", sheetId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  return data ?? [];
+}
+
+async function addSheetLog(sheetId: string, message: string) {
+  const { error } = await supabase.from("sheet_logs").insert({
+    sheet_id: sheetId,
+    message,
+  });
+
+  if (error) {
+    console.error("Add sheet log error:", error);
+  }
+}
+
+export async function logSheetRowAdded(
+  sheetId: string,
+  userName: string,
+  rowNumber: number
+) {
+  await addSheetLog(sheetId, `${userName} أضاف صف جديد رقم (${rowNumber})`);
+}
+
+export async function logSheetRowDeleted(
+  sheetId: string,
+  userName: string,
+  rowNumber: number
+) {
+  await addSheetLog(sheetId, `${userName} حذف الصف رقم (${rowNumber})`);
+}
+
+export async function logSheetCellChanged(
+  sheetId: string,
+  userName: string,
+  rowNumber: number,
+  columnName: string,
+  oldValue: string,
+  newValue: string
+) {
+  await addSheetLog(
+    sheetId,
+    `${userName} عدّل العمود "${columnName}" في الصف رقم (${rowNumber}): "${
+      oldValue || "-"
+    }" ← "${newValue || "-"}"`
+  );
+}
+
+export async function logSheetColumnAdded(
+  sheetId: string,
+  userName: string,
+  columnName: string
+) {
+  await addSheetLog(sheetId, `${userName} أضاف عمود جديد باسم "${columnName}"`);
+}
+
+export async function logSheetColumnDeleted(
+  sheetId: string,
+  userName: string,
+  columnName: string
+) {
+  await addSheetLog(sheetId, `${userName} حذف العمود "${columnName}"`);
+}
+
+export async function logSheetNameChanged(
+  sheetId: string,
+  userName: string,
+  oldName: string,
+  newName: string
+) {
+  await addSheetLog(
+    sheetId,
+    `${userName} غيّر اسم الكشف من "${oldName}" إلى "${newName}"`
+  );
+}
+
+export async function logReportCreated(
+  sheetId: string,
+  userName: string,
+  reportName: string
+) {
+  await addSheetLog(sheetId, `${userName} أنشأ يومية جديدة باسم "${reportName}"`);
+}
+
+export async function logReportDeleted(
+  sheetId: string,
+  userName: string,
+  reportName: string
+) {
+  await addSheetLog(sheetId, `${userName} حذف يومية باسم "${reportName}"`);
 }

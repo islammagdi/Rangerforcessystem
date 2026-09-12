@@ -62,6 +62,8 @@ type Soldier = {
   serviceStatus: string;
   dischargeDate: string;
   attachmentPlace: string;
+  administration: string;
+  educationLevel: string;
 
   rankId: string | null;
   categoryId: string | null;
@@ -969,6 +971,29 @@ function FieldPair({
 }
 
 // ─────────────────────────────────────────────────────────────
+// Section Title (فاصل بين مجموعات الحقول)
+// ─────────────────────────────────────────────────────────────
+
+function FieldsSectionTitle({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      style={{
+        ...FONT,
+        fontSize: 15,
+        fontWeight: 600,
+        color: "#a0abc0",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // Date formatters (تحويل بين YYYY-MM-DD و DD-MM-YYYY)
 // ─────────────────────────────────────────────────────────────
 
@@ -1036,12 +1061,8 @@ export function SoldierEditPage() {
   const [rankOptions, setRankOptions] = useState<Option[]>([]);
   const [categoryOptions, setCategoryOptions] = useState<Option[]>([]);
   const [unitOptions, setUnitOptions] = useState<Option[]>([]);
-  const [serviceStatusOptions, setServiceStatusOptions] = useState<
-    Option[]
-  >([]);
-  const [attachmentUnitOptions, setAttachmentUnitOptions] = useState<
-    Option[]
-  >([]);
+  const [serviceStatusOptions, setServiceStatusOptions] = useState<Option[]>([]);
+  const [attachmentUnitOptions, setAttachmentUnitOptions] = useState<Option[]>([]);
   const [reserveBatchOptions, setReserveBatchOptions] = useState<Option[]>([]);
   // ───────────────────────────────────────────────────────────
   // Selected values
@@ -1227,7 +1248,7 @@ const filteredRankOptions = useMemo(() => {
     setError("");
 
     try {
-      const { data, error: loadError } = await supabase
+           const { data, error: loadError } = await supabase
         .from("personnel")
         .select(`
           id,
@@ -1239,6 +1260,8 @@ const filteredRankOptions = useMemo(() => {
           service_status_id,
           rank_id,
           discharge_date,
+                   administration_id,
+          education_level_id,
 
           personnel_categories (
             id,
@@ -1265,11 +1288,22 @@ const filteredRankOptions = useMemo(() => {
           service_statuses (
             id,
             name
+          ),
+
+          administration:external_administrations!administration_id (
+            id,
+            name,
+            code
+          ),
+
+          education_level:education_levels!education_level_id (
+            id,
+            name,
+            code
           )
         `)
         .eq("id", id)
         .maybeSingle();
-
       if (loadError) {
         console.error("Error loading soldier:", loadError);
 
@@ -1306,6 +1340,10 @@ const filteredRankOptions = useMemo(() => {
           : "",
 
         attachmentPlace: raw.attachment_unit?.name ?? "",
+
+        administration: raw.administration?.name ?? "",
+
+        educationLevel: raw.education_level?.name ?? "",
 
         rankId: raw.rank_id ?? null,
 
@@ -1661,251 +1699,320 @@ await createNotification({
 
           {/* Fields */}
 
-          <div className="flex flex-col gap-4 px-6 py-5">
-            {/* Row 1 */}
+          <div className="flex flex-col gap-5 px-6 py-5">
 
-            <FieldPair
-              left={
-                <div>
-                  <p
-                    style={{
-                      ...FONT,
-                      fontSize: 13,
-                      color: "#717d96",
-                      marginBottom: 6,
-                    }}
-                  >
-                    الدرجة
-                  </p>
-<EditDropdown
-  options={filteredRankOptions}
-  value={rankId}
-  onChange={(option) => {
-    setRankId(option.id);
-    setError("");
-  }}
-  placeholder="اختر الدرجة"
-/>
-                </div>
-              }
-              right={
-                <div>
-                  <p
-                    style={{
-                      ...FONT,
-                      fontSize: 13,
-                      color: "#717d96",
-                      marginBottom: 6,
-                    }}
-                  >
-                    الرقم العسكري
-                  </p>
+            {/* ==================================================
+                Section 1: البيانات التعريفية
+                (الرقم العسكري - الدرجة - الاسم - فئة الفرد)
+            ================================================== */}
 
-                  <MilitaryNumberInput
-                    value={militaryNumber}
-                    onChange={(v) => {
-                      setMilitaryNumber(v);
-                      setMilitaryNumberError("");
-                    }}
-                    error={militaryNumberError}
-                  />
-                </div>
-              }
-            />
+            <div className="flex flex-col gap-4">
+              <FieldsSectionTitle>البيانات التعريفية</FieldsSectionTitle>
 
-            {/* Row 2 */}
+              {/* Row 1: الرقم العسكري / الدرجة */}
 
-            <FieldPair
-              left={
-                <div>
-                  <p
-                    style={{
-                      ...FONT,
-                      fontSize: 13,
-                      color: "#717d96",
-                      marginBottom: 6,
-                    }}
-                  >
-                    فئة الفرد
-                  </p>
-
-                  <EditDropdown
-                    options={categoryOptions}
-                    value={categoryId}
-                    onChange={handleCategoryChange}
-                    placeholder="اختر فئة الفرد"
-                  />
-                </div>
-              }
-              right={
-                <div>
-                  <p
-                    style={{
-                      ...FONT,
-                      fontSize: 13,
-                      color: "#717d96",
-                      marginBottom: 6,
-                    }}
-                  >
-                    الاسم
-                  </p>
-
-                  <ReadonlyInput value={soldier.name} />
-                </div>
-              }
-            />
-
-            {/* Row 3 */}
-
-            <FieldPair
-              left={
-                <div>
-                  <p
-                    style={{
-                      ...FONT,
-                      fontSize: 13,
-                      color: "#717d96",
-                      marginBottom: 6,
-                    }}
-                  >
-                    الوحدة الأساسية
-                  </p>
-
-                  <EditDropdown
-                    options={unitOptions}
-                    value={unitId}
-                    onChange={(option) => {
-                      setUnitId(option.id);
-                      setUnitError("");
-                    }}
-                    placeholder="اختر الوحدة الأساسية"
-                  />
-
-                  {unitError && (
+              <FieldPair
+                left={
+                  <div>
                     <p
-                      className="text-right mt-1"
                       style={{
                         ...FONT,
-                        fontSize: 12,
-                        color: "#ef4444",
-                      }}
-                    >
-                      {unitError}
-                    </p>
-                  )}
-                </div>
-              }
-              right={
-                <div>
-                  <p
-                    style={{
-                      ...FONT,
-                      fontSize: 13,
-                      color: "#717d96",
-                      marginBottom: 6,
-                    }}
-                  >
-                    الموقف الخدمي
-                  </p>
-
-                  <EditDropdown
-                    options={serviceStatusOptions}
-                    value={serviceStatusId}
-                    onChange={handleServiceStatusChange}
-                    placeholder="اختر الموقف الخدمي"
-                  />
-                </div>
-              }
-            />
-
-            {/* Row 4 */}
-
-            <FieldPair
-              left={
-                <div>
-                  <p
-                    style={{
-                      ...FONT,
-                      fontSize: 13,
-                      color: "#717d96",
-                      marginBottom: 6,
-                    }}
-                  >
-                    جهة الإلحاق
-                  </p>
-
-                  <EditDropdown
-                    options={attachmentUnitOptions}
-                    value={attachmentUnitId}
-                    onChange={(option) => {
-                      setAttachmentUnitId(option.id);
-                      setAttachmentError("");
-                    }}
-                    disabled={!isAttachmentEnabled}
-                    placeholder={
-                      isAttachmentEnabled
-                        ? "اختر جهة الإلحاق"
-                        : "غير مفعّل - الموقف الخدمي ليس ملحق"
-                    }
-                  />
-
-                  {attachmentError && (
-                    <p
-                      className="text-right mt-1"
-                      style={{
-                        ...FONT,
-                        fontSize: 12,
-                        color: "#ef4444",
-                      }}
-                    >
-                      {attachmentError}
-                    </p>
-                  )}
-                </div>
-              }
-                right={
-                <div>
-                  <p
-                    style={{
-                      ...FONT,
-                      fontSize: 13,
-                      color: "#717d96",
-                      marginBottom: 6,
-                    }}
-                  >
-                    تاريخ التسريح
-                  </p>
-
-                  <EditDropdown
-                    options={reserveBatchOptions}
-                    value={
-                      isVolunteerCategory
-                        ? null
-                        : dischargeDateIso
-                    }
-                    onChange={(option) => {
-                      setDischargeDateIso(option.id);
-                      setError("");
-                    }}
-                    disabled={isVolunteerCategory}
-                    placeholder="اختر دفعة الرديف"
-                  />
-
-                  {isVolunteerCategory && (
-                    <p
-                      className="text-right mt-1"
-                      style={{
-                        ...FONT,
-                        fontSize: 12,
+                        fontSize: 13,
                         color: "#717d96",
+                        marginBottom: 6,
                       }}
                     >
-                      غير مطلوب لفئة "متطوع" — سيتم حفظه بقيمة فارغة
+                      الرقم العسكري
                     </p>
-                  )}
-                </div>
-              }
+
+                    <MilitaryNumberInput
+                      value={militaryNumber}
+                      onChange={(v) => {
+                        setMilitaryNumber(v);
+                        setMilitaryNumberError("");
+                      }}
+                      error={militaryNumberError}
+                    />
+                  </div>
+                }
+                right={
+                  <div>
+                    <p
+                      style={{
+                        ...FONT,
+                        fontSize: 13,
+                        color: "#717d96",
+                        marginBottom: 6,
+                      }}
+                    >
+                      الدرجة
+                    </p>
+
+                    <EditDropdown
+                      options={filteredRankOptions}
+                      value={rankId}
+                      onChange={(option) => {
+                        setRankId(option.id);
+                        setError("");
+                      }}
+                      placeholder="اختر الدرجة"
+                    />
+                  </div>
+                }
+              />
+
+              {/* Row 2: الاسم / فئة الفرد */}
+
+              <FieldPair
+                left={
+                  <div>
+                    <p
+                      style={{
+                        ...FONT,
+                        fontSize: 13,
+                        color: "#717d96",
+                        marginBottom: 6,
+                      }}
+                    >
+                      الاسم
+                    </p>
+
+                    <ReadonlyInput value={soldier.name} />
+                  </div>
+                }
+                right={
+                  <div>
+                    <p
+                      style={{
+                        ...FONT,
+                        fontSize: 13,
+                        color: "#717d96",
+                        marginBottom: 6,
+                      }}
+                    >
+                      فئة الفرد
+                    </p>
+
+                    <EditDropdown
+                      options={categoryOptions}
+                      value={categoryId}
+                      onChange={handleCategoryChange}
+                      placeholder="اختر فئة الفرد"
+                    />
+                  </div>
+                }
+              />
+            </div>
+
+            {/* Divider */}
+            <div
+              className="w-full"
+              style={{ borderTop: "1px solid #f0f1f5" }}
             />
+
+            {/* ==================================================
+                Section 2: بيانات الوحدة والإلحاق
+                (الوحدة الأساسية - الموقف الخدمي - جهة الإلحاق)
+            ================================================== */}
+
+            <div className="flex flex-col gap-4">
+              <FieldsSectionTitle>بيانات الوحدة والإلحاق</FieldsSectionTitle>
+
+              {/* Row 1: الوحدة الأساسية / الموقف الخدمي */}
+
+              <FieldPair
+                left={
+                  <div>
+                    <p
+                      style={{
+                        ...FONT,
+                        fontSize: 13,
+                        color: "#717d96",
+                        marginBottom: 6,
+                      }}
+                    >
+                      الوحدة الأساسية
+                    </p>
+
+                    <EditDropdown
+                      options={unitOptions}
+                      value={unitId}
+                      onChange={(option) => {
+                        setUnitId(option.id);
+                        setUnitError("");
+                      }}
+                      placeholder="اختر الوحدة الأساسية"
+                    />
+
+                    {unitError && (
+                      <p
+                        className="text-right mt-1"
+                        style={{
+                          ...FONT,
+                          fontSize: 12,
+                          color: "#ef4444",
+                        }}
+                      >
+                        {unitError}
+                      </p>
+                    )}
+                  </div>
+                }
+                right={
+                  <div>
+                    <p
+                      style={{
+                        ...FONT,
+                        fontSize: 13,
+                        color: "#717d96",
+                        marginBottom: 6,
+                      }}
+                    >
+                      الموقف الخدمي
+                    </p>
+
+                    <EditDropdown
+                      options={serviceStatusOptions}
+                      value={serviceStatusId}
+                      onChange={handleServiceStatusChange}
+                      placeholder="اختر الموقف الخدمي"
+                    />
+                  </div>
+                }
+              />
+
+              {/* Row 2: جهة الإلحاق (حقل مفرد) */}
+
+<FieldPair
+  left={    <div>
+      <p style={{ ...FONT, fontSize: 13, color: "#717d96", marginBottom: 6 }}>
+        جهة الإلحاق
+      </p>
+      <EditDropdown
+        options={attachmentUnitOptions}
+        value={attachmentUnitId}
+        onChange={(option) => {
+          setAttachmentUnitId(option.id);
+          setAttachmentError("");
+        }}
+        disabled={!isAttachmentEnabled}
+        placeholder={
+          isAttachmentEnabled ? "اختر جهة الإلحاق" : "غير مفعّل - الموقف الخدمي ليس ملحق"
+        }
+      />
+      {attachmentError && (
+        <p className="text-right mt-1" style={{ ...FONT, fontSize: 12, color: "#ef4444" }}>
+          {attachmentError}
+        </p>
+      )}
+    </div>}
+  right={
+<div></div>
+  }
+/>
+            </div>
+
+            {/* Divider */}
+            <div
+              className="w-full"
+              style={{ borderTop: "1px solid #f0f1f5" }}
+            />
+
+            {/* ==================================================
+                Section 3: بيانات إضافية
+                (الإدارة - تاريخ التسريح - المستوى التعليمي)
+            ================================================== */}
+
+            <div className="flex flex-col gap-4">
+              <FieldsSectionTitle>بيانات إضافية</FieldsSectionTitle>
+
+              {/* Row 1: الإدارة / تاريخ التسريح */}
+
+              <FieldPair
+                left={
+                  <div>
+                    <p
+                      style={{
+                        ...FONT,
+                        fontSize: 13,
+                        color: "#717d96",
+                        marginBottom: 6,
+                      }}
+                    >
+                      الإدارة
+                    </p>
+
+                    <ReadonlyInput
+                      value={soldier.administration}
+                      note="يتم تحديد الإدارة تلقائيًا من الرقم العسكري، ولا يمكن تعديلها يدويًا"
+                    />
+                  </div>
+                }
+                right={
+                  <div>
+                    <p
+                      style={{
+                        ...FONT,
+                        fontSize: 13,
+                        color: "#717d96",
+                        marginBottom: 6,
+                      }}
+                    >
+                      تاريخ التسريح
+                    </p>
+
+                    <EditDropdown
+                      options={reserveBatchOptions}
+                      value={
+                        isVolunteerCategory
+                          ? null
+                          : dischargeDateIso
+                      }
+                      onChange={(option) => {
+                        setDischargeDateIso(option.id);
+                        setError("");
+                      }}
+                      disabled={isVolunteerCategory}
+                      placeholder="اختر دفعة الرديف"
+                    />
+
+                    {isVolunteerCategory && (
+                      <p
+                        className="text-right mt-1"
+                        style={{
+                          ...FONT,
+                          fontSize: 12,
+                          color: "#717d96",
+                        }}
+                      >
+                        غير مطلوب لفئة "متطوع" — سيتم حفظه بقيمة فارغة
+                      </p>
+                    )}
+                  </div>
+                }
+              />
+
+              {/* Row 2: المستوى التعليمي (حقل مفرد) */}
+
+              <FieldPair
+                left={
+                  <div>
+                    <p
+                      style={{
+                        ...FONT,
+                        fontSize: 13,
+                        color: "#717d96",
+                        marginBottom: 6,
+                      }}
+                    >
+                      المستوى التعليمي
+                    </p>
+                    <ReadonlyInput value={soldier.educationLevel} />
+                  </div>
+                }
+                right={<div></div>}
+              />
+            </div>
 
             {/* Error */}
 
