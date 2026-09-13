@@ -31,6 +31,23 @@ import {
   COLUMN_TYPE_LABELS,
 } from "../../lib/sheets";
 import { SheetReportsTab } from "../components/sheets/SheetReportsTab";
+import {
+  DndContext,
+  closestCenter,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  arrayMove,
+  useSortable,
+} from "@dnd-kit/sortable";
+
+import { CSS } from "@dnd-kit/utilities";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
@@ -135,6 +152,74 @@ function SheetLogsModal({
 }
 
 // =====================================================
+// عنصر قابل للسحب (عمود في نافذة الطباعة)
+// =====================================================
+
+function SortableColumnItem({
+  id,
+  checked,
+  onToggle,
+  children,
+}: {
+  id: string;
+  checked: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,   // ← مهم جدًا
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: checked ? 1 : 0.5,
+    // بنشيل أي تأثير على الـ layout أثناء السحب
+    zIndex: isDragging ? 10 : undefined,
+    position: "relative",
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-2.5 px-3 py-2.5 rounded-[8px] border border-[#e2e7f0] bg-white"
+    >
+      <button
+        ref={setActivatorNodeRef}   // ← ربط زرار السحب بالـ activator
+        type="button"
+        {...attributes}
+        {...listeners}
+        style={{
+          cursor: isDragging ? "grabbing" : "grab",
+          touchAction: "none",
+          userSelect: "none",
+          WebkitUserSelect: "none",
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <GripVertical size={16} />
+      </button>
+
+      <input type="checkbox" checked={checked} onChange={onToggle} />
+
+      {children}
+    </div>
+  );
+}
+
+// =====================================================
 // نافذة اختيار وترتيب أعمدة الطباعة (Drag & Drop)
 // =====================================================
 
@@ -157,43 +242,80 @@ function PrintColumnsModal({
   const [includeSignature, setIncludeSignature] = useState(true);
   const [error, setError] = useState("");
 
-  const dragIndexRef = useState<{ current: number | null }>({
-    current: null,
-  })[0];
+  const overlayMouseDown = useRef(false);
+
+  // MouseSensor + TouchSensor أوضح وأثبت من PointerSensor مع Tailwind/React StrictMode
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 4 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 150, tolerance: 5 },
+    })
+  );
+
+  // ====== Safety net قوي ======
+  // أي حدث "up" على مستوى الويندو بيعمل reset للـ cursor والـ classes
+  useEffect(() => {
+    const hardReset = () => {
+      document.documentElement.style.cursor = "";
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.body.style.pointerEvents = "";
+      document.body.classList.remove("dragging");
+      document.body.removeAttribute("data-dnd-dragging");
+    };
+
+    window.addEventListener("pointerup", hardReset, true);
+    window.addEventListener("pointercancel", hardReset, true);
+    window.addEventListener("mouseup", hardReset, true);
+    window.addEventListener("touchend", hardReset, true);
+    window.addEventListener("blur", hardReset);
+    document.addEventListener("visibilitychange", hardReset);
+
+    return () => {
+      window.removeEventListener("pointerup", hardReset, true);
+      window.removeEventListener("pointercancel", hardReset, true);
+      window.removeEventListener("mouseup", hardReset, true);
+      window.removeEventListener("touchend", hardReset, true);
+      window.removeEventListener("blur", hardReset);
+      document.removeEventListener("visibilitychange", hardReset);
+      hardReset();
+    };
+  }, []);
 
   function toggleChecked(id: string) {
     setChecked((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
 
-  function handleDragStart(index: number) {
-    dragIndexRef.current = index;
+  function handleDragStart() {
+    document.body.classList.add("dragging");
   }
 
-  function handleDragOver(e: React.DragEvent) {
-    e.preventDefault();
-  }
+  function handleDragEnd(event: any) {
+    const { active, over } = event;
+    document.documentElement.style.cursor = "";
+    document.body.style.cursor = "";
+    document.body.classList.remove("dragging");
 
-  function handleDrop(targetIndex: number) {
-    const sourceIndex = dragIndexRef.current;
+    if (!over || active.id === over.id) return;
 
-    if (sourceIndex === null || sourceIndex === targetIndex) return;
-
-    setOrder((prev) => {
-      const next = [...prev];
-      const [moved] = next.splice(sourceIndex, 1);
-      next.splice(targetIndex, 0, moved);
-      return next;
+    setOrder((items) => {
+      const oldIndex = items.indexOf(active.id);
+      const newIndex = items.indexOf(over.id);
+      return arrayMove(items, oldIndex, newIndex);
     });
+  }
 
-    dragIndexRef.current = null;
+  function handleDragCancel() {
+    document.documentElement.style.cursor = "";
+    document.body.style.cursor = "";
+    document.body.classList.remove("dragging");
   }
 
   function handleConfirm() {
@@ -211,12 +333,20 @@ function PrintColumnsModal({
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
+      onMouseDown={(e) => {
+        overlayMouseDown.current = e.target === e.currentTarget;
+      }}
+      onMouseUp={(e) => {
+        if (overlayMouseDown.current && e.target === e.currentTarget) {
+          onClose();
+        }
+        overlayMouseDown.current = false;
+      }}
     >
       <div
         dir="rtl"
         className="bg-white rounded-[16px] w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#eff0f6]">
           <h2 style={{ ...F, fontWeight: 700, fontSize: 17, color: "#2d3648" }}>
@@ -252,35 +382,35 @@ function PrintColumnsModal({
             </div>
           )}
 
-          <div className="flex flex-col gap-2">
-            {order.map((id, index) => {
-              const col = columnsById.get(id);
-
-              return (
-                <div
-                  key={id}
-                  draggable
-                  onDragStart={() => handleDragStart(index)}
-                  onDragOver={handleDragOver}
-                  onDrop={() => handleDrop(index)}
-                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-[8px] border border-[#e2e7f0] bg-white cursor-move"
-                  style={{ opacity: checked.has(id) ? 1 : 0.5 }}
-                >
-                  <GripVertical size={16} className="text-[#a1aebe] shrink-0" />
-
-                  <input
-                    type="checkbox"
-                    checked={checked.has(id)}
-                    onChange={() => toggleChecked(id)}
-                    className="w-4 h-4 accent-[#00b867] shrink-0"
-                  />
-
-                  <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
-                    {index + 1}. {col?.name}
-                  </span>
-                </div>
-              );
-            })}
+          <div className="flex flex-col gap-2" style={{ touchAction: "none" }}>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
+            >
+              <SortableContext
+                items={order}
+                strategy={verticalListSortingStrategy}
+              >
+                {order.map((id, index) => {
+                  const col = columnsById.get(id);
+                  return (
+                    <SortableColumnItem
+                      key={id}
+                      id={id}
+                      checked={checked.has(id)}
+                      onToggle={() => toggleChecked(id)}
+                    >
+                      <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
+                        {index + 1}. {col?.name}
+                      </span>
+                    </SortableColumnItem>
+                  );
+                })}
+              </SortableContext>
+            </DndContext>
           </div>
 
           <div className="w-full h-px bg-[#eff0f6]" />
@@ -292,7 +422,6 @@ function PrintColumnsModal({
               onChange={() => setIncludeSignature((v) => !v)}
               className="w-4 h-4 accent-[#00b867]"
             />
-
             <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
               إظهار بلوك التوقيع في الكشف
             </span>
@@ -643,7 +772,7 @@ export function SheetDetailPage() {
     }
   }
 
-   function toArabicDigitsStr(value: string): string {
+  function toArabicDigitsStr(value: string): string {
     return value.replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[Number(d)]);
   }
 
@@ -896,6 +1025,7 @@ export function SheetDetailPage() {
       printWindow.onload = doPrint;
     }
   }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20" dir="rtl">
@@ -1064,183 +1194,183 @@ export function SheetDetailPage() {
       )}
 
       {activeTab === "data" && (
-      <div className="bg-white rounded-[16px] border border-[#eff0f6] overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[700px]" dir="rtl">
-            <thead>
-              <tr>
-                <th className="bg-[#f7f9fc] px-4 py-3 text-right border-b-2 border-[#e2e7f0] w-12">
-                  <span style={{ ...F, fontSize: 13, color: "#717d96" }}>م</span>
-                </th>
+        <div className="bg-white rounded-[16px] border border-[#eff0f6] overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[700px]" dir="rtl">
+              <thead>
+                <tr>
+                  <th className="bg-[#f7f9fc] px-4 py-3 text-right border-b-2 border-[#e2e7f0] w-12">
+                    <span style={{ ...F, fontSize: 13, color: "#717d96" }}>م</span>
+                  </th>
 
-                {columns.map((col) => (
-                  <th
-                    key={col.id}
-                    className="bg-[#f7f9fc] px-4 py-3 text-right border-b-2 border-[#e2e7f0]"
-                  >
-                    <div className="flex items-center gap-2 justify-between">
-                      <span style={{ ...F, fontSize: 13, color: "#717d96" }}>
-                        {col.name}
-                        <span className="text-[10px] text-[#a1aebe] mr-1">
-                          ({COLUMN_TYPE_LABELS[col.column_type]})
+                  {columns.map((col) => (
+                    <th
+                      key={col.id}
+                      className="bg-[#f7f9fc] px-4 py-3 text-right border-b-2 border-[#e2e7f0]"
+                    >
+                      <div className="flex items-center gap-2 justify-between">
+                        <span style={{ ...F, fontSize: 13, color: "#717d96" }}>
+                          {col.name}
+                          <span className="text-[10px] text-[#a1aebe] mr-1">
+                            ({COLUMN_TYPE_LABELS[col.column_type]})
+                          </span>
                         </span>
-                      </span>
 
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteColumn(col.id)}
+                            className="text-[#e3282c] hover:opacity-70 shrink-0"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </th>
+                  ))}
+
+                  <th className="bg-[#f7f9fc] px-4 py-3 border-b-2 border-[#e2e7f0] w-16" />
+                </tr>
+              </thead>
+
+              <tbody>
+                {rows.map((row, index) => (
+                  <tr key={row.id} className="hover:bg-[#fafbff]">
+                    <td className="px-4 py-2 border-b border-[#eaecf0]">
+                      <span style={{ ...F, fontSize: 13, color: "#717d96" }}>
+                        {index + 1}
+                      </span>
+                    </td>
+
+                    {columns.map((col) => (
+                      <td key={col.id} className="px-2 py-1.5 border-b border-[#eaecf0]">
+                        <input
+                          type={col.column_type === "NUMBER" ? "number" : col.column_type === "DATE" ? "date" : "text"}
+                          value={getCellValue(row.id, col.id)}
+                          onChange={(e) =>
+                            handleCellChange(row.id, col.id, e.target.value)
+                          }
+                          onFocus={() => handleCellFocus(row.id, col.id)}
+                          onBlur={() =>
+                            handleCellBlur(row.id, col.id, index + 1, col.name)
+                          }
+                          disabled={!canEdit}
+                          dir="rtl"
+                          className="w-full h-[38px] rounded-[6px] border border-transparent hover:border-[#e2e7f0] focus:border-[#00b867] px-2 outline-none disabled:bg-transparent"
+                          style={{ ...F, fontSize: 14, color: "#2d3648" }}
+                        />
+                      </td>
+                    ))}
+
+                    <td className="px-4 py-2 border-b border-[#eaecf0]">
                       {canDelete && (
                         <button
                           type="button"
-                          onClick={() => handleDeleteColumn(col.id)}
-                          className="text-[#e3282c] hover:opacity-70 shrink-0"
+                          onClick={() => handleDeleteRow(row.id)}
+                          className="w-8 h-8 rounded-[6px] flex items-center justify-center"
+                          style={{ background: "#fce8f1" }}
                         >
-                          <Trash2 size={13} />
+                          <Trash2 size={13} color="#e3282c" />
                         </button>
                       )}
-                    </div>
-                  </th>
+                    </td>
+                  </tr>
                 ))}
 
-                <th className="bg-[#f7f9fc] px-4 py-3 border-b-2 border-[#e2e7f0] w-16" />
-              </tr>
-            </thead>
-
-            <tbody>
-              {rows.map((row, index) => (
-                <tr key={row.id} className="hover:bg-[#fafbff]">
-                  <td className="px-4 py-2 border-b border-[#eaecf0]">
-                    <span style={{ ...F, fontSize: 13, color: "#717d96" }}>
-                      {index + 1}
-                    </span>
-                  </td>
-
-                  {columns.map((col) => (
-                    <td key={col.id} className="px-2 py-1.5 border-b border-[#eaecf0]">
-                      <input
-                        type={col.column_type === "NUMBER" ? "number" : col.column_type === "DATE" ? "date" : "text"}
-                        value={getCellValue(row.id, col.id)}
-                        onChange={(e) =>
-                          handleCellChange(row.id, col.id, e.target.value)
-                        }
-                        onFocus={() => handleCellFocus(row.id, col.id)}
-                        onBlur={() =>
-                          handleCellBlur(row.id, col.id, index + 1, col.name)
-                        }
-                        disabled={!canEdit}
-                        dir="rtl"
-                        className="w-full h-[38px] rounded-[6px] border border-transparent hover:border-[#e2e7f0] focus:border-[#00b867] px-2 outline-none disabled:bg-transparent"
-                        style={{ ...F, fontSize: 14, color: "#2d3648" }}
-                      />
+                {rows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={columns.length + 2}
+                      className="py-10 text-center"
+                    >
+                      <span style={{ ...F, fontSize: 14, color: "#a1aebe" }}>
+                        لا توجد بيانات في هذا الكشف بعد
+                      </span>
                     </td>
-                  ))}
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
 
-                  <td className="px-4 py-2 border-b border-[#eaecf0]">
-                    {canDelete && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteRow(row.id)}
-                        className="w-8 h-8 rounded-[6px] flex items-center justify-center"
-                        style={{ background: "#fce8f1" }}
-                      >
-                        <Trash2 size={13} color="#e3282c" />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-
-              {rows.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={columns.length + 2}
-                    className="py-10 text-center"
-                  >
-                    <span style={{ ...F, fontSize: 14, color: "#a1aebe" }}>
-                      لا توجد بيانات في هذا الكشف بعد
-                    </span>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {canEdit && (
-          <div className="px-6 py-4 border-t border-[#eff0f6] flex items-center gap-3 flex-wrap">
-            <button
-              type="button"
-              onClick={handleAddRow}
-              className="flex items-center gap-1.5 h-[38px] px-4 rounded-[7px]"
-              style={{ background: "#f0f2fd" }}
-            >
-              <Plus size={14} color="#1f3d97" />
-              <span style={{ ...F, fontSize: 13, color: "#1f3d97" }}>
-                إضافة صف
-              </span>
-            </button>
-
-            {!showAddColumn ? (
+          {canEdit && (
+            <div className="px-6 py-4 border-t border-[#eff0f6] flex items-center gap-3 flex-wrap">
               <button
                 type="button"
-                onClick={() => setShowAddColumn(true)}
-                className="flex items-center gap-1.5 h-[38px] px-4 rounded-[7px] border border-[#e2e7f0]"
+                onClick={handleAddRow}
+                className="flex items-center gap-1.5 h-[38px] px-4 rounded-[7px]"
+                style={{ background: "#f0f2fd" }}
               >
-                <Plus size={14} color="#2d3648" />
-                <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>
-                  إضافة عمود
+                <Plus size={14} color="#1f3d97" />
+                <span style={{ ...F, fontSize: 13, color: "#1f3d97" }}>
+                  إضافة صف
                 </span>
               </button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={newColumnName}
-                  onChange={(e) => setNewColumnName(e.target.value)}
-                  placeholder="اسم العمود"
-                  dir="rtl"
-                  className="h-[38px] rounded-[7px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867]"
-                  style={{ ...F, fontSize: 13, color: "#2d3648" }}
-                />
 
-                <select
-                  value={newColumnType}
-                  onChange={(e) =>
-                    setNewColumnType(e.target.value as SheetColumnType)
-                  }
-                  dir="rtl"
-                  className="h-[38px] rounded-[7px] border border-[#e2e7f0] px-2 text-right outline-none bg-white"
-                  style={{ ...F, fontSize: 13, color: "#2d3648" }}
-                >
-                  {Object.entries(COLUMN_TYPE_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-
+              {!showAddColumn ? (
                 <button
                   type="button"
-                  onClick={handleAddColumn}
-                  className="h-[38px] px-4 rounded-[7px]"
-                  style={{ background: "#00b867", color: "#fff", ...F, fontSize: 13 }}
+                  onClick={() => setShowAddColumn(true)}
+                  className="flex items-center gap-1.5 h-[38px] px-4 rounded-[7px] border border-[#e2e7f0]"
                 >
-                  إضافة
+                  <Plus size={14} color="#2d3648" />
+                  <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>
+                    إضافة عمود
+                  </span>
                 </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newColumnName}
+                    onChange={(e) => setNewColumnName(e.target.value)}
+                    placeholder="اسم العمود"
+                    dir="rtl"
+                    className="h-[38px] rounded-[7px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867]"
+                    style={{ ...F, fontSize: 13, color: "#2d3648" }}
+                  />
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddColumn(false);
-                    setNewColumnName("");
-                  }}
-                  className="h-[38px] px-3 rounded-[7px] border border-[#e2e7f0]"
-                  style={{ ...F, fontSize: 13, color: "#717d96" }}
-                >
-                  إلغاء
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+                  <select
+                    value={newColumnType}
+                    onChange={(e) =>
+                      setNewColumnType(e.target.value as SheetColumnType)
+                    }
+                    dir="rtl"
+                    className="h-[38px] rounded-[7px] border border-[#e2e7f0] px-2 text-right outline-none bg-white"
+                    style={{ ...F, fontSize: 13, color: "#2d3648" }}
+                  >
+                    {Object.entries(COLUMN_TYPE_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={handleAddColumn}
+                    className="h-[38px] px-4 rounded-[7px]"
+                    style={{ background: "#00b867", color: "#fff", ...F, fontSize: 13 }}
+                  >
+                    إضافة
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddColumn(false);
+                      setNewColumnName("");
+                    }}
+                    className="h-[38px] px-3 rounded-[7px] border border-[#e2e7f0]"
+                    style={{ ...F, fontSize: 13, color: "#717d96" }}
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {showPrintModal && (

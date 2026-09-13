@@ -1076,7 +1076,7 @@ const { hasPermission } = usePermissions();
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-b border-[#cbd2e0]">
 
           <SectionTitle>
-            البيانات التعريفية
+           بيانات الفرد
           </SectionTitle>
 
           <div className="flex-1" />
@@ -1261,7 +1261,7 @@ const { hasPermission } = usePermissions();
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-b border-[#cbd2e0]">
 
           <SectionTitle>
-            سجل الخطابات
+            سجل خطابات الفرد
           </SectionTitle>
 
                     <div className="flex-1" />
