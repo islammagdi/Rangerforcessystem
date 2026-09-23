@@ -777,21 +777,6 @@ function ActionButtons({
         />
       </button>
 
-      <button
-        type="button"
-        title="تحويل"
-        className="w-[40px] h-[30px] rounded-[4px] flex items-center justify-center hover:opacity-80"
-        style={{
-          backgroundColor: "#f5f5f5",
-        }}
-      >
-        <ArrowLeftRight
-          size={14}
-          style={{
-            color: "#2D3648",
-          }}
-        />
-      </button>
     </div>
   );
 }
@@ -1071,10 +1056,7 @@ const { hasPermission } = usePermissions();
       } = await supabase.auth.getUser();
 
       if (userError) {
-        console.error(
-          "Get current user error:",
-          userError
-        );
+
         return;
       }
 
@@ -1094,10 +1076,7 @@ const { hasPermission } = usePermissions();
         .single();
 
       if (profileError) {
-        console.error(
-          "Profile error:",
-          profileError
-        );
+
       }
 
       setCurrentUserName(
@@ -1141,10 +1120,7 @@ const { hasPermission } = usePermissions();
           (data ?? []) as UnitRow[]
         );
       } catch (error) {
-        console.error(
-          "Load units error:",
-          error
-        );
+
 
         setUnits([]);
       } finally {
@@ -1279,10 +1255,7 @@ const { hasPermission } = usePermissions();
           .maybeSingle();
 
         if (profileError) {
-          console.error(
-            "Profile error:",
-            profileError
-          );
+
         }
 
         userName =
@@ -1479,17 +1452,11 @@ const { hasPermission } = usePermissions();
             }),
           });
         } catch (auditError) {
-          console.error(
-            "Audit log error:",
-            auditError
-          );
+
         }
       }
     } catch (error) {
-      console.error(
-        "Individual query error:",
-        error
-      );
+
 
       setSearchError(
         error instanceof Error
@@ -1617,10 +1584,7 @@ const { hasPermission } = usePermissions();
           }),
         });
       } catch (auditError) {
-        console.error(
-          "Audit delete error:",
-          auditError
-        );
+
       }
 
       setResults((previous) =>
@@ -1641,10 +1605,7 @@ const { hasPermission } = usePermissions();
         return next;
       });
     } catch (error) {
-      console.error(
-        "Delete personnel error:",
-        error
-      );
+
 
       alert(
         "حدث خطأ أثناء حذف الفرد"
@@ -1841,7 +1802,7 @@ const { hasPermission } = usePermissions();
               placeholder={
                 queryBasis ===
                 "رقم عسكري"
-                  ? "أدخل الرقم العسكري او جزء منه    "
+                  ? "أدخل الرقم العسكري او جزء منه"
                   : "أدخل الاسم او جزء منه"
               }
               className={[
@@ -1864,7 +1825,7 @@ const { hasPermission } = usePermissions();
 
 {queryTextError && (
               <p
-                className="absolute top-full right-0 mt-1"
+                className="absolute top-full inset-x-0 mt-1 text-right break-words"
                 style={{
                   fontFamily:
                     "'Almarai', sans-serif",
@@ -1984,7 +1945,7 @@ const { hasPermission } = usePermissions();
           {/* ═══════════════════════════════════════════════════════════════ */}
 
           {found && (
-            <div className="w-full bg-white border border-[#e2e7f0] rounded-[12px] p-5 shadow-sm">
+            <div className="w-full bg-white border border-[#e2e7f0] rounded-[12px] p-4 sm:p-5 shadow-sm">
 
               <div className="flex flex-col gap-4">
 
@@ -2040,7 +2001,7 @@ const { hasPermission } = usePermissions();
 
                 {/* Filter Fields */}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
                   {/* ⭐ Name Filter */}
 
@@ -2217,7 +2178,7 @@ const { hasPermission } = usePermissions();
           {/* ═══════════════════════════════════════════════════════════════ */}
 
           {filteredNotFound && (
-            <div className="w-full py-12 flex flex-col items-center gap-3 bg-white rounded-[12px] border border-[#e2e7f0]">
+            <div className="w-full py-12 flex flex-col items-center gap-3 bg-white rounded-[12px] border border-[#e2e7f0] px-4 text-center">
               <p
                 style={{
                   fontFamily:
@@ -2281,7 +2242,7 @@ const { hasPermission } = usePermissions();
           {/* ═══════════════════════════════════════════════════════════════ */}
 
           {notFound && (
-            <div className="w-full py-16 flex flex-col items-center gap-3 bg-white rounded-[12px] border border-[#e2e7f0]">
+            <div className="w-full py-16 flex flex-col items-center gap-3 bg-white rounded-[12px] border border-[#e2e7f0] px-4 text-center">
               <p
                 style={{
                   fontFamily:

@@ -7,9 +7,6 @@ import {
   AlertCircle,
   History,
   FileSpreadsheet,
-  Trash2,
-  AlertTriangle,
-  X,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -130,17 +127,6 @@ export function DataBackupPage() {
   const [exportingExcel, setExportingExcel] = useState(false);
 
   // =========================================================
-  // Reset States
-  // =========================================================
-
-  const [showResetModal, setShowResetModal] = useState(false);
-  const [resetConfirmText, setResetConfirmText] = useState("");
-  const [resetting, setResetting] = useState(false);
-  const [resetError, setResetError] = useState("");
-
-  const RESET_CONFIRM_PHRASE = "حذف جميع البيانات";
-
-  // =========================================================
   // تحميل سجل النسخ الاحتياطية
   // =========================================================
 
@@ -156,8 +142,6 @@ export function DataBackupPage() {
       .order("created_at", { ascending: false });
 
     if (fetchError) {
-      console.error("Load backup logs error:", fetchError);
-
       setLogsError(
         `حدث خطأ أثناء تحميل سجل النسخ: ${fetchError.message}`
       );
@@ -261,7 +245,7 @@ export function DataBackupPage() {
       const { userId, userName } =
         await getCurrentUserInfo();
 
-      const { error: logError } = await supabase
+      await supabase
         .from("backup_logs")
         .insert({
           created_by: userId,
@@ -273,24 +257,12 @@ export function DataBackupPage() {
           status: "SUCCESS",
         });
 
-      if (logError) {
-        console.error(
-          "Backup log error:",
-          logError
-        );
-      }
-
       setSuccessMsg(
         `تم إنشاء النسخة الاحتياطية بنجاح (${totalRecords} سجل)`
       );
 
       await loadBackupLogs();
     } catch (err: any) {
-      console.error(
-        "Backup creation error:",
-        err
-      );
-
       setError(
         err?.message ||
           "حدث خطأ أثناء إنشاء النسخة الاحتياطية"
@@ -355,11 +327,6 @@ export function DataBackupPage() {
         "تم تصدير النسخة الاحتياطية كملف Excel بنجاح"
       );
     } catch (err: any) {
-      console.error(
-        "Excel export error:",
-        err
-      );
-
       setError(
         err?.message ||
           "حدث خطأ أثناء تصدير ملف Excel"
@@ -413,87 +380,12 @@ export function DataBackupPage() {
 
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      console.error(
-        "Download backup error:",
-        err
-      );
-
       setLogsError(
         err?.message ||
           "حدث خطأ أثناء تحميل النسخة الاحتياطية"
       );
     } finally {
       setDownloadingId(null);
-    }
-  }
-
-  // =========================================================
-  // Reset System
-  // =========================================================
-
-  function openResetModal() {
-    setResetConfirmText("");
-    setResetError("");
-    setShowResetModal(true);
-  }
-
-  function closeResetModal() {
-    if (resetting) return;
-
-    setShowResetModal(false);
-    setResetConfirmText("");
-    setResetError("");
-  }
-
-  async function handleResetSystem() {
-    if (
-      resetConfirmText.trim() !==
-      RESET_CONFIRM_PHRASE
-    ) {
-      setResetError(
-        `يرجى كتابة العبارة "${RESET_CONFIRM_PHRASE}" بالضبط للتأكيد`
-      );
-
-      return;
-    }
-
-    setResetting(true);
-    setResetError("");
-    setError("");
-    setSuccessMsg("");
-
-    try {
-      const { error: rpcError } =
-        await supabase.rpc(
-          "reset_system_data"
-        );
-
-      if (rpcError) {
-        throw new Error(
-          rpcError.message
-        );
-      }
-
-      setShowResetModal(false);
-      setResetConfirmText("");
-
-      setSuccessMsg(
-        "تم حذف جميع بيانات النظام (الأفراد والخطابات) بنجاح، ماعدا حساب الأدمن."
-      );
-
-      await loadBackupLogs();
-    } catch (err: any) {
-      console.error(
-        "Reset system data error:",
-        err
-      );
-
-      setResetError(
-        err?.message ||
-          "حدث خطأ أثناء تنفيذ عملية إعادة تعيين النظام"
-      );
-    } finally {
-      setResetting(false);
     }
   }
 
@@ -912,258 +804,6 @@ export function DataBackupPage() {
           </div>
         )}
       </section>
-
-      {/* =================================================
-          منطقة الخطر
-      ================================================= */}
-
-      <section
-        className="rounded-[20px] p-6 flex flex-col items-center gap-4"
-        style={{
-          background: "#fef2f2",
-          border: "1px solid #fecaca",
-        }}
-      >
-        <div
-          className="w-16 h-16 rounded-full flex items-center justify-center"
-          style={{
-            background: "#fee2e2",
-          }}
-        >
-          <AlertTriangle
-            size={28}
-            color="#dc2626"
-          />
-        </div>
-
-        <p
-          style={{
-            ...F,
-            fontWeight: 700,
-            fontSize: 17,
-            color: "#991b1b",
-            textAlign: "center",
-          }}
-        >
-          منطقة خطر: إعادة تعيين النظام بالكامل
-        </p>
-
-        <p
-          style={{
-            ...F,
-            fontSize: 14,
-            color: "#7f1d1d",
-            textAlign: "center",
-            lineHeight: 1.8,
-          }}
-        >
-          هذا الإجراء سيحذف نهائيًا جميع
-          الخطابات وجميع الأفراد المسجلين
-          وحساباتهم، ولا يمكن التراجع عنه بعد
-          التنفيذ. يُنصح بشدة بإنشاء نسخة
-          احتياطية قبل المتابعة.
-        </p>
-
-        <button
-          type="button"
-          onClick={openResetModal}
-          className="h-[54px] px-8 rounded-[8px] flex items-center gap-2"
-          style={{
-            background:
-              "linear-gradient(to bottom,#e3282c,#991b1b)",
-          }}
-        >
-          <Trash2
-            size={18}
-            color="#fff"
-          />
-
-          <span
-            style={{
-              ...F,
-              fontSize: 16,
-              color: "#fff",
-            }}
-          >
-            حذف جميع بيانات النظام
-          </span>
-        </button>
-      </section>
-
-      {/* =================================================
-          Reset Confirmation Modal
-      ================================================= */}
-
-      {showResetModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div
-            className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
-            dir="rtl"
-          >
-            {/* Header */}
-
-            <div className="flex items-center justify-between px-6 py-5 border-b border-[#e2e7f0]">
-              <div className="flex items-center gap-2">
-                <AlertTriangle
-                  size={20}
-                  className="text-[#dc2626]"
-                />
-
-                <span
-                  style={{
-                    ...F,
-                    fontWeight: 700,
-                    fontSize: 18,
-                    color: "#2d3648",
-                  }}
-                >
-                  تأكيد حذف جميع البيانات
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={closeResetModal}
-                disabled={resetting}
-                className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center disabled:opacity-50"
-              >
-                <X size={19} />
-              </button>
-            </div>
-
-            {/* Body */}
-
-            <div className="p-6 flex flex-col gap-4">
-              <div
-                className="rounded-xl border border-red-200 bg-red-50 px-4 py-3"
-                style={{
-                  ...F,
-                  fontSize: 13,
-                  color: "#991b1b",
-                  lineHeight: 1.8,
-                }}
-              >
-                ⚠️ هذا الإجراء سيحذف نهائيًا:
-
-                <br />
-
-                • جميع الخطابات ومرفقاتها
-
-                <br />
-
-                • جميع الأفراد المسجلين (ماعدا
-                حساب الأدمن)
-
-                <br />
-
-                • جميع الحسابات المرتبطة بهم
-
-                <br />
-                <br />
-
-                <strong>
-                  لا يمكن التراجع عن هذا الإجراء
-                  بعد التنفيذ.
-                </strong>
-              </div>
-
-              {resetError && (
-                <div
-                  className="rounded-xl border border-red-200 bg-red-50 px-4 py-3"
-                  style={{
-                    ...F,
-                    fontSize: 13,
-                    color: "#b91c1c",
-                  }}
-                >
-                  {resetError}
-                </div>
-              )}
-
-              <div className="flex flex-col gap-1.5">
-                <label
-                  htmlFor="reset-confirm"
-                  style={{
-                    ...F,
-                    fontSize: 14,
-                    color: "#2d3648",
-                  }}
-                >
-                  للتأكيد، اكتب العبارة التالية
-                  بالضبط:
-                  <strong className="mr-1">
-                    {RESET_CONFIRM_PHRASE}
-                  </strong>
-                </label>
-
-                <input
-                  id="reset-confirm"
-                  type="text"
-                  value={resetConfirmText}
-                  onChange={(e) =>
-                    setResetConfirmText(
-                      e.target.value
-                    )
-                  }
-                  dir="rtl"
-                  disabled={resetting}
-                  className="w-full h-[46px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#dc2626] disabled:opacity-60"
-                  style={{
-                    ...F,
-                    fontSize: 15,
-                    color: "#2d3648",
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Footer */}
-
-            <div className="px-6 py-4 border-t border-[#e2e7f0] flex items-center gap-3">
-              <button
-                type="button"
-                onClick={closeResetModal}
-                disabled={resetting}
-                className="px-5 h-11 rounded-xl border border-[#cbd5e1] text-[#475569] hover:bg-gray-50 disabled:opacity-50"
-                style={{
-                  ...F,
-                  fontSize: 14,
-                }}
-              >
-                إلغاء
-              </button>
-
-              <button
-                type="button"
-                onClick={handleResetSystem}
-                disabled={
-                  resetting ||
-                  resetConfirmText.trim() !==
-                    RESET_CONFIRM_PHRASE
-                }
-                className="px-6 h-11 rounded-xl text-white flex items-center gap-2 disabled:opacity-50"
-                style={{
-                  background:
-                    "linear-gradient(to bottom,#e3282c,#991b1b)",
-                  ...F,
-                  fontSize: 14,
-                }}
-              >
-                {resetting && (
-                  <RefreshCw
-                    size={16}
-                    className="animate-spin"
-                  />
-                )}
-
-                {resetting
-                  ? "جاري الحذف..."
-                  : "تأكيد الحذف النهائي"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

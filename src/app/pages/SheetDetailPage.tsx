@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Plus, Trash2, Printer, ArrowRight, Pencil, Check, X, GripVertical, History } from "lucide-react";
+import { Plus, Trash2, Printer, ArrowRight, Pencil, Check, X, History, ChevronUp, ChevronDown } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { usePermissions } from "../../lib/usePermissions";
 import { logActivity } from "../../lib/logActivity";
@@ -31,23 +31,7 @@ import {
   COLUMN_TYPE_LABELS,
 } from "../../lib/sheets";
 import { SheetReportsTab } from "../components/sheets/SheetReportsTab";
-import {
-  DndContext,
-  closestCenter,
-  MouseSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
 
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  arrayMove,
-  useSortable,
-} from "@dnd-kit/sortable";
-
-import { CSS } from "@dnd-kit/utilities";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
@@ -151,73 +135,6 @@ function SheetLogsModal({
   );
 }
 
-// =====================================================
-// عنصر قابل للسحب (عمود في نافذة الطباعة)
-// =====================================================
-
-function SortableColumnItem({
-  id,
-  checked,
-  onToggle,
-  children,
-}: {
-  id: string;
-  checked: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    setActivatorNodeRef,   // ← مهم جدًا
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id });
-
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: checked ? 1 : 0.5,
-    // بنشيل أي تأثير على الـ layout أثناء السحب
-    zIndex: isDragging ? 10 : undefined,
-    position: "relative",
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className="flex items-center gap-2.5 px-3 py-2.5 rounded-[8px] border border-[#e2e7f0] bg-white"
-    >
-      <button
-        ref={setActivatorNodeRef}   // ← ربط زرار السحب بالـ activator
-        type="button"
-        {...attributes}
-        {...listeners}
-        style={{
-          cursor: isDragging ? "grabbing" : "grab",
-          touchAction: "none",
-          userSelect: "none",
-          WebkitUserSelect: "none",
-          background: "transparent",
-          border: "none",
-          padding: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <GripVertical size={16} />
-      </button>
-
-      <input type="checkbox" checked={checked} onChange={onToggle} />
-
-      {children}
-    </div>
-  );
-}
 
 // =====================================================
 // نافذة اختيار وترتيب أعمدة الطباعة (Drag & Drop)
@@ -232,10 +149,7 @@ function PrintColumnsModal({
   columnIds: string[];
   columnsById: Map<string, SheetColumn>;
   onClose: () => void;
-  onConfirm: (
-    orderedSelectedIds: string[],
-    includeSignature: boolean
-  ) => void;
+  onConfirm: (orderedSelectedIds: string[], includeSignature: boolean) => void;
 }) {
   const [order, setOrder] = useState<string[]>(columnIds);
   const [checked, setChecked] = useState<Set<string>>(new Set(columnIds));
@@ -243,46 +157,6 @@ function PrintColumnsModal({
   const [error, setError] = useState("");
 
   const overlayMouseDown = useRef(false);
-
-  // MouseSensor + TouchSensor أوضح وأثبت من PointerSensor مع Tailwind/React StrictMode
-  const sensors = useSensors(
-    useSensor(MouseSensor, {
-      activationConstraint: { distance: 4 },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 150, tolerance: 5 },
-    })
-  );
-
-  // ====== Safety net قوي ======
-  // أي حدث "up" على مستوى الويندو بيعمل reset للـ cursor والـ classes
-  useEffect(() => {
-    const hardReset = () => {
-      document.documentElement.style.cursor = "";
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      document.body.style.pointerEvents = "";
-      document.body.classList.remove("dragging");
-      document.body.removeAttribute("data-dnd-dragging");
-    };
-
-    window.addEventListener("pointerup", hardReset, true);
-    window.addEventListener("pointercancel", hardReset, true);
-    window.addEventListener("mouseup", hardReset, true);
-    window.addEventListener("touchend", hardReset, true);
-    window.addEventListener("blur", hardReset);
-    document.addEventListener("visibilitychange", hardReset);
-
-    return () => {
-      window.removeEventListener("pointerup", hardReset, true);
-      window.removeEventListener("pointercancel", hardReset, true);
-      window.removeEventListener("mouseup", hardReset, true);
-      window.removeEventListener("touchend", hardReset, true);
-      window.removeEventListener("blur", hardReset);
-      document.removeEventListener("visibilitychange", hardReset);
-      hardReset();
-    };
-  }, []);
 
   function toggleChecked(id: string) {
     setChecked((prev) => {
@@ -293,29 +167,22 @@ function PrintColumnsModal({
     });
   }
 
-  function handleDragStart() {
-    document.body.classList.add("dragging");
-  }
-
-  function handleDragEnd(event: any) {
-    const { active, over } = event;
-    document.documentElement.style.cursor = "";
-    document.body.style.cursor = "";
-    document.body.classList.remove("dragging");
-
-    if (!over || active.id === over.id) return;
-
-    setOrder((items) => {
-      const oldIndex = items.indexOf(active.id);
-      const newIndex = items.indexOf(over.id);
-      return arrayMove(items, oldIndex, newIndex);
+  function moveUp(index: number) {
+    if (index === 0) return;
+    setOrder((prev) => {
+      const next = [...prev];
+      [next[index - 1], next[index]] = [next[index], next[index - 1]];
+      return next;
     });
   }
 
-  function handleDragCancel() {
-    document.documentElement.style.cursor = "";
-    document.body.style.cursor = "";
-    document.body.classList.remove("dragging");
+  function moveDown(index: number) {
+    setOrder((prev) => {
+      if (index === prev.length - 1) return prev;
+      const next = [...prev];
+      [next[index], next[index + 1]] = [next[index + 1], next[index]];
+      return next;
+    });
   }
 
   function handleConfirm() {
@@ -353,64 +220,68 @@ function PrintColumnsModal({
             اختر أعمدة الطباعة وترتيبها
           </h2>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-[#aaa] hover:text-[#555]"
-          >
+          <button type="button" onClick={onClose} className="text-[#aaa] hover:text-[#555]">
             <X size={20} />
           </button>
         </div>
 
         <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-4">
           <p style={{ ...F, fontSize: 12, color: "#a1aebe" }}>
-            اسحب العناصر لترتيبها، وألغِ تحديد أي عمود مش عايزه يظهر في الطباعة.
+            استخدم الأسهم لترتيب الأعمدة، وألغِ تحديد أي عمود مش عايزه يظهر في الطباعة.
           </p>
 
           {error && (
             <div
               className="rounded-[8px] px-4 py-2"
-              style={{
-                background: "#fef2f2",
-                border: "1px solid #fecaca",
-                color: "#991b1b",
-                ...F,
-                fontSize: 13,
-              }}
+              style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", ...F, fontSize: 13 }}
             >
               {error}
             </div>
           )}
 
-          <div className="flex flex-col gap-2" style={{ touchAction: "none" }}>
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-              onDragCancel={handleDragCancel}
-            >
-              <SortableContext
-                items={order}
-                strategy={verticalListSortingStrategy}
-              >
-                {order.map((id, index) => {
-                  const col = columnsById.get(id);
-                  return (
-                    <SortableColumnItem
-                      key={id}
-                      id={id}
-                      checked={checked.has(id)}
-                      onToggle={() => toggleChecked(id)}
+          <div className="flex flex-col gap-2">
+            {order.map((id, index) => {
+              const col = columnsById.get(id);
+
+              return (
+                <div
+                  key={id}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-[8px] border border-[#e2e7f0] bg-white"
+                  style={{ opacity: checked.has(id) ? 1 : 0.5 }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked.has(id)}
+                    onChange={() => toggleChecked(id)}
+                    className="w-4 h-4 accent-[#00b867] shrink-0"
+                  />
+
+                  <span style={{ ...F, fontSize: 14, color: "#2d3648" }} className="flex-1">
+                    {index + 1}. {col?.name}
+                  </span>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => moveUp(index)}
+                      disabled={index === 0}
+                      className="w-7 h-7 rounded-[6px] flex items-center justify-center disabled:opacity-30 hover:bg-[#f5f6fb]"
                     >
-                      <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
-                        {index + 1}. {col?.name}
-                      </span>
-                    </SortableColumnItem>
-                  );
-                })}
-              </SortableContext>
-            </DndContext>
+                      <ChevronUp size={14} />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => moveDown(index)}
+                      disabled={index === order.length - 1}
+                      className="w-7 h-7 rounded-[6px] flex items-center justify-center disabled:opacity-30 hover:bg-[#f5f6fb]"
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <div className="w-full h-px bg-[#eff0f6]" />
@@ -433,12 +304,7 @@ function PrintColumnsModal({
             type="button"
             onClick={handleConfirm}
             className="px-6 h-11 rounded-[8px]"
-            style={{
-              background: "linear-gradient(to bottom,#00b867,#00522e)",
-              ...F,
-              fontSize: 14,
-              color: "#fff",
-            }}
+            style={{ background: "linear-gradient(to bottom,#00b867,#00522e)", ...F, fontSize: 14, color: "#fff" }}
           >
             طباعة
           </button>

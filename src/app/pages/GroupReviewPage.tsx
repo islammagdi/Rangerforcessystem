@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { logActivity } from "../../lib/logActivity";
+import { useUnsavedChanges } from "../../lib/unsavedChanges";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
@@ -74,7 +75,10 @@ interface PersonnelCategory {
   code: string | null;
   is_active: boolean;
 }
-
+interface Job {
+  id: string;
+  name: string;
+}
 interface Option {
   value: string;
   label: string;
@@ -102,6 +106,8 @@ interface ClassifiedPersonnelRow {
   primary_unit_id: string | null;
   service_status_id: string | null;
   attachment_unit_id: string | null;
+    job_id?: string | null;
+  job_name?: string;
 }
 
 interface ReviewRow extends ClassifiedPersonnelRow {
@@ -132,6 +138,8 @@ const ERROR_MESSAGES = {
   UNIT_OR_ATTACHMENT: "الوحده/مكان الالحاق خطأ",
   RANK_OR_CATEGORY: "خطأ بالدرجه او فئه الفرد",
   MISSING_DISCHARGE_DATE: "تاريخ تسريح فارغ",
+    JOB_NOT_FOUND: "الوظيفة غير موجودة",
+  NAME_NOT_QUADRUPLE: "الاسم يجب أن يكون رباعيًا",
 } as const;
 
 function isSoldierRankName(name?: string | null): boolean {
@@ -190,7 +198,6 @@ function isUnitForceStatusRecord(
 
 type BadgeVariant = "success" | "info" | "error";
 
-/* FIX: Record syntax */
 const BADGE_VARIANT_STYLES: Record<
   BadgeVariant,
   {
@@ -310,8 +317,23 @@ function computeRowIssues(
       );
 
   /*
+   * 0- الاسم لازم يكون رباعي (4 أجزاء على الأقل)
+   */
+  const nameParts = (row.full_name ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (nameParts.length < 4) {
+    issues.add(ERROR_MESSAGES.NAME_NOT_QUADRUPLE);
+  }
+
+  /*
    * 1- الوحدة الأساسية لازم تكون موجودة
    */
+  if (!row.primary_unit_id) {
+    issues.add(ERROR_MESSAGES.UNIT_OR_ATTACHMENT);
+  }  
   if (!row.primary_unit_id) {
     issues.add(ERROR_MESSAGES.UNIT_OR_ATTACHMENT);
   }
@@ -351,7 +373,9 @@ function computeRowIssues(
   if (isConscript && !row.discharge_date) {
     issues.add(ERROR_MESSAGES.MISSING_DISCHARGE_DATE);
   }
-
+  if (row.job_name && !row.job_id) {
+    issues.add(ERROR_MESSAGES.JOB_NOT_FOUND);
+  }
   return Array.from(issues);
 }
 
@@ -916,6 +940,7 @@ function EditSoldierModal({
   units,
   statuses,
   categories,
+  jobs,
   otherMilitaryNumbers,
   onClose,
   onSave,
@@ -925,6 +950,7 @@ function EditSoldierModal({
   units: Unit[];
   statuses: ServiceStatus[];
   categories: PersonnelCategory[];
+  jobs: Job[];
   otherMilitaryNumbers: string[];
   onClose: () => void;
   onSave: (updated: ReviewRow) => void;
@@ -960,7 +986,12 @@ function EditSoldierModal({
   const [discharge, setDischarge] = useState(
     row.discharge_date ?? ""
   );
+  const [jobId, setJobId] = useState(row.job_id ?? "");
 
+  const jobOptions = useMemo(
+    () => jobs.map((j) => ({ value: j.id, label: j.name })),
+    [jobs]
+  );
   const [formErrors, setFormErrors] =
     useState<string[]>([]);
 
@@ -1054,6 +1085,10 @@ function EditSoldierModal({
 
     if (!trimmedName) {
       errors.push("الاسم مطلوب");
+    } else if (
+      trimmedName.split(/\s+/).filter(Boolean).length < 4
+    ) {
+      errors.push("الاسم يجب أن يكون رباعيًا (4 أجزاء على الأقل)");
     }
 
     if (!categoryId) {
@@ -1230,6 +1265,9 @@ function EditSoldierModal({
           isConscriptCategory
             ? discharge || null
             : null,
+                    job_id: jobId || null,
+        job_name:
+          jobs.find((j) => j.id === jobId)?.name ?? "",
 
         classification,
 
@@ -1238,10 +1276,7 @@ function EditSoldierModal({
         checked: true,
       });
     } catch (error: any) {
-      console.error(
-        "Error checking military number:",
-        error
-      );
+
 
       alert(
         `حدث خطأ أثناء التحقق من الرقم العسكري في قاعدة البيانات${
@@ -1445,7 +1480,13 @@ function EditSoldierModal({
               onChange={setAttachmentId}
             />
 
-            <div className="flex-1 hidden sm:block" />
+                     <ModalDropdown
+              label="الوظيفة (اختياري)"
+              placeholder="بدون وظيفة"
+              options={jobOptions}
+              value={jobId}
+              onChange={setJobId}
+            />
           </div>
         </div>
 
@@ -1506,6 +1547,7 @@ const HEADERS = [
   "الوحدة",
   "حاله الفرد",
   "مكان الالحاق",
+    "الوظيفة",
   "تاريخ التسريح",
   "حالة الفرد",
   "الاجراء",
@@ -1777,7 +1819,18 @@ function SoldierTable({
                       "لا يوجد"}
                   </span>
                 </td>
-
+                <td className="px-4 py-3">
+                  <span
+                    style={{
+                      ...F,
+                      fontSize: 14,
+                      color: "#2d3648",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {row.job_name || "—"}
+                  </span>
+                </td>
                 <td className="px-4 py-3">
                   <span
                     style={{
@@ -1934,12 +1987,29 @@ export function GroupReviewPage() {
 
   const [categories, setCategories] =
     useState<PersonnelCategory[]>([]);
-
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [referenceLoading, setReferenceLoading] =
     useState(true);
 
   const [editingRowId, setEditingRowId] =
     useState<number | null>(null);
+
+  // ─────────────────────────────────────────────────────────
+  // تتبّع التعديلات غير المحفوظة
+  // ─────────────────────────────────────────────────────────
+  // وجود "rows" معناه إن فيه كشف تم رفعه وتحليله ولسه محفوظش
+  // في قاعدة البيانات — لو المستخدم غادر (حتى من غير ما يعدّل
+  // أي صف)، هيفقد الكشف كله ويضطر يرفعه تاني
+  const { setDirty } = useUnsavedChanges();
+
+  useEffect(() => {
+    setDirty(rows.length > 0);
+  }, [rows.length, setDirty]);
+
+  useEffect(() => {
+    return () => setDirty(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* =======================================================
      Load references
@@ -1958,6 +2028,7 @@ export function GroupReviewPage() {
         unitsResult,
         statusesResult,
         categoriesResult,
+        jobsResult,
       ] = await Promise.all([
         supabase
           .from("ranks")
@@ -1997,7 +2068,12 @@ export function GroupReviewPage() {
           .eq("is_active", true)
           .order("name", {
             ascending: true,
+            
           }),
+                  supabase
+          .from("jobs")
+          .select("id,name")
+          .order("name", { ascending: true }),
       ]);
 
       if (ranksResult.error) {
@@ -2031,11 +2107,9 @@ export function GroupReviewPage() {
       setCategories(
         categoriesResult.data ?? []
       );
+            setJobs(jobsResult.error ? [] : jobsResult.data ?? []);
     } catch (error) {
-      console.error(
-        "Error loading reference data:",
-        error
-      );
+
 
       alert(
         "حدث خطأ أثناء تحميل البيانات المرجعية"
@@ -2263,65 +2337,57 @@ export function GroupReviewPage() {
     setLoading(true);
 
     try {
-      const payload =
-        approvedRows.map((row) => {
-          const conscript =
-            isConscriptCategoryId(
-              row.personnel_category_id
-            );
+      const payloadWithJob: Record<string, unknown>[] = [];
+      const payloadWithoutJob: Record<string, unknown>[] = [];
 
-          const needsAttachment =
-            requiresAttachmentForStatusId(
-              row.service_status_id
-            );
+      approvedRows.forEach((row) => {
+        const conscript = isConscriptCategoryId(
+          row.personnel_category_id
+        );
 
-          return {
-            military_number:
-              row.military_number,
+        const needsAttachment = requiresAttachmentForStatusId(
+          row.service_status_id
+        );
 
-            full_name:
-              row.full_name,
+        const item = {
+          military_number: row.military_number,
+          full_name: row.full_name,
+          rank_id: row.rank_id,
+          personnel_category_id: row.personnel_category_id,
+          service_status_id: row.service_status_id,
+          primary_unit_id: row.primary_unit_id,
+          attachment_unit_id: needsAttachment
+            ? row.attachment_unit_id
+            : null,
+          discharge_date: conscript ? row.discharge_date : null,
+          is_active: true,
+        };
 
-            rank_id:
-              row.rank_id,
+        // job_id بيتحط بس لو المستخدم اختار وظيفة. الصفوف من غير وظيفة
+        // مابنبعتش لها job_id خالص، عشان وظيفة الفرد الحالية ماتتمسحش.
+        if (row.job_id) {
+          payloadWithJob.push({ ...item, job_id: row.job_id });
+        } else {
+          payloadWithoutJob.push(item);
+        }
+      });
 
-            personnel_category_id:
-              row.personnel_category_id,
+      const savedPersonnel: { id: string; military_number: string }[] = [];
 
-            service_status_id:
-              row.service_status_id,
+      for (const batch of [payloadWithJob, payloadWithoutJob]) {
+        if (batch.length === 0) continue;
 
-            primary_unit_id:
-              row.primary_unit_id,
+        const { data, error } = await supabase
+          .from(PERSONNEL_TABLE_NAME)
+          .upsert(batch, { onConflict: "military_number" })
+          .select("id, military_number");
 
-            attachment_unit_id:
-              needsAttachment
-                ? row.attachment_unit_id
-                : null,
+        if (error) {
+          throw error;
+        }
 
-            discharge_date:
-              conscript
-                ? row.discharge_date
-                : null,
-
-            is_active: true,
-          };
-        });
-
-  const { data: savedPersonnel, error } =
-  await supabase
-    .from(
-      PERSONNEL_TABLE_NAME
-    )
-    .upsert(payload, {
-      onConflict:
-        "military_number",
-    })
-    .select("id, military_number");
-
-if (error) {
-  throw error;
-}
+        savedPersonnel.push(...(data ?? []));
+      }
 const { userId, userName } = await getCurrentUserInfo();
 
 const newCount = approvedRows.filter(
@@ -2349,6 +2415,9 @@ await logActivity({
     })),
   }),
 });
+
+// ✅ الاعتماد نجح فعليًا والبيانات اتحفظت في قاعدة البيانات
+setDirty(false);
 
 navigate(
   "/dashboard/add-soldier/group-success",
@@ -2388,10 +2457,7 @@ navigate(
         }
       );
     } catch (error: any) {
-      console.error(
-        "Error saving personnel:",
-        error
-      );
+
 
       alert(
         `حدث خطأ أثناء حفظ بيانات الأفراد${
@@ -2425,6 +2491,7 @@ navigate(
           units={units}
           statuses={statuses}
           categories={categories}
+          jobs={jobs}
           otherMilitaryNumbers={rows
             .filter(
               (r) =>

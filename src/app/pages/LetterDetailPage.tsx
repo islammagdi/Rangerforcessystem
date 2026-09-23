@@ -419,10 +419,7 @@ function UploadArea({
        * لأن الخطاب بالفعل تم رفعه وتحويل حالته إلى موثق.
        */
       if (auditError) {
-        console.error(
-          "AUDIT LOG ERROR:",
-          auditError
-        );
+
       }
 
       /* =====================================================
@@ -463,10 +460,7 @@ function UploadArea({
       setFile(null);
 
     } catch (err) {
-      console.error(
-        "LETTER SAVE ERROR:",
-        err
-      );
+
 
       setError(
         err instanceof Error
@@ -743,7 +737,7 @@ const { hasPermission } = usePermissions();
   // الخطاب وقت الحفظ، وتُستخدم للطباعة لحين رفع النسخة الموقعة.
   const [previewImageUrl, setPreviewImageUrl] =
     useState("");
-
+const previewImgRef = useRef<HTMLImageElement>(null);
   /* =======================================================
      LOAD LETTER
   ======================================================= */
@@ -777,6 +771,7 @@ const { hasPermission } = usePermissions();
             letter_type_id,
             letter_date,
             issuing_unit_id,
+            destination_name,
             attachment_unit_id,
             personnel_count,
             status,
@@ -805,28 +800,35 @@ const { hasPermission } = usePermissions();
            2. LETTER TYPE
         ================================================= */
 
-        const {
-          data: letterType,
-          error: letterTypeError,
-        } = await supabase
-          .from("letter_types")
-          .select("id,name,code")
-          .eq("id", dbLetter.letter_type_id)
-          .maybeSingle();
+        let letterType: { id: string; name: string; code: string } | null =
+          null;
 
-        if (letterTypeError) {
-          throw new Error(
-            `فشل قراءة نوع الخطاب: ${letterTypeError.message}`
-          );
+        if (dbLetter.letter_type_id) {
+          const {
+            data: letterTypeData,
+            error: letterTypeError,
+          } = await supabase
+            .from("letter_types")
+            .select("id,name,code")
+            .eq("id", dbLetter.letter_type_id)
+            .maybeSingle();
+
+          if (letterTypeError) {
+            throw new Error(
+              `فشل قراءة نوع الخطاب: ${letterTypeError.message}`
+            );
+          }
+
+          letterType = letterTypeData;
         }
 
         /* =================================================
            3. ISSUING UNIT
         ================================================= */
 
-        let destination = "";
+        let destination = dbLetter.destination_name || "";
 
-        if (dbLetter.issuing_unit_id) {
+        if (!destination && dbLetter.issuing_unit_id) {
           const {
             data: issuingUnit,
             error: issuingUnitError,
@@ -1079,10 +1081,7 @@ const { hasPermission } = usePermissions();
             );
 
           if (signedError) {
-            console.error(
-              "SIGNED URL ERROR:",
-              signedError
-            );
+
           } else {
             attachmentUrl =
               signedData?.signedUrl || "";
@@ -1107,10 +1106,7 @@ const { hasPermission } = usePermissions();
             );
 
           if (previewSignedError) {
-            console.error(
-              "PREVIEW SIGNED URL ERROR:",
-              previewSignedError
-            );
+  
           } else {
             previewUrl =
               previewSignedData?.signedUrl || "";
@@ -1134,7 +1130,7 @@ const { hasPermission } = usePermissions();
           type:
             letterType?.name ||
             letterType?.code ||
-            "-",
+            "نوع خطاب غير معروف",
 
           letterNumber:
             String(dbLetter.letter_number),
@@ -1173,10 +1169,7 @@ const { hasPermission } = usePermissions();
         setPreviewImageUrl(previewUrl);
 
       } catch (error) {
-        console.error(
-          "LOAD LETTER DATA ERROR:",
-          error
-        );
+
 
         if (mounted) {
           setLetter(null);
@@ -1312,27 +1305,29 @@ const { hasPermission } = usePermissions();
    ورقة كاملة منفصلة.
 ========================================================= */
 
-function measureImageHeightMM(url: string): Promise<number> {
-  // عرض منطقة الطباعة: A4 = 210مم، ناقص هامشين 5مم (حسب
-  // @page margin: 5mm المستخدم في الطباعة هنا)
+function measureImageHeightMM(
+  url: string,
+  imgEl: HTMLImageElement | null
+): Promise<number> {
   const CONTENT_WIDTH_MM = 200;
+
+  const computeFromDimensions = (w: number, h: number) =>
+    w && h ? (h / w) * CONTENT_WIDTH_MM : 0;
+
+  if (imgEl && imgEl.complete && imgEl.naturalWidth && imgEl.naturalHeight) {
+    return Promise.resolve(
+      computeFromDimensions(imgEl.naturalWidth, imgEl.naturalHeight)
+    );
+  }
 
   return new Promise((resolve) => {
     const img = new Image();
 
     img.onload = () => {
-      if (!img.naturalWidth || !img.naturalHeight) {
-        resolve(0);
-        return;
-      }
-
-      const ratio = img.naturalHeight / img.naturalWidth;
-      resolve(ratio * CONTENT_WIDTH_MM);
+      resolve(computeFromDimensions(img.naturalWidth, img.naturalHeight));
     };
 
     img.onerror = () => {
-      // لو فشل تحميل الصورة لأي سبب، نرجّع 0 عشان الكود
-      // يكمل عادي بوضع "نسختين في ورقة واحدة" الافتراضي
       resolve(0);
     };
 
@@ -1357,7 +1352,7 @@ async function handleConfirmDelete() {
 
     navigate("/dashboard/letters-archive");
   } catch (error) {
-    console.error("DELETE LETTER ERROR:", error);
+
 
     setDeleteError(
       error instanceof Error
@@ -1418,12 +1413,12 @@ async function handleConfirmDelete() {
     } else if (!isVerified) {
       // ✅ الخطاب غير موثق (معاينة مؤقتة PNG) — نقيس الصورة
       // الأول قبل ما نقرر شكل الطباعة
-      const heightMM = await measureImageHeightMM(printUrl);
+const heightMM = await measureImageHeightMM(printUrl, previewImgRef.current);
 
       // المساحة المتاحة لكل نسخة في وضع "نسختين بورقة واحدة"
       // تقريبًا 143مم (287مم متاحة ÷ 2)، وبنستخدم سقف أقل
       // كهامش أمان قبل التحويل لوضع "ورقة لكل نسخة"
-      const MAX_HEIGHT_FOR_TWO_PER_PAGE_MM = 130;
+const MAX_HEIGHT_FOR_TWO_PER_PAGE_MM = 145;
 
       const fitsTwoPerPage =
         heightMM > 0 &&
@@ -1659,22 +1654,24 @@ async function handleConfirmDelete() {
 
           <div className="flex items-center gap-3">
 
-                       <button
-              type="button"
-              title="طباعة"
-              onClick={handleTopPrint}
-              className="w-9 h-9 rounded-[8px] flex items-center justify-center"
-              style={{
-                backgroundColor: "#ebedfd",
-              }}
-            >
-              <Printer
-                size={15}
-                style={{
-                  color: "#2d3648",
-                }}
-              />
-            </button>
+                       {hasPermission("letters_archive:print") && (
+  <button
+    type="button"
+    title="طباعة"
+    onClick={handleTopPrint}
+    className="w-9 h-9 rounded-[8px] flex items-center justify-center"
+    style={{
+      backgroundColor: "#ebedfd",
+    }}
+  >
+    <Printer
+      size={15}
+      style={{
+        color: "#2d3648",
+      }}
+    />
+  </button>
+)}
 
                   {hasPermission("letters_archive:delete") && (
               <button
@@ -1972,33 +1969,34 @@ async function handleConfirmDelete() {
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={handleTopPrint}
-                className="w-full h-[52px] rounded-[8px] flex items-center justify-center gap-2"
-                style={{
-                  background:
-                    "linear-gradient(to bottom, #00b867, #00522e)",
-                }}
-              >
-                <Printer
-                  size={18}
-                  style={{
-                    color: "#fff",
-                  }}
-                />
+{hasPermission("letters_archive:print") && (
+  <button
+    type="button"
+    onClick={handleTopPrint}
+    className="w-full h-[52px] rounded-[8px] flex items-center justify-center gap-2"
+    style={{
+      background:
+        "linear-gradient(to bottom, #00b867, #00522e)",
+    }}
+  >
+    <Printer
+      size={18}
+      style={{
+        color: "#fff",
+      }}
+    />
 
-                <span
-                  style={{
-                    ...F,
-                    fontSize: 16,
-                    color: "#fff",
-                  }}
-                >
-                  طباعة نسخة الخطاب
-                </span>
-
-              </button>
+    <span
+      style={{
+        ...F,
+        fontSize: 16,
+        color: "#fff",
+      }}
+    >
+      طباعة نسخة الخطاب
+    </span>
+  </button>
+)}
 
             </>
 
@@ -2034,22 +2032,23 @@ async function handleConfirmDelete() {
                   </div>
 
                   <div className="w-full flex justify-center">
-                    <img
-                      src={previewImageUrl}
-                      alt="معاينة مؤقتة للخطاب"
-                      className="max-w-full rounded-[12px] border border-[#e2e7f0]"
-                      style={{
-                        maxHeight: "500px",
-                        objectFit: "contain",
-                      }}
-                    />
+                  <img
+  ref={previewImgRef}
+  src={previewImageUrl}
+  alt="معاينة مؤقتة للخطاب"
+  className="max-w-full rounded-[12px] border border-[#e2e7f0]"
+  style={{
+    maxHeight: "500px",
+    objectFit: "contain",
+  }}
+/>
                   </div>
 
                 </div>
               )}
 
-              {hasPermission("issue_letter:create") ? (
-                <UploadArea
+             {hasPermission("letters_archive:verify") ? (
+  <UploadArea
                   letterId={id ?? ""}
                   onSave={(
                     fileUrl,

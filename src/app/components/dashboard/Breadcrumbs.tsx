@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router";
 import { ChevronLeft } from "lucide-react";
 import { getBreadcrumbs } from "../../lib/breadcrumbs";
+import { useUnsavedChanges } from "../../../lib/unsavedChanges";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
@@ -8,6 +9,7 @@ const F: React.CSSProperties = {
 
 export function Breadcrumbs({ pathname }: { pathname: string }) {
   const navigate = useNavigate();
+  const { guardNavigation } = useUnsavedChanges();
   const steps = getBreadcrumbs(pathname);
 
   return (
@@ -20,7 +22,7 @@ export function Breadcrumbs({ pathname }: { pathname: string }) {
             {step.path && !isLast ? (
               <button
                 type="button"
-                onClick={() => navigate(step.path!)}
+                onClick={() => guardNavigation(() => navigate(step.path!))}
                 className="hover:underline transition-colors"
                 style={{
                   ...F,

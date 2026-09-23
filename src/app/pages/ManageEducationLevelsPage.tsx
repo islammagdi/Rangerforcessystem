@@ -104,7 +104,7 @@ export function ManageEducationLevelsPage() {
 
       setLevels(data ?? []);
     } catch (err: any) {
-      console.error("Load education levels error:", err);
+    
       setError(
         err?.message || "حدث خطأ أثناء تحميل بيانات المستويات التعليمية"
       );
@@ -177,7 +177,7 @@ export function ManageEducationLevelsPage() {
           }`,
         });
       } catch (auditError) {
-        console.error("Audit log error:", auditError);
+      
       }
 
       setSuccessMsg("تم إضافة المستوى التعليمي بنجاح");
@@ -186,7 +186,7 @@ export function ManageEducationLevelsPage() {
       setShowAddModal(false);
       await loadData();
     } catch (err: any) {
-      console.error("Add education level error:", err);
+     
       setError(err?.message || "حدث خطأ أثناء إضافة المستوى التعليمي");
     } finally {
       setSaving(false);
@@ -267,7 +267,7 @@ export function ManageEducationLevelsPage() {
           })`,
         });
       } catch (auditError) {
-        console.error("Audit log error:", auditError);
+       
       }
 
       setSuccessMsg("تم تعديل بيانات المستوى التعليمي بنجاح");
@@ -277,7 +277,7 @@ export function ManageEducationLevelsPage() {
       setEditingItem(null);
       await loadData();
     } catch (err: any) {
-      console.error("Edit education level error:", err);
+      
       setError(err?.message || "حدث خطأ أثناء تعديل بيانات المستوى التعليمي");
     } finally {
       setEditSaving(false);
@@ -325,7 +325,7 @@ export function ManageEducationLevelsPage() {
           details: `اسم المستوى: ${deletedItem?.name ?? "غير معروف"}`,
         });
       } catch (auditError) {
-        console.error("Audit log error:", auditError);
+
       }
 
       setSuccessMsg("تم حذف المستوى التعليمي بنجاح");
@@ -335,7 +335,7 @@ export function ManageEducationLevelsPage() {
         previous.filter((item) => item.id !== deleteTargetId)
       );
     } catch (err: any) {
-      console.error("Delete education level error:", err);
+
       setError(err?.message || "حدث خطأ أثناء حذف المستوى التعليمي");
     } finally {
       setDeleting(false);

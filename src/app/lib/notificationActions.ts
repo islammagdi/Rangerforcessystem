@@ -36,7 +36,7 @@ export async function handleNotificationAction(
       .maybeSingle();
 
     if (error || !data) {
-      console.error("handleNotificationAction reserve_batch error:", error);
+
       navigate("/dashboard/reserve-batches");
       return true;
     }

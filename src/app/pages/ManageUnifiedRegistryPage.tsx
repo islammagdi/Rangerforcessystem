@@ -215,7 +215,7 @@ export function ManageUnifiedRegistryPage() {
           .createSignedUrl(FILE_PATH, 60 * 60);
 
       if (signedError) {
-        console.error("Signed URL error:", signedError);
+   
       }
 
       setCurrentFile({
@@ -227,7 +227,7 @@ export function ManageUnifiedRegistryPage() {
         signedUrl: signedData?.signedUrl ?? null,
       });
     } catch (error) {
-      console.error("Error loading current file info:", error);
+
 
       setFeedback({
         type: "error",
@@ -299,12 +299,11 @@ export function ManageUnifiedRegistryPage() {
     try {
       setReplacing(true);
       setFeedback(null);
-
       const { error: uploadError } = await supabase.storage
         .from(BUCKET_NAME)
         .upload(FILE_PATH, uploadedFile.raw, {
           upsert: true,
-          cacheControl: "3600",
+          cacheControl: "0",
           contentType:
             uploadedFile.raw.type ||
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -343,7 +342,7 @@ export function ManageUnifiedRegistryPage() {
         }
       } catch (logError) {
         // فشل تسجيل النشاط لا يجب أن يوقف نجاح العملية نفسها
-        console.error("Activity log error:", logError);
+
       }
 
       setFeedback({
@@ -356,7 +355,7 @@ export function ManageUnifiedRegistryPage() {
 
       await loadCurrentFileInfo();
     } catch (error) {
-      console.error("Error replacing file:", error);
+
 
       setFeedback({
         type: "error",

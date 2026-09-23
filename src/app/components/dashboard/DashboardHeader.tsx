@@ -6,6 +6,7 @@ import {
   ImagePlus,
   X,
   BookOpen,
+  Menu,
 } from "lucide-react";
 import { supabase } from "../../../lib/supabase";
 import imgAvatar from "../../../assets/avatar.png";
@@ -153,10 +154,10 @@ function ChangePasswordModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
       dir="rtl"
     >
-      <div className="bg-white rounded-[20px] p-6 w-[90%] max-w-sm flex flex-col gap-5 shadow-xl">
+      <div className="bg-white rounded-[20px] p-5 sm:p-6 w-full max-w-sm flex flex-col gap-5 shadow-xl max-h-[90vh] overflow-y-auto">
 
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -456,10 +457,10 @@ function ChangePictureModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
       dir="rtl"
     >
-      <div className="bg-white rounded-[20px] p-6 w-[90%] max-w-sm flex flex-col gap-5 shadow-xl">
+      <div className="bg-white rounded-[20px] p-5 sm:p-6 w-full max-w-sm flex flex-col gap-5 shadow-xl max-h-[90vh] overflow-y-auto">
 
         <div className="flex items-center justify-between">
 
@@ -608,10 +609,13 @@ function ChangePictureModal({
 // ─── Header ───────────────────────────────────────────────────────────────
 interface DashboardHeaderProps {
   pageTitle?: string;
+  /** الموبايل: فتح قائمة التنقل الجانبية */
+  onMenuClick?: () => void;
 }
 
 export function DashboardHeader({
   pageTitle = "الموقف العام",
+  onMenuClick,
 }: DashboardHeaderProps) {
 
   const location = useLocation();
@@ -767,26 +771,33 @@ export function DashboardHeader({
   return (
     <>
       <header
-        className="bg-white h-[100px] w-full border-b border-[#eff0f6] flex items-center justify-between px-7 shrink-0"
+        className="bg-white h-16 sm:h-20 lg:h-[100px] w-full border-b border-[#eff0f6] flex items-center justify-between gap-2 px-3 sm:px-5 lg:px-7 shrink-0"
       >
 
         {/* ======================================================
-            Right: Page title
+            Right: Menu button (mobile) + Breadcrumbs
         ====================================================== */}
 
-        {/* ======================================================
-            Right: Breadcrumbs
-        ====================================================== */}
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            type="button"
+            onClick={onMenuClick}
+            className="flex lg:hidden items-center justify-center w-9 h-9 rounded-full hover:bg-[#f5f6fb] text-[#2d3648] shrink-0"
+            aria-label="فتح القائمة"
+          >
+            <Menu size={20} />
+          </button>
 
-        <div className="flex items-center">
-          <Breadcrumbs pathname={location.pathname} />
+          <div className="min-w-0 overflow-hidden">
+            <Breadcrumbs pathname={location.pathname} />
+          </div>
         </div>
 
         {/* ======================================================
             Left: User info + avatar
         ====================================================== */}
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <NotificationBell />
           {/* Avatar + dropdown */}
 
@@ -802,7 +813,7 @@ export function DashboardHeader({
                   (o) => !o
                 )
               }
-              className="bg-[#93C199] w-10 h-10 rounded-full overflow-hidden relative focus:outline-none ring-offset-1 transition-shadow hover:ring-2 hover:ring-[#DCF4DF]/60"
+              className="bg-[#93C199] w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden relative focus:outline-none ring-offset-1 transition-shadow hover:ring-2 hover:ring-[#DCF4DF]/60"
               aria-label="قائمة المستخدم"
             >
               <img
@@ -906,9 +917,10 @@ export function DashboardHeader({
 
           {/* ====================================================
               بيانات المستخدم من Supabase
+              (تختفي على الشاشات الصغيرة جداً عشان الهيدر ميضيقش)
           ==================================================== */}
 
-          <div className="flex items-center gap-2.5">
+          <div className="hidden sm:flex items-center gap-2.5">
 
             <div className="flex flex-col items-start gap-0.5">
 
@@ -923,6 +935,7 @@ export function DashboardHeader({
               </span>
 
               <span
+                className="whitespace-nowrap"
                 style={{
                   color: "#081021",
                   fontFamily: "'Almarai', sans-serif",
@@ -941,7 +954,7 @@ export function DashboardHeader({
 
           <ChevronDown
             size={18}
-            className="text-[#081021]"
+            className="hidden sm:block text-[#081021]"
           />
 
         </div>

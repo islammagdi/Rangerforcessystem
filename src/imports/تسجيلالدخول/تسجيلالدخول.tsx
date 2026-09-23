@@ -1,5 +1,5 @@
 import svgPaths from "./svg-9l9hko8aij";
-import imgGeminiGeneratedImageOcube3Ocube3Ocub2 from "./fc16e28f31627a0e4570da4c1c6ef4d6f58124ce.png";
+import imgGeminiGeneratedImageOcube3Ocube3Ocub2 from "./loginVector.png";
 import { imgGroup, imgGroup1, imgGroup2, imgGroup3, imgGroup4, imgGroup5, imgGroup6, imgGroup7, imgGroup8 } from "./svg-jyssa";
 
 function Group() {

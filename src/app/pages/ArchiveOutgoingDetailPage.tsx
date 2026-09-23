@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Plus, Trash2, Upload, ArrowRight, Printer } from "lucide-react";
+import { Plus, Upload, ArrowRight, Printer } from "lucide-react";
 
 import { supabase } from "../../lib/supabase";
 import { logActivity } from "../../lib/logActivity";
+import { useUnsavedChanges } from "../../lib/unsavedChanges";
 import {
   fetchOutgoingMailById,
   updateOutgoingMail,
@@ -63,6 +64,55 @@ export function ArchiveOutgoingDetailPage() {
   // إضافة صورة جديدة
   const [uploadingScan, setUploadingScan] = useState(false);
 
+  // ─────────────────────────────────────────────────────────
+  // تتبّع التعديلات غير المحفوظة
+  // ─────────────────────────────────────────────────────────
+  // الصفحة فيها أجزاء بتتحفظ كل واحد لوحده (ملخص، استلام الأصل)،
+  // + حقول "إضافة" بتتحفظ فورًا لما تُضاف (ملاحظة، مستلم). فبنتتبع:
+  // 1) الحقول اللي عندها زرار حفظ خاص ولسه معدّلة عن آخر قيمة محفوظة
+  // 2) أي نص مكتوب في خانة "إضافة" ولسه ماتضافش
+  const { setDirty, guardNavigation } = useUnsavedChanges();
+
+  const initialSnapshotRef = useRef<string>("");
+
+  const isDirty = useMemo(() => {
+    const hasUnaddedNote = newNote.trim() !== "";
+    const hasUnaddedRecipient =
+      newRecipientName.trim() !== "" || newRecipientEntity.trim() !== "";
+
+    if (!initialSnapshotRef.current) {
+      return hasUnaddedNote || hasUnaddedRecipient;
+    }
+
+    const current = JSON.stringify({
+      faxSummary,
+      isOriginalReceived,
+      originalReceivedBy,
+    });
+
+    return (
+      current !== initialSnapshotRef.current ||
+      hasUnaddedNote ||
+      hasUnaddedRecipient
+    );
+  }, [
+    faxSummary,
+    isOriginalReceived,
+    originalReceivedBy,
+    newNote,
+    newRecipientName,
+    newRecipientEntity,
+  ]);
+
+  useEffect(() => {
+    setDirty(isDirty);
+  }, [isDirty, setDirty]);
+
+  useEffect(() => {
+    return () => setDirty(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (id) {
       loadMail(id);
@@ -81,6 +131,13 @@ export function ArchiveOutgoingDetailPage() {
       setIsOriginalReceived(data.is_original_received);
       setOriginalReceivedBy(data.original_received_by ?? "");
 
+      // ✅ نلتقط الـ snapshot بعد تعمير الحقول القابلة للتعديل
+      initialSnapshotRef.current = JSON.stringify({
+        faxSummary: data.fax_summary ?? "",
+        isOriginalReceived: data.is_original_received,
+        originalReceivedBy: data.original_received_by ?? "",
+      });
+
       // تجهيز روابط معاينة الصور
       const urls: Record<string, string> = {};
 
@@ -89,14 +146,14 @@ export function ArchiveOutgoingDetailPage() {
           try {
             urls[scan.id] = await getScanSignedUrl(scan.file_path);
           } catch (err) {
-            console.error("Signed url error:", err);
+
           }
         })
       );
 
       setScanUrls(urls);
     } catch (err: any) {
-      console.error("Load mail detail error:", err);
+
       setError(err?.message || "حدث خطأ أثناء تحميل بيانات الفاكس");
     } finally {
       setLoading(false);
@@ -145,7 +202,6 @@ export function ArchiveOutgoingDetailPage() {
 
   async function handleSaveSummary() {
     if (!mail) return;
-
     setSavingSummary(true);
     setError("");
 
@@ -169,7 +225,7 @@ export function ArchiveOutgoingDetailPage() {
           details: `القيمة القديمة: ${oldSummary} - القيمة الجديدة: ${newSummary}`,
         });
       } catch (auditError) {
-        console.error("Audit log error:", auditError);
+    
       }
 
       setSuccessMsg("تم حفظ ملخص الفاكس بنجاح");
@@ -177,12 +233,16 @@ export function ArchiveOutgoingDetailPage() {
 
       await loadMail(mail.id);
     } catch (err: any) {
-      console.error("Save summary error:", err);
+    
       setError(err?.message || "حدث خطأ أثناء حفظ الملخص");
     } finally {
       setSavingSummary(false);
     }
   }
+
+  // ملحوظة: loadMail بيعيد تحميل mail وبالتالي initialSnapshotRef
+  // بيتحدث تلقائيًا في التعديل اللي فوق، فـ isDirty بيرجع false
+  // لوحده بعد ما الملخص يتحفظ بنجاح
 
   /* =======================================================
      حفظ حالة استلام الأصل
@@ -229,7 +289,7 @@ export function ArchiveOutgoingDetailPage() {
           details: `القيمة القديمة: ${oldState} - القيمة الجديدة: ${newState}`,
         });
       } catch (auditError) {
-        console.error("Audit log error:", auditError);
+       
       }
 
       setSuccessMsg("تم تحديث حالة استلام الأصل بنجاح");
@@ -237,7 +297,7 @@ export function ArchiveOutgoingDetailPage() {
 
       await loadMail(mail.id);
     } catch (err: any) {
-      console.error("Update receipt error:", err);
+   
       setError(err?.message || "حدث خطأ أثناء حفظ التعديل");
     } finally {
       setSavingReceipt(false);
@@ -275,7 +335,7 @@ export function ArchiveOutgoingDetailPage() {
           details: `الملاحظة: ${noteText}`,
         });
       } catch (auditError) {
-        console.error("Audit log error:", auditError);
+      
       }
 
       setNewNote("");
@@ -327,7 +387,7 @@ export function ArchiveOutgoingDetailPage() {
           }`,
         });
       } catch (auditError) {
-        console.error("Audit log error:", auditError);
+     
       }
 
       setNewRecipientName("");
@@ -372,12 +432,12 @@ export function ArchiveOutgoingDetailPage() {
           details: "عدد الصور المرفوعة: 1",
         });
       } catch (auditError) {
-        console.error("Audit log error:", auditError);
+        
       }
 
       await loadMail(mail.id);
     } catch (err: any) {
-      console.error("Add scan error:", err);
+ 
       setError(err?.message || "حدث خطأ أثناء رفع الصورة");
     } finally {
       setUploadingScan(false);
@@ -551,7 +611,9 @@ export function ArchiveOutgoingDetailPage() {
 
         <button
           type="button"
-          onClick={() => navigate("/dashboard/archive/outgoing")}
+          onClick={() =>
+            guardNavigation(() => navigate("/dashboard/archive/outgoing"))
+          }
           className="flex items-center gap-1.5"
           style={{ ...F, fontSize: 14, color: "#1f3d97" }}
         >

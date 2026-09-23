@@ -20,14 +20,19 @@ import {
   Landmark,
   ClipboardList,
    GraduationCap,
+     HeartHandshake,
+  Flag,
+  ShieldAlert,
+  X,
+    Briefcase, // ✅ جديد
+    Network, // ✅ جديد - الهيكل التنظيمي
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { supabase } from "../../../lib/supabase";
-import { FileText } from "lucide-react";
-import { FileDown } from "lucide-react";
-import { FileUp } from "lucide-react";
+import { useUnsavedChanges } from "../../../lib/unsavedChanges";
+import { FileText,FileDown,FileUp } from "lucide-react";
 import { usePermissions } from "../../../lib/usePermissions";
-
+import { Settings2 } from "lucide-react";
 // =====================================================
 // Types
 // =====================================================
@@ -75,6 +80,12 @@ const LABEL_TO_PATH: Record<string, string> = {
   "الإدارات الخارجية": "/dashboard/manage-external-administrations",
   "كشوفات": "/dashboard/sheets",
   "المستويات التعليمية": "/dashboard/manage-education-levels",
+  "إدارة الخطابات": "/dashboard/manage-letter-types",
+  "السجل الاجتماعي": "/dashboard/social-record",
+"سجل الشهداء": "/dashboard/martyrs-record",
+"سجل الحوادث": "/dashboard/incidents-record",
+  "إدارة الوظائف": "/dashboard/manage-jobs", // ✅ جديد
+  "الهيكل التنظيمي": "/dashboard/units-tree", // ✅ جديد
 };
 
 // =====================================================
@@ -186,15 +197,28 @@ interface SidebarProps {
   onToggle: () => void;
   onNavSelect?: (label: string) => void;
   activePath?: string;
+  /** الموبايل: هل القائمة الجانبية (drawer) مفتوحة دلوقتي */
+  mobileOpen?: boolean;
+  /** الموبايل: قفل الـ drawer (بعد الضغط على عنصر أو على الخلفية) */
+  onMobileClose?: () => void;
 }
 
 // =====================================================
 // Sidebar
 // =====================================================
-export function Sidebar({ collapsed, onToggle, onNavSelect, activePath }: SidebarProps) {
+export function Sidebar({
+  collapsed,
+  onToggle,
+  onNavSelect,
+  activePath,
+  mobileOpen = false,
+  onMobileClose,
+}: SidebarProps) {
   const navigate = useNavigate();
 
   const [loggingOut, setLoggingOut] = useState(false);
+
+  const { guardNavigation } = useUnsavedChanges();
 
   // ===================================================
   // صلاحيات المستخدم الحالي (بدل الاعتماد على اسم الدور)
@@ -232,13 +256,21 @@ export function Sidebar({ collapsed, onToggle, onNavSelect, activePath }: Sideba
   const activeLabel = getActiveLabel(activePath);
 
   function handleClick(label: string) {
-    onNavSelect?.(label);
-
     const path = LABEL_TO_PATH[label];
 
-    if (path) {
-      navigate(path);
-    }
+    // ✅ أي تنقل من الـ Sidebar بيتفحص الأول: لو فيه تعديلات
+    // غير محفوظة في الصفحة الحالية، يظهر بوب اب تأكيد قبل ما
+    // ينفذ التنقل الفعلي
+    guardNavigation(() => {
+      onNavSelect?.(label);
+
+      if (path) {
+        navigate(path);
+      }
+
+      // على الموبايل نقفل الـ drawer بعد اختيار عنصر
+      onMobileClose?.();
+    });
   }
 
   // ===================================================
@@ -248,6 +280,11 @@ export function Sidebar({ collapsed, onToggle, onNavSelect, activePath }: Sideba
   async function handleLogout() {
     if (loggingOut) return;
 
+    // ✅ تسجيل الخروج تنقل بعيد عن الصفحة برضو، فلازم يتحمي
+    guardNavigation(() => void performLogout());
+  }
+
+  async function performLogout() {
     setLoggingOut(true);
 
     try {
@@ -278,14 +315,14 @@ export function Sidebar({ collapsed, onToggle, onNavSelect, activePath }: Sideba
       const { error } = await supabase.auth.signOut({ scope: "local" });
 
       if (error) {
-        console.error("Logout error:", error);
+
         setLoggingOut(false);
         return;
       }
 
       window.location.replace("/");
     } catch (error) {
-      console.error("Unexpected logout error:", error);
+
       setLoggingOut(false);
     }
   }
@@ -447,6 +484,48 @@ export function Sidebar({ collapsed, onToggle, onNavSelect, activePath }: Sideba
         section: "ادارة المنظومة",
         permission: "education_levels:view",
       },
+      {
+  icon: <Settings2 size={18} />,
+  label: "إدارة الخطابات",
+  section: "ادارة المنظومة",
+  permission: "letter_types:manage",
+},
+      // -------------------------------
+      // الخدمة الاجتماعية
+      // -------------------------------
+      {
+        icon: <HeartHandshake size={18} />,
+        label: "السجل الاجتماعي",
+        section: "الخدمة الاجتماعية",
+        permission: "social_record:view",
+      },
+      {
+        icon: <Flag size={18} />,
+        label: "سجل الشهداء",
+        section: "الخدمة الاجتماعية",
+        permission: "martyrs_record:view",
+      },
+            // -------------------------------
+      // الإدارة العسكرية
+      // -------------------------------
+      {
+        icon: <ShieldAlert size={18} />,
+        label: "سجل الحوادث",
+        section: "الإدارة العسكرية",
+        permission: "incidents_record:view",
+      },
+      {
+        icon: <Briefcase size={18} />,
+        label: "إدارة الوظائف",
+        section: "ادارة المنظومة",
+        permission: "manage_jobs:view",
+      },
+      {
+        icon: <Network size={18} />,
+        label: "الهيكل التنظيمي",
+        section: "ادارة المنظومة",
+        permission: "units_tree:view",
+      },
     ],
     []
   );
@@ -465,7 +544,7 @@ export function Sidebar({ collapsed, onToggle, onNavSelect, activePath }: Sideba
   // Group By Section
   // ===================================================
 
-  const sections = ["الافراد", "الخطابات", "الأرشيف", "اليوميات", "ادارة المنظومة"];
+ const sections = ["الافراد", "الخطابات", "الأرشيف", "اليوميات", "الخدمة الاجتماعية", "الإدارة العسكرية", "ادارة المنظومة"];
 
   function getSectionItems(section: string) {
     return visibleNavItems.filter((item) => item.section === section);
@@ -476,198 +555,229 @@ export function Sidebar({ collapsed, onToggle, onNavSelect, activePath }: Sideba
   // ===================================================
 
   return (
-    <aside
-      className={[
-        "bg-white h-screen flex flex-col gap-6",
-        "border-l border-[#e2e8f0]",
-        "sticky top-0",
-        "transition-all duration-300",
-        "overflow-y-auto overflow-x-hidden",
-        "shrink-0",
-        collapsed ? "w-[68px]" : "w-[280px]",
-      ].join(" ")}
-      dir="rtl"
-    >
-      {/* Active Icon Gradient */}
-      <svg width="0" height="0" style={{ position: "absolute", overflow: "hidden" }}>
-        <defs>
-          <linearGradient id="navActiveGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#00B867" />
-            <stop offset="100%" stopColor="#00522E" />
-          </linearGradient>
-        </defs>
-      </svg>
-
-      {/* Logo + Toggle */}
-      <div className="flex items-center gap-3 px-5 pt-6 pb-0 shrink-0 relative z-10">
-        <button
-          type="button"
-          onClick={onToggle}
-          className={[
-            "bg-white",
-            "border border-[#e2e8f0]",
-            "rounded-full",
-            "p-1",
-            "flex items-center justify-center",
-            "hover:bg-gray-50",
-            "transition-colors",
-            "shrink-0",
-          ].join(" ")}
-          aria-label="Toggle sidebar"
-        >
-          {collapsed ? (
-            <ChevronLeft size={16} className="text-[#081021]" />
-          ) : (
-            <ChevronRight size={16} className="text-[#081021]" />
-          )}
-        </button>
-
-        {!collapsed && (
-          <div className="flex items-center gap-2 overflow-hidden flex-1">
-            <Link
-              to="/dashboard"
-              className="whitespace-nowrap hover:opacity-80 transition-opacity"
-              style={{
-                color: "#081021",
-                fontFamily: "'Almarai', sans-serif",
-                fontWeight: 700,
-                fontSize: "22px",
-                textDecoration: "none",
-              }}
-            >
-              منظومة الافراد
-            </Link>
-            <LogoIcon />
-          </div>
-        )}
-
-        {collapsed && <LogoIcon />}
-      </div>
-
-      {/* Expanded Sidebar */}
-      {!collapsed && (
-        <nav className="flex flex-col gap-1 px-6 flex-1 pb-4">
-          {permsLoading ? (
-            <div
-              className="text-center text-[#64748b] py-4"
-              style={{ fontFamily: "'Almarai', sans-serif", fontSize: "14px" }}
-            >
-              جاري تحميل الصلاحيات...
-            </div>
-          ) : (
-            sections.map((section, sectionIndex) => {
-              const items = getSectionItems(section);
-
-              if (items.length === 0) {
-                return null;
-              }
-
-              return (
-                <div key={section} className="contents">
-                  {sectionIndex > 0 && <Divider />}
-                  <SectionLabel label={section} />
-
-                  {items.map(({ icon, label }) => (
-                    <NavItem
-                      key={label}
-                      icon={icon as React.ReactElement}
-                      label={label}
-                      active={activeLabel === label}
-                      onClick={() => handleClick(label)}
-                    />
-                  ))}
-                </div>
-              );
-            })
-          )}
-        </nav>
+    <>
+      {/* خلفية شفافة تظهر خلف الـ drawer على الموبايل فقط */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+          onClick={onMobileClose}
+          aria-hidden="true"
+        />
       )}
 
-      {/* Collapsed Sidebar */}
-      {collapsed && (
-        <nav className="flex flex-col items-center gap-2 px-2 flex-1 pb-4">
-          {!permsLoading &&
-            visibleNavItems.map(({ icon, label }) => {
-              const isActive = activeLabel === label;
+      <aside
+        className={[
+          "bg-white flex flex-col gap-6",
+          "border-l border-[#e2e8f0]",
+          "transition-transform duration-300 lg:transition-[width] lg:duration-300",
+          "overflow-y-auto overflow-x-hidden",
+          "shrink-0",
+          // Mobile: fixed off-canvas drawer sliding in from the right
+          "fixed inset-y-0 right-0 z-50 h-screen w-[280px]",
+          mobileOpen ? "translate-x-0" : "translate-x-full",
+          // Desktop (lg+): back in normal flow, always visible, width toggles
+          "lg:sticky lg:top-0 lg:translate-x-0 lg:z-auto",
+          collapsed ? "lg:w-[68px]" : "lg:w-[280px]",
+        ].join(" ")}
+        dir="rtl"
+      >
+        {/* Active Icon Gradient */}
+        <svg width="0" height="0" style={{ position: "absolute", overflow: "hidden" }}>
+          <defs>
+            <linearGradient id="navActiveGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#00B867" />
+              <stop offset="100%" stopColor="#00522E" />
+            </linearGradient>
+          </defs>
+        </svg>
 
-              const styledIcon = isActive
-                ? cloneElement(icon as React.ReactElement, {
-                    stroke: "url(#navActiveGrad)",
-                  } as object)
-                : icon;
-
-              return (
-                <button
-                  type="button"
-                  key={label}
-                  title={label}
-                  onClick={() => handleClick(label)}
-                  className={[
-                    "w-10 h-10",
-                    "rounded-full",
-                    "flex items-center justify-center",
-                    "transition-colors",
-                    isActive ? "bg-[#DCF4DF]" : "text-[#717d96] hover:bg-[#f5f6fb]",
-                  ].join(" ")}
-                >
-                  {styledIcon}
-                </button>
-              );
-            })}
-        </nav>
-      )}
-
-      {/* Logout */}
-      <div className="border-t border-[#e2e8f0] px-6 py-4 shrink-0">
-        {!collapsed ? (
+        {/* Logo + Toggle */}
+        <div className="flex items-center gap-3 px-5 pt-6 pb-0 shrink-0 relative z-10">
+          {/* زرار الطي: يظهر بس على الديسكتوب */}
           <button
             type="button"
-            onClick={handleLogout}
-            disabled={loggingOut}
+            onClick={onToggle}
             className={[
-              "w-full h-[44px]",
-              "rounded-[99px]",
-              "flex items-center px-4 gap-3",
-              "transition-colors",
-              "text-right",
-              "text-[#717d96]",
-              "hover:bg-[#f5f6fb]",
-              "hover:text-[#2d3648]",
-              "disabled:opacity-50",
-              "disabled:cursor-not-allowed",
-            ].join(" ")}
-            style={{ fontFamily: "'Almarai', sans-serif", fontSize: "16px" }}
-          >
-            <span className="flex-1 text-right">
-              {loggingOut ? "جاري تسجيل الخروج..." : "تسجيل الخروج"}
-            </span>
-
-            <span className="shrink-0">
-              <LogOut size={18} className={loggingOut ? "animate-pulse" : ""} />
-            </span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={handleLogout}
-            disabled={loggingOut}
-            title={loggingOut ? "جاري تسجيل الخروج..." : "تسجيل الخروج"}
-            aria-label="تسجيل الخروج"
-            className={[
-              "w-10 h-10",
+              "hidden lg:flex",
+              "bg-white",
+              "border border-[#e2e8f0]",
               "rounded-full",
-              "flex items-center justify-center",
+              "p-1",
+              "items-center justify-center",
+              "hover:bg-gray-50",
               "transition-colors",
-              "text-[#717d96]",
-              "hover:bg-[#f5f6fb]",
-              "disabled:opacity-50",
-              "disabled:cursor-not-allowed",
+              "shrink-0",
             ].join(" ")}
+            aria-label="Toggle sidebar"
           >
-            <LogOut size={18} className={loggingOut ? "animate-pulse" : ""} />
+            {collapsed ? (
+              <ChevronLeft size={16} className="text-[#081021]" />
+            ) : (
+              <ChevronRight size={16} className="text-[#081021]" />
+            )}
           </button>
+
+          {(!collapsed || mobileOpen) && (
+            <div className="flex items-center gap-2 overflow-hidden flex-1">
+              <Link
+                to="/dashboard"
+                className="whitespace-nowrap hover:opacity-80 transition-opacity"
+                style={{
+                  color: "#081021",
+                  fontFamily: "'Almarai', sans-serif",
+                  fontWeight: 700,
+                  fontSize: "22px",
+                  textDecoration: "none",
+                }}
+              >
+                منظومة الافراد
+              </Link>
+              <LogoIcon />
+            </div>
+          )}
+
+          {collapsed && !mobileOpen && (
+            <div className="hidden lg:flex">
+              <LogoIcon />
+            </div>
+          )}
+
+          {/* زرار إغلاق: يظهر بس على الموبايل */}
+          <button
+            type="button"
+            onClick={onMobileClose}
+            className="mr-auto flex lg:hidden items-center justify-center w-8 h-8 rounded-full hover:bg-gray-100 text-[#717d96]"
+            aria-label="إغلاق القائمة"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Expanded / Mobile Sidebar */}
+        {(!collapsed || mobileOpen) && (
+          <nav className="flex flex-col gap-1 px-6 flex-1 pb-4">
+            {permsLoading ? (
+              <div
+                className="text-center text-[#64748b] py-4"
+                style={{ fontFamily: "'Almarai', sans-serif", fontSize: "14px" }}
+              >
+                جاري تحميل الصلاحيات...
+              </div>
+            ) : (
+              sections.map((section, sectionIndex) => {
+                const items = getSectionItems(section);
+
+                if (items.length === 0) {
+                  return null;
+                }
+
+                return (
+                  <div key={section} className="contents">
+                    {sectionIndex > 0 && <Divider />}
+                    <SectionLabel label={section} />
+
+                    {items.map(({ icon, label }) => (
+                      <NavItem
+                        key={label}
+                        icon={icon as React.ReactElement}
+                        label={label}
+                        active={activeLabel === label}
+                        onClick={() => handleClick(label)}
+                      />
+                    ))}
+                  </div>
+                );
+              })
+            )}
+          </nav>
         )}
-      </div>
-    </aside>
+
+        {/* Collapsed Sidebar (desktop only) */}
+        {collapsed && !mobileOpen && (
+          <nav className="hidden lg:flex flex-col items-center gap-2 px-2 flex-1 pb-4">
+            {!permsLoading &&
+              visibleNavItems.map(({ icon, label }) => {
+                const isActive = activeLabel === label;
+
+                const styledIcon = isActive
+                  ? cloneElement(icon as React.ReactElement, {
+                      stroke: "url(#navActiveGrad)",
+                    } as object)
+                  : icon;
+
+                return (
+                  <button
+                    type="button"
+                    key={label}
+                    title={label}
+                    onClick={() => handleClick(label)}
+                    className={[
+                      "w-10 h-10",
+                      "rounded-full",
+                      "flex items-center justify-center",
+                      "transition-colors",
+                      isActive ? "bg-[#DCF4DF]" : "text-[#717d96] hover:bg-[#f5f6fb]",
+                    ].join(" ")}
+                  >
+                    {styledIcon}
+                  </button>
+                );
+              })}
+          </nav>
+        )}
+
+        {/* Logout */}
+        <div className="border-t border-[#e2e8f0] px-6 py-4 shrink-0">
+          {(!collapsed || mobileOpen) ? (
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className={[
+                "w-full h-[44px]",
+                "rounded-[99px]",
+                "flex items-center px-4 gap-3",
+                "transition-colors",
+                "text-right",
+                "text-[#717d96]",
+                "hover:bg-[#f5f6fb]",
+                "hover:text-[#2d3648]",
+                "disabled:opacity-50",
+                "disabled:cursor-not-allowed",
+              ].join(" ")}
+              style={{ fontFamily: "'Almarai', sans-serif", fontSize: "16px" }}
+            >
+              <span className="flex-1 text-right">
+                {loggingOut ? "جاري تسجيل الخروج..." : "تسجيل الخروج"}
+              </span>
+
+              <span className="shrink-0">
+                <LogOut size={18} className={loggingOut ? "animate-pulse" : ""} />
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              title={loggingOut ? "جاري تسجيل الخروج..." : "تسجيل الخروج"}
+              aria-label="تسجيل الخروج"
+              className={[
+                "w-10 h-10",
+                "rounded-full",
+                "flex items-center justify-center",
+                "transition-colors",
+                "text-[#717d96]",
+                "hover:bg-[#f5f6fb]",
+                "disabled:opacity-50",
+                "disabled:cursor-not-allowed",
+              ].join(" ")}
+            >
+              <LogOut size={18} className={loggingOut ? "animate-pulse" : ""} />
+            </button>
+          )}
+        </div>
+      </aside>
+    </>
   );
 }

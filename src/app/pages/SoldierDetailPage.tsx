@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router";
+import logoImg from "../../assets/af406d517dfa4e5b22e9993bd61d8e4e002646b6.png";
 import {
   Trash2,
   Printer,
@@ -42,6 +43,8 @@ type Soldier = {
   attachmentPlace: string;
   administration: string;
   educationLevel: string;
+    job: string;            // ✅ جديد
+  isVolunteer: boolean;   // ✅ جديد
   letters: Letter[];
 };
 
@@ -86,9 +89,9 @@ function InfoRow({
   value: string;
 }) {
   return (
-    <div className="flex items-start gap-2 justify-start flex-1 min-w-[300px]">
+    <div className="flex items-start gap-2 justify-start w-full sm:flex-1 sm:min-w-[280px]">
       <span
-        className="w-[140px] shrink-0 text-right"
+        className="w-[120px] sm:w-[140px] shrink-0 text-right"
         style={{
           ...FONT,
           fontSize: 18,
@@ -108,12 +111,15 @@ function InfoRow({
         :
       </span>
 
+      {/* ✅ FIX: كانت القيمة whiteSpace: nowrap فبتدفع الصف (والصفحة)
+          تعمل سكرول أفقي على الموبايل لو القيمة طويلة (اسم كامل، اسم
+          وحدة طويل...). خليناها تلف بدل ما تكسر عرض الصفحة. */}
       <span
+        className="break-words min-w-0 flex-1"
         style={{
           ...FONT,
           fontSize: 18,
           color: "#2d3648",
-          whiteSpace: "nowrap",
         }}
       >
         {value || "-"}
@@ -438,14 +444,31 @@ function printSoldier(
           }
 
           .header {
-            text-align: center;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            align-items: center;
+            justify-items: stretch;
+            gap: 12px;
             margin-bottom: 28px;
             padding-bottom: 18px;
-            border-bottom: 2px solid #222;
+            border-bottom: 1px solid #cccccc;
+          }
+
+          .header-col {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+          }
+
+          .header-title,
+          .header-subtitle,
+          .header-system {
+            width: 100%;
+            text-align: center;
           }
 
           .header-title {
-            font-size: 23px;
+            font-size: 19px;
             font-weight: bold;
             margin-bottom: 8px;
           }
@@ -459,6 +482,26 @@ function printSoldier(
           .header-system {
             font-size: 18px;
             font-weight: bold;
+          }
+
+          .header-title,
+          .header-subtitle,
+          .header-system {
+            width: 100%;
+            text-align: right;
+          }
+
+          .header-logo-col {
+            display: flex;
+            direction: ltr;
+            justify-content: flex-start;
+            align-items: center;
+          }
+
+          .header-logo {
+            max-width: 100%;
+            max-height: 90px;
+            object-fit: contain;
           }
 
           .report-title {
@@ -534,21 +577,23 @@ function printSoldier(
         <div class="page">
 
           <div class="header">
-            <div class="header-title">
-              قيادة قوات الصاعقة
+            <div class="header-col">
+              <div class="header-title">قيادة قوات الصــــــاعقة</div>
+              <div class="header-subtitle">فــرع التنظيــــم والإدارة</div>
+              <div class="header-system">منظومة الخوارج الداخلية</div>
             </div>
 
-            <div class="header-subtitle">
-              فرع التنظيم والإدارة
+            <div class="header-col" style="align-items: center;">
+           
             </div>
 
-            <div class="header-system">
-              منظومة الخوارج الداخلية
+            <div class="header-logo-col">
+              <img src="${logoImg}" class="header-logo" />
             </div>
           </div>
 
-          <div class="report-title">
-            بيانات الفرد
+          <div style="text-decoration: underline; font-size: 20px; font-weight: bold; width: 100%; text-align: center; margin-top: 12px;">
+  بيان تفصيلي لفرد
           </div>
 
           <!-- Section 1: البيانات التعريفية -->
@@ -592,7 +637,9 @@ function printSoldier(
 
               <tr>
                 <td class="label">جهة الإلحاق</td>
-                <td class="value" colspan="3">${soldier.attachmentPlace || "-"}</td>
+                <td class="value">${soldier.attachmentPlace || "-"}</td>
+                <td class="label">الوظيفة</td>
+                <td class="value">${soldier.job || "-"}</td>
               </tr>
             </table>
           </div>
@@ -607,10 +654,14 @@ function printSoldier(
 
             <table class="info-table">
               <tr>
-                <td class="label">الإدارة</td>
-                <td class="value">${soldier.administration || "-"}</td>
-                <td class="label">تاريخ التسريح</td>
-                <td class="value">${soldier.dischargeDate || "-"}</td>
+                <td class="label">الإدارة/السلاح</td>
+                ${
+                  soldier.isVolunteer
+                    ? `<td class="value" colspan="3">${soldier.administration || "-"}</td>`
+                    : `<td class="value">${soldier.administration || "-"}</td>
+                       <td class="label">تاريخ التسريح</td>
+                       <td class="value">${soldier.dischargeDate || "-"}</td>`
+                }
               </tr>
 
               <tr>
@@ -704,12 +755,11 @@ const { hasPermission } = usePermissions();
           discharge_date,
                    administration_id,
           education_level_id,
-
           personnel_categories (
             id,
-            name
+            name,
+            code
           ),
-
           ranks (
             id,
             name
@@ -742,6 +792,12 @@ const { hasPermission } = usePermissions();
             id,
             name,
             code
+          ),
+
+
+          job:jobs!job_id (
+            id,
+            name
           )
         `)
         .eq("id", id)
@@ -898,7 +954,11 @@ const { hasPermission } = usePermissions();
         educationLevel:
           raw.education_level?.name ?? "-",
 
+        job: raw.job?.name ?? "-",                              // ✅ جديد
+        isVolunteer: raw.personnel_categories?.code === "VOLUNTEER", // ✅ جديد
+
         letters: mappedLetters,
+        
       };
 
       console.log(
@@ -964,7 +1024,7 @@ const { hasPermission } = usePermissions();
   if (!soldier) {
     return (
       <div
-        className="flex flex-col items-center justify-center h-64 gap-4"
+        className="flex flex-col items-center justify-center h-64 gap-4 px-4 text-center"
         dir="rtl"
       >
         <p
@@ -1073,7 +1133,7 @@ const { hasPermission } = usePermissions();
 
         {/* Card Header */}
 
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-b border-[#cbd2e0]">
+        <div className="flex flex-wrap items-center justify-end gap-3 px-4 sm:px-6 py-4 border-b border-[#cbd2e0]">
 
           <SectionTitle>
            بيانات الفرد
@@ -1092,7 +1152,7 @@ const { hasPermission } = usePermissions();
                   setShowDelete(true)
                 }
                 title="حذف"
-                className="w-9 h-9 rounded-[8px] flex items-center justify-center hover:opacity-80 transition-opacity"
+                className="w-9 h-9 shrink-0 rounded-[8px] flex items-center justify-center hover:opacity-80 transition-opacity"
                 style={{
                   backgroundColor:
                     "#fce8f1",
@@ -1118,7 +1178,7 @@ const { hasPermission } = usePermissions();
                 )
               }
               title="طباعة بيانات الفرد"
-              className="w-9 h-9 rounded-[8px] flex items-center justify-center hover:opacity-80 transition-opacity"
+              className="w-9 h-9 shrink-0 rounded-[8px] flex items-center justify-center hover:opacity-80 transition-opacity"
               style={{
                 backgroundColor:
                   "#ebedfd",
@@ -1143,7 +1203,7 @@ const { hasPermission } = usePermissions();
                   )
                 }
                 title="تعديل"
-                className="w-9 h-9 rounded-[8px] flex items-center justify-center hover:opacity-80 transition-opacity"
+                className="w-9 h-9 shrink-0 rounded-[8px] flex items-center justify-center hover:opacity-80 transition-opacity"
                 style={{
                   backgroundColor:
                     "#ebedfd",
@@ -1163,7 +1223,7 @@ const { hasPermission } = usePermissions();
 
         {/* Data */}
 
-        <div className="flex flex-col gap-5 px-6 py-5">
+        <div className="flex flex-col gap-5 px-4 sm:px-6 py-5">
 
           {/* -------- Section 1: البيانات التعريفية -------- */}
           <div className="flex flex-col gap-4">
@@ -1215,6 +1275,7 @@ const { hasPermission } = usePermissions();
 
             <div className="flex flex-wrap gap-4">
               <InfoRow label="جهة الإلحاق" value={soldier.attachmentPlace} />
+              <InfoRow label="الوظيفة" value={soldier.job} />
             </div>
           </div>
 
@@ -1238,12 +1299,15 @@ const { hasPermission } = usePermissions();
             </span>
 
             <div className="flex flex-wrap gap-4">
-              <InfoRow label="الإدارة" value={soldier.administration} />
-              <InfoRow label="تاريخ التسريح" value={soldier.dischargeDate} />
+              <InfoRow label="الإدارة / السلاح" value={soldier.administration} />
+  {!soldier.isVolunteer && (
+                <InfoRow label="تاريخ التسريح" value={soldier.dischargeDate} />
+              )}
             </div>
 
             <div className="flex flex-wrap gap-4">
               <InfoRow label="المستوى التعليمي" value={soldier.educationLevel} />
+             
             </div>
           </div>
 
@@ -1258,7 +1322,7 @@ const { hasPermission } = usePermissions();
 
         {/* Letters Header */}
 
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-b border-[#cbd2e0]">
+        <div className="flex flex-wrap items-center justify-end gap-3 px-4 sm:px-6 py-4 border-b border-[#cbd2e0]">
 
           <SectionTitle>
             سجل خطابات الفرد
@@ -1274,7 +1338,7 @@ const { hasPermission } = usePermissions();
                   `/dashboard/issue-letter?personnel_id=${soldier.id}`,
                 );
               }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-[8px] transition-opacity hover:opacity-90"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-[8px] transition-opacity hover:opacity-90 shrink-0"
               style={{
                 background:
                   "linear-gradient(to bottom, #00b867, #00522e)",

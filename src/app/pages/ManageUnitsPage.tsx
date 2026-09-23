@@ -2,13 +2,54 @@ import { useEffect, useMemo, useState } from "react";
 import { Search, Plus, Pencil, Power, X, Download } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import * as XLSX from "xlsx";
-
+const UNIT_HIERARCHY_ORDER: string[] = [
+  "قيادة قوات الصاعقة",
+  "سريه القياده",
+  "كتيبة القيادة",
+  "سرية الإيجلا",
+  "كتيبة التأمين الفني",
+  "ميس 4",
+  "سرية 279 نقل",
+  "فصيلة 121 شرطة عسكرية",
+  "سرية 680 إشارة",
+  "مدرسة الصاعقة",
+  "فرقة الموسيقى",
+  "السرية الزراعية",
+  "كتيبة 49 مدفعية",
+  "قيادة المجموعة 127 صاعقة",
+  "كتيبة 33 صاعقة",
+  "كتيبة 43 صاعقة",
+  "كتيبة 53 صاعقة",
+  "كتيبة 103 صاعقة",
+  "قيادة المجموعة 129 صاعقة",
+  "كتيبة 13 صاعقة",
+  "كتيبة 23 صاعقة",
+  "كتيبة 83 صاعقة",
+  "كتيبة 113 صاعقة",
+  "قيادة المجموعة 145 صاعقة",
+  "كتيبة 63 صاعقة",
+  "كتيبة 93 صاعقة",
+  "كتيبة 73 صاعقة",
+  "كتيبة 143 صاعقة",
+  "قيادة المجموعة 101 صاعقة",
+  "كتيبة 11 صاعقة",
+  "كتيبة 21 صاعقة",
+  "كتيبة 31 صاعقة",
+  "كتيبة 41 صاعقة",
+  "قياده مجموعه العمليات الخاصه",
+  "الوحدة 777 قتال",
+  "الوحدة 999 قتال",
+  "كتيبة 50 صاعقة",
+  "سرية العائمات",
+  "فصيلة شئون مظلات",
+];
 interface Unit {
   id: string;
   name: string | null;
   code: string | null;
   unit_type: string | null;
   parent_unit_id: string | null;
+  parent_unit_name: string | null;
   is_active: boolean | null;
 }
 
@@ -43,6 +84,9 @@ export function ManageUnitsPage() {
 
   const [unitType, setUnitType] =
     useState<"MAIN" | "MANAGE">("MAIN");
+
+  const [parentUnitId, setParentUnitId] =
+    useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
 
@@ -79,15 +123,21 @@ export function ManageUnitsPage() {
           code,
           unit_type,
           parent_unit_id,
+          parent_unit:parent_unit_id(name),
           is_active
         `)
         .order("name");
 
+      if (!error && data) {
+        const mappedData = data.map((unit: any) => ({
+          ...unit,
+          parent_unit_name: unit.parent_unit?.name || null,
+        }));
+        setUnits(mappedData);
+        return;
+      }
+
       if (error) {
-        console.error(
-          "Error loading units:",
-          error
-        );
 
         setErrorMessage(
           "حدث خطأ أثناء تحميل الوحدات"
@@ -139,13 +189,16 @@ export function ManageUnitsPage() {
   // ============================================================
   // الفلترة
   // ============================================================
-
+  const parentUnits = useMemo(() => {
+    return units.filter(
+      (unit) =>
+        unit.unit_type === "MAIN" &&
+        unit.is_active === true
+    );
+  }, [units]);
   const filteredUnits = useMemo(() => {
-    return units.filter((unit) => {
-      // ------------------------------
-      // البحث
-      // ------------------------------
-
+    const filtered = units.filter((unit) => {
+      // ... نفس كود الفلترة الموجود
       const searchValue =
         search.trim().toLowerCase();
 
@@ -155,20 +208,12 @@ export function ManageUnitsPage() {
           .toLowerCase()
           .includes(searchValue);
 
-      // ------------------------------
-      // فلتر النوع
-      // ------------------------------
-
       const matchesType =
         typeFilter === "الكل"
           ? true
           : typeFilter === "اساسي"
           ? unit.unit_type === "MAIN"
           : unit.unit_type === "MANAGE";
-
-      // ------------------------------
-      // فلتر الحالة
-      // ------------------------------
 
       const matchesStatus =
         statusFilter === "الكل"
@@ -181,6 +226,49 @@ export function ManageUnitsPage() {
         matchesSearch &&
         matchesType &&
         matchesStatus
+      );
+    });
+
+    // ترتيب: الأساسية حسب الترتيب المحدد، ثم الفرعية
+    return filtered.sort((a, b) => {
+      // أولاً: الوحدات الأساسية قبل الفرعية
+      if (a.unit_type !== b.unit_type) {
+        return a.unit_type === "MAIN" ? -1 : 1;
+      }
+
+      // للوحدات الأساسية: ترتيب حسب UNIT_HIERARCHY_ORDER
+      if (a.unit_type === "MAIN") {
+        const indexA = UNIT_HIERARCHY_ORDER.indexOf(
+          a.name || ""
+        );
+        const indexB = UNIT_HIERARCHY_ORDER.indexOf(
+          b.name || ""
+        );
+
+        // إذا كانت في القائمة، رتبها حسب الترتيب
+        if (indexA !== -1 && indexB !== -1) {
+          return indexA - indexB;
+        }
+
+        // الوحدات غير الموجودة في القائمة تظهر في النهاية
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+
+        // إذا لم تكن كلاهما في القائمة، رتب أبجدياً
+        return (a.name || "").localeCompare(
+          b.name || ""
+        );
+      }
+
+      // للوحدات الفرعية: ترتيب حسب الأب ثم الاسم
+      if (a.parent_unit_id !== b.parent_unit_id) {
+        return (a.parent_unit_id || "").localeCompare(
+          b.parent_unit_id || ""
+        );
+      }
+
+      return (a.name || "").localeCompare(
+        b.name || ""
       );
     });
   }, [
@@ -198,6 +286,7 @@ export function ManageUnitsPage() {
     setEditingUnit(null);
     setUnitName("");
     setUnitType("MAIN");
+    setParentUnitId(null);
     setErrorMessage("");
     setShowModal(true);
   }
@@ -205,7 +294,6 @@ export function ManageUnitsPage() {
   // ============================================================
   // فتح Modal التعديل
   // ============================================================
-
   function openEditModal(unit: Unit) {
     setEditingUnit(unit);
 
@@ -217,6 +305,10 @@ export function ManageUnitsPage() {
       unit.unit_type === "MANAGE"
         ? "MANAGE"
         : "MAIN"
+    );
+
+    setParentUnitId(
+      unit.parent_unit_id ?? null
     );
 
     setErrorMessage("");
@@ -233,6 +325,7 @@ export function ManageUnitsPage() {
     setShowModal(false);
     setEditingUnit(null);
     setUnitName("");
+    setParentUnitId(null);
     setErrorMessage("");
   }
 
@@ -261,25 +354,28 @@ export function ManageUnitsPage() {
       // ========================================================
 
       if (editingUnit) {
+        const updateData: any = {
+          name: trimmedName,
+          unit_type: unitType,
+          updated_at:
+            new Date().toISOString(),
+        };
+
+        if (unitType === "MAIN") {
+          updateData.parent_unit_id = parentUnitId;
+        }
+
         const { error } =
           await supabase
             .from("units")
-            .update({
-              name: trimmedName,
-              unit_type: unitType,
-              updated_at:
-                new Date().toISOString(),
-            })
+            .update(updateData)
             .eq(
               "id",
               editingUnit.id
             );
 
         if (error) {
-          console.error(
-            "Error updating unit:",
-            error
-          );
+
 
           setErrorMessage(
             "حدث خطأ أثناء تعديل الوحدة"
@@ -292,22 +388,24 @@ export function ManageUnitsPage() {
       // ========================================================
       // إضافة
       // ========================================================
-
       else {
+        const insertData: any = {
+          name: trimmedName,
+          unit_type: unitType,
+          is_active: true,
+        };
+
+        if (unitType === "MAIN") {
+          insertData.parent_unit_id = parentUnitId;
+        }
+
         const { error } =
           await supabase
             .from("units")
-            .insert({
-              name: trimmedName,
-              unit_type: unitType,
-              is_active: true,
-            });
+            .insert(insertData);
 
         if (error) {
-          console.error(
-            "Error creating unit:",
-            error
-          );
+
 
           setErrorMessage(
             "حدث خطأ أثناء إضافة الوحدة"
@@ -354,10 +452,7 @@ export function ManageUnitsPage() {
       );
 
     if (primaryError) {
-      console.error(
-        "Error checking primary personnel:",
-        primaryError
-      );
+
 
       throw new Error(
         "تعذر التحقق من قوة الوحدة"
@@ -387,10 +482,7 @@ export function ManageUnitsPage() {
       );
 
     if (attachmentError) {
-      console.error(
-        "Error checking attached personnel:",
-        attachmentError
-      );
+
 
       throw new Error(
         "تعذر التحقق من خوارج الوحدة"
@@ -492,10 +584,7 @@ export function ManageUnitsPage() {
           );
 
       if (error) {
-        console.error(
-          "Error closing unit:",
-          error
-        );
+
 
         window.alert(
           "حدث خطأ أثناء إغلاق الوحدة"
@@ -510,7 +599,7 @@ export function ManageUnitsPage() {
         "تم إغلاق الوحدة بنجاح"
       );
     } catch (error) {
-      console.error(error);
+
 
       window.alert(
         error instanceof Error
@@ -550,10 +639,7 @@ export function ManageUnitsPage() {
         );
 
     if (error) {
-      console.error(
-        "Error activating unit:",
-        error
-      );
+
 
       window.alert(
         "حدث خطأ أثناء إعادة تفعيل الوحدة"
@@ -597,6 +683,7 @@ export function ManageUnitsPage() {
       "اسم الوحدة": unit.name || "بدون اسم",
       الكود: unit.code || "-",
       النوع: unit.unit_type === "MAIN" ? "أساسية" : "فرعية",
+      "الوحدة الأب": unit.parent_unit_name || "-",
       الحالة: unit.is_active ? "نشطة" : "مغلقة",
     }));
 
@@ -606,6 +693,7 @@ export function ManageUnitsPage() {
       { wch: 30 },
       { wch: 15 },
       { wch: 12 },
+      { wch: 20 },
       { wch: 12 },
     ];
 
@@ -736,7 +824,7 @@ export function ManageUnitsPage() {
           أدوات البحث والفلاتر
       ====================================================== */}
 
-      <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 ">
 
         <div className="flex flex-col lg:flex-row gap-4">
 
@@ -909,7 +997,7 @@ export function ManageUnitsPage() {
           جدول الوحدات
       ====================================================== */}
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-200  overflow-hidden">
 
         <div className="overflow-x-auto">
 
@@ -927,13 +1015,17 @@ export function ManageUnitsPage() {
                   اسم الوحدة
                 </th>
 
-                <th className="px-5 py-4 text-sm font-bold text-gray-600">
-                  النوع
-                </th>
+              <th className="px-5 py-4 text-sm font-bold text-gray-600">
+                النوع
+              </th>
 
-                <th className="px-5 py-4 text-sm font-bold text-gray-600">
-                  الحالة
-                </th>
+              <th className="px-5 py-4 text-sm font-bold text-gray-600">
+                الوحدة الأب
+              </th>
+
+              <th className="px-5 py-4 text-sm font-bold text-gray-600">
+                الحالة
+              </th>
 
                 <th className="px-5 py-4 text-sm font-bold text-gray-600">
                   الإجراءات
@@ -1003,6 +1095,25 @@ export function ManageUnitsPage() {
                           </span>
 
                         )}
+
+                      </td>
+
+                      <td className="px-5 py-4">
+
+                        <div
+                          className="text-sm"
+                          style={{
+                            color: unit.parent_unit_name
+                              ? "#2d3648"
+                              : "#a1aebe",
+                          }}
+                        >
+                          {unit.parent_unit_name ||
+                            (unit.unit_type ===
+                            "MAIN"
+                              ? "بدون أب"
+                              : "-")}
+                        </div>
 
                       </td>
 
@@ -1224,6 +1335,60 @@ export function ManageUnitsPage() {
 
               </div>
 
+              {/* الوحدة الأب - فقط للوحدات الأساسية */}
+
+              {unitType === "MAIN" && (
+
+                <div>
+
+                  <label
+                    className="block mb-2 text-sm font-bold text-gray-700"
+                    style={{
+                      fontFamily:
+                        "'Almarai', sans-serif",
+                    }}
+                  >
+                    الوحدة الأب
+                  </label>
+
+                  <select
+                    value={
+                      parentUnitId || ""
+                    }
+                    onChange={(e) =>
+                      setParentUnitId(
+                        e.target
+                          .value || null
+                      )
+                    }
+                    className="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-[#344736]"
+                    style={{
+                      fontFamily:
+                        "'Almarai', sans-serif",
+                    }}
+                  >
+
+                    <option value="">
+                      لا توجد وحدة أب
+                    </option>
+
+                    {parentUnits.map(
+                      (unit) => (
+                        <option
+                          key={unit.id}
+                          value={unit.id}
+                        >
+                          {unit.name}
+                        </option>
+                      )
+                    )}
+
+                  </select>
+
+                </div>
+
+              )}
+
               {/* Error */}
 
               {errorMessage && (
@@ -1411,7 +1576,7 @@ function StatBox({
   value: number;
 }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+    <div className="bg-white rounded-2xl border border-gray-200 p-5">
 
       <div
         className="text-sm text-gray-500 mb-2"

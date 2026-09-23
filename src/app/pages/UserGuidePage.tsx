@@ -5,11 +5,24 @@ import {
   Info,
   AlertTriangle,
   CheckCircle2,
+  LayoutGrid,
+  UserPlus,
+  Building2,
+  Mail,
+  RefreshCcw,
+  FileBarChart,
+  ClipboardList,
+  UserCog,
+  ChevronLeft,
+  ArrowRight,
+  type LucideIcon,
 } from "lucide-react";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
+
+const GREEN_GRADIENT = "linear-gradient(to bottom, #00b867, #00522e)";
 
 /* =========================================================
    نظام "البلوكات" — كل موضوع بيتكون من قايمة بلوكات مختلفة
@@ -757,21 +770,21 @@ const GUIDE_SECTIONS: GuideSection[] = [
       },
     ],
   },
-   {
+  {
     id: "system-dev",
     group: "المستخدمون",
-    title: 'مصمم المنظومة',
+    title: "مصمم المنظومة",
     content: [
       {
         type: "p",
-        text:'صمم هذه المنظومة ',
+        text: "صمم هذه المنظومة",
       },
       {
         type: "list",
         items: [
-          'جندى / اسلام مجدى عبدالستار',
-         'دفعة رديف: 01/03/2025',
-         'رقم هاتف: 01140187813'
+          "جندى / اسلام مجدى عبدالستار",
+          "دفعة رديف: 01/03/2025",
+          "رقم هاتف: 01140187813",
         ],
       },
     ],
@@ -779,6 +792,64 @@ const GUIDE_SECTIONS: GuideSection[] = [
 ];
 
 const GROUPS = Array.from(new Set(GUIDE_SECTIONS.map((s) => s.group)));
+
+/* =========================================================
+   أيقونة كل قسم — لون واحد موحّد (أخضر المنظومة) في كل مكان
+========================================================= */
+
+const GROUP_ICONS: Record<string, LucideIcon> = {
+  عام: LayoutGrid,
+  الأفراد: UserPlus,
+  الوحدات: Building2,
+  الخطابات: Mail,
+  "دفعات الرديف": RefreshCcw,
+  اليوميات: FileBarChart,
+  "التقارير والسجلات": ClipboardList,
+  المستخدمون: UserCog,
+};
+
+function getGroupIcon(group: string): LucideIcon {
+  return GROUP_ICONS[group] ?? LayoutGrid;
+}
+
+/* استخراج أول فقرة نصية من محتوى الموضوع، تُستخدم كوصف مختصر في الكارت */
+function getExcerpt(section: GuideSection): string {
+  const firstParagraph = section.content.find(
+    (b) => b.type === "p"
+  ) as { text: string } | undefined;
+
+  return firstParagraph?.text ?? "";
+}
+
+/* هل الموضوع مطابق لكلمة البحث (في العنوان أو أي بلوك جواه) */
+function sectionMatches(section: GuideSection, term: string): boolean {
+  if (!term) return true;
+
+  if (section.title.toLowerCase().includes(term)) return true;
+
+  return section.content.some((block) => {
+    if (block.type === "p") return block.text.toLowerCase().includes(term);
+
+    if (block.type === "list")
+      return block.items.some((i) => i.toLowerCase().includes(term));
+
+    if (block.type === "steps")
+      return block.items.some(
+        (i) =>
+          i.title.toLowerCase().includes(term) ||
+          i.text.toLowerCase().includes(term)
+      );
+
+    if (block.type === "table")
+      return block.rows.some((row) =>
+        row.some((cell) => cell.toLowerCase().includes(term))
+      );
+
+    if (block.type === "callout") return block.text.toLowerCase().includes(term);
+
+    return false;
+  });
+}
 
 /* =========================================================
    عرض البلوكات
@@ -849,28 +920,39 @@ function BlockRenderer({ block }: { block: GuideBlock }) {
 
   if (block.type === "steps") {
     return (
-      <div className="flex flex-col gap-3">
-        {block.items.map((step, idx) => (
-          <div key={idx} className="flex items-start gap-3">
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
-              style={{
-                background: "linear-gradient(to bottom, #00b867, #00522e)",
-              }}
-            >
-              <span
+      <div className="relative pr-7">
+        <div
+          className="absolute top-2 bottom-2"
+          style={{
+            right: 11,
+            width: 2,
+            background: "#e2e7f0",
+          }}
+        />
+
+        <div className="flex flex-col gap-5">
+          {block.items.map((step, idx) => (
+            <div key={idx} className="relative flex flex-col gap-0.5">
+              <div
+                className="absolute w-6 h-6 rounded-full flex items-center justify-center"
                 style={{
-                  ...F,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: "#fff",
+                  right: -28,
+                  top: 0,
+                  background: GREEN_GRADIENT,
                 }}
               >
-                {idx + 1}
-              </span>
-            </div>
+                <span
+                  style={{
+                    ...F,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#fff",
+                  }}
+                >
+                  {idx + 1}
+                </span>
+              </div>
 
-            <div className="flex flex-col gap-0.5">
               <span
                 style={{
                   ...F,
@@ -895,8 +977,8 @@ function BlockRenderer({ block }: { block: GuideBlock }) {
                 </span>
               )}
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     );
   }
@@ -1018,44 +1100,300 @@ function BlockRenderer({ block }: { block: GuideBlock }) {
 }
 
 /* =========================================================
+   كارت الموضوع (شاشة القائمة)
+========================================================= */
+
+function GuideCard({
+  section,
+  onClick,
+}: {
+  section: GuideSection;
+  onClick: () => void;
+}) {
+  const Icon = getGroupIcon(section.group);
+  const excerpt = getExcerpt(section);
+
+  // ✅ كارت مخصص لموضوع معين بالـ id — أضف شرط زي ده لأي كارت
+  // عايز شكله يختلف عن باقي الكروت
+  if (section.id === "system-dev") {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="text-right rounded-[12px] px-4 py-4 flex flex-col gap-2 items-center text-center"
+        style={{ background: "linear-gradient(to bottom, #00b867, #00522e)" }}
+      >
+        <Icon size={22} style={{ color: "#fff" }} />
+        <span style={{ ...F, fontSize: 14, fontWeight: 700, color: "#fff" }}>
+          {section.title}
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-right bg-white rounded-[12px] border border-[#eff0f6] px-4 py-4 hover:border-[#b9e6b4] hover:shadow-sm transition-all flex flex-col gap-2.5"
+    >
+      <div className="flex items-center gap-2.5">
+        <div
+          className="w-9 h-9 rounded-[8px] flex items-center justify-center shrink-0"
+          style={{ background: "#DCF4DF" }}
+        >
+          <Icon size={18} style={{ color: "#00522E" }} />
+        </div>
+
+        <span
+          style={{
+            ...F,
+            fontSize: 14,
+            fontWeight: 700,
+            color: "#2d3648",
+          }}
+        >
+          {section.title}
+        </span>
+      </div>
+
+      {excerpt && (
+        <p
+          className="line-clamp-2"
+          style={{
+            ...F,
+            fontSize: 13,
+            color: "#717d96",
+            lineHeight: 1.7,
+          }}
+        >
+          {excerpt}
+        </p>
+      )}
+    </button>
+  );
+}
+
+/* =========================================================
+   شاشة القائمة (الكروت المجمّعة حسب القسم)
+========================================================= */
+
+function GuideListView({
+  search,
+  setSearch,
+  onSelect,
+}: {
+  search: string;
+  setSearch: (v: string) => void;
+  onSelect: (id: string) => void;
+}) {
+  const term = search.trim().toLowerCase();
+
+  const visibleGroups = useMemo(() => {
+    return GROUPS.map((group) => ({
+      group,
+      sections: GUIDE_SECTIONS.filter(
+        (s) => s.group === group && sectionMatches(s, term)
+      ),
+    })).filter((g) => g.sections.length > 0);
+  }, [term]);
+
+  return (
+    <div className="flex flex-col gap-6 w-full">
+      <div
+        className="flex items-center gap-2 bg-white border border-[#e2e7f0] rounded-[10px] px-3 h-[48px] w-full max-w-md"
+        dir="rtl"
+      >
+        <Search size={18} className="shrink-0 text-[#a1aebe]" />
+
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="ابحث في الدليل..."
+          className="flex-1 bg-transparent outline-none text-right"
+          style={{ ...F, fontSize: 14, color: "#2d3648" }}
+        />
+      </div>
+
+      {visibleGroups.length === 0 ? (
+        <p
+          className="text-center py-10"
+          style={{ ...F, fontSize: 14, color: "#a1aebe" }}
+        >
+          لا توجد نتائج مطابقة لبحثك
+        </p>
+      ) : (
+        visibleGroups.map(({ group, sections }) => {
+          const GroupIcon = getGroupIcon(group);
+
+          return (
+            <div key={group} className="flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <GroupIcon size={18} style={{ color: "#717d96" }} />
+
+                <span
+                  style={{
+                    ...F,
+                    fontSize: 16,
+                    fontWeight: 700,
+                    color: "#2d3648",
+                  }}
+                >
+                  {group}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {sections.map((s) => (
+                  <GuideCard
+                    key={s.id}
+                    section={s}
+                    onClick={() => onSelect(s.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+/* =========================================================
+   شاشة التفاصيل
+========================================================= */
+
+function GuideDetailView({
+  section,
+  onBack,
+  onSelect,
+}: {
+  section: GuideSection;
+  onBack: () => void;
+  onSelect: (id: string) => void;
+}) {
+  const Icon = getGroupIcon(section.group);
+
+  const otherInGroup = GUIDE_SECTIONS.filter(
+    (s) => s.group === section.group && s.id !== section.id
+  );
+
+  return (
+    <div className="flex flex-col gap-6 w-full">
+      {/* Breadcrumb */}
+
+      <div className="flex items-center gap-1.5 flex-wrap" dir="rtl">
+        <button
+          type="button"
+          onClick={onBack}
+          style={{ ...F, fontSize: 13, color: "#717d96" }}
+          className="hover:text-[#2d3648] transition-colors"
+        >
+          دليل المنظومة
+        </button>
+
+        <ChevronLeft size={14} className="text-[#cbd2e0]" />
+
+        <span style={{ ...F, fontSize: 13, color: "#717d96" }}>
+          {section.group}
+        </span>
+
+        <ChevronLeft size={14} className="text-[#cbd2e0]" />
+
+        <span style={{ ...F, fontSize: 13, fontWeight: 700, color: "#2d3648" }}>
+          {section.title}
+        </span>
+      </div>
+
+      <div className="bg-white rounded-[16px] border border-[#eff0f6] p-6">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex items-center gap-1.5 mb-5 hover:opacity-70 transition-opacity"
+        >
+          <ArrowRight size={16} style={{ color: "#00522E" }} />
+
+          <span style={{ ...F, fontSize: 13, color: "#00522E" }}>
+            العودة لدليل المنظومة
+          </span>
+        </button>
+
+        <div className="flex items-center gap-3 mb-6">
+          <div
+            className="w-10 h-10 rounded-[10px] flex items-center justify-center shrink-0"
+            style={{ background: GREEN_GRADIENT }}
+          >
+            <Icon size={20} style={{ color: "#fff" }} />
+          </div>
+
+          <h2
+            style={{
+              ...F,
+              fontWeight: 700,
+              fontSize: 20,
+              color: "#2d3648",
+            }}
+          >
+            {section.title}
+          </h2>
+        </div>
+
+        <div className="flex flex-col gap-4">
+          {section.content.map((block, idx) => (
+            <BlockRenderer key={idx} block={block} />
+          ))}
+        </div>
+
+        {otherInGroup.length > 0 && (
+          <div className="mt-8 pt-5 border-t border-[#eff0f6]">
+            <p
+              style={{ ...F, fontSize: 13, color: "#717d96" }}
+              className="mb-3"
+            >
+              صفحات أخرى في قسم "{section.group}"
+            </p>
+
+            <div className="flex flex-wrap gap-2.5">
+              {otherInGroup.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => onSelect(s.id)}
+                  className="flex items-center gap-1.5 bg-[#f7f9fc] hover:bg-[#f0f2f8] rounded-[8px] px-3 py-1.5 transition-colors"
+                >
+                  <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>
+                    {s.title}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
    الصفحة
 ========================================================= */
 
 export function UserGuidePage() {
-  const [activeId, setActiveId] = useState(GUIDE_SECTIONS[0].id);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
-  const filteredSections = useMemo(() => {
-    const term = search.trim().toLowerCase();
+  const activeSection = GUIDE_SECTIONS.find((s) => s.id === activeId) ?? null;
 
-    if (!term) return GUIDE_SECTIONS;
+  function handleSelect(id: string) {
+    setActiveId(id);
+    setSearch("");
+  }
 
-    return GUIDE_SECTIONS.filter((s) => {
-      if (s.title.toLowerCase().includes(term)) return true;
-
-      return s.content.some((block) => {
-        if (block.type === "p") return block.text.toLowerCase().includes(term);
-        if (block.type === "list")
-          return block.items.some((i) => i.toLowerCase().includes(term));
-        if (block.type === "steps")
-          return block.items.some(
-            (i) =>
-              i.title.toLowerCase().includes(term) ||
-              i.text.toLowerCase().includes(term)
-          );
-        if (block.type === "table")
-          return block.rows.some((row) =>
-            row.some((cell) => cell.toLowerCase().includes(term))
-          );
-        if (block.type === "callout")
-          return block.text.toLowerCase().includes(term);
-        return false;
-      });
-    });
-  }, [search]);
-
-  const activeSection =
-    GUIDE_SECTIONS.find((s) => s.id === activeId) ?? GUIDE_SECTIONS[0];
+  function handleBack() {
+    setActiveId(null);
+  }
 
   return (
     <div className="flex flex-col gap-5 w-full pb-10" dir="rtl">
@@ -1087,123 +1425,19 @@ export function UserGuidePage() {
         </div>
       </div>
 
-      {/* البحث */}
-
-      <div
-        className="flex items-center gap-2 bg-white border border-[#e2e7f0] rounded-[10px] px-3 h-[48px] w-full max-w-md"
-        dir="rtl"
-      >
-        <Search size={18} className="shrink-0 text-[#a1aebe]" />
-
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="ابحث في الدليل..."
-          className="flex-1 bg-transparent outline-none text-right"
-          style={{ ...F, fontSize: 14, color: "#2d3648" }}
+      {activeSection ? (
+        <GuideDetailView
+          section={activeSection}
+          onBack={handleBack}
+          onSelect={handleSelect}
         />
-      </div>
-
-      {/* المحتوى: قائمة + تفاصيل */}
-
-      <div className="flex gap-5 items-start flex-wrap lg:flex-nowrap w-full">
-        {/* القائمة الجانبية */}
-
-        <div className="w-full lg:w-[300px] shrink-0 bg-white rounded-[16px] border border-[#eff0f6] overflow-hidden">
-          {search.trim() ? (
-            <div className="max-h-[70vh] overflow-y-auto py-2">
-              {filteredSections.length === 0 ? (
-                <p
-                  className="px-4 py-6 text-center"
-                  style={{ ...F, fontSize: 13, color: "#a1aebe" }}
-                >
-                  لا توجد نتائج مطابقة
-                </p>
-              ) : (
-                filteredSections.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => {
-                      setActiveId(s.id);
-                      setSearch("");
-                    }}
-                    className="w-full text-right px-4 py-2.5 hover:bg-[#f5f6fb] transition-colors"
-                    style={{ ...F, fontSize: 13, color: "#2d3648" }}
-                  >
-                    {s.title}
-                  </button>
-                ))
-              )}
-            </div>
-          ) : (
-            <div className="max-h-[70vh] overflow-y-auto py-2">
-              {GROUPS.map((group) => (
-                <div key={group} className="mb-1">
-                  <p
-                    className="px-4 pt-3 pb-1"
-                    style={{
-                      ...F,
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: "#a1aebe",
-                    }}
-                  >
-                    {group}
-                  </p>
-
-                  {GUIDE_SECTIONS.filter((s) => s.group === group).map(
-                    (s) => {
-                      const isActive = s.id === activeId;
-
-                      return (
-                        <button
-                          key={s.id}
-                          type="button"
-                          onClick={() => setActiveId(s.id)}
-                          className="w-full text-right px-4 py-2.5 transition-colors"
-                          style={{
-                            ...F,
-                            fontSize: 14,
-                            fontWeight: isActive ? 700 : 400,
-                            color: isActive ? "#1f3d97" : "#2d3648",
-                            background: isActive ? "#f0f2fd" : "transparent",
-                          }}
-                        >
-                          {s.title}
-                        </button>
-                      );
-                    }
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* المحتوى */}
-
-        <div className="flex-1 min-w-0 w-full bg-white rounded-[16px] border border-[#eff0f6] p-6">
-          <h2
-            style={{
-              ...F,
-              fontWeight: 700,
-              fontSize: 20,
-              color: "#2d3648",
-              marginBottom: 16,
-            }}
-          >
-            {activeSection.title}
-          </h2>
-
-          <div className="flex flex-col gap-4">
-            {activeSection.content.map((block, idx) => (
-              <BlockRenderer key={idx} block={block} />
-            ))}
-          </div>
-        </div>
-      </div>
+      ) : (
+        <GuideListView
+          search={search}
+          setSearch={setSearch}
+          onSelect={handleSelect}
+        />
+      )}
     </div>
   );
 }

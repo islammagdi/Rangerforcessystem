@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Upload, X } from "lucide-react";
 
 import { supabase } from "../../lib/supabase";
 import { logActivity } from "../../lib/logActivity";
+import { useUnsavedChanges } from "../../lib/unsavedChanges";
 import {
   fetchMailOffices,
   createIncomingMail,
@@ -48,6 +49,44 @@ export function ArchiveIncomingNewPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // ─────────────────────────────────────────────────────────
+  // تتبّع التعديلات غير المحفوظة
+  // ─────────────────────────────────────────────────────────
+  const { setDirty, guardNavigation } = useUnsavedChanges();
+
+  const isDirty = useMemo(() => {
+    return (
+      sourceEntity.trim() !== "" ||
+      Boolean(officeId) ||
+      faxSummary.trim() !== "" ||
+      notes.trim() !== "" ||
+      actionTaken.trim() !== "" ||
+      branchHeadDecision.trim() !== "" ||
+      isCopyDistributed ||
+      distributedToName.trim() !== "" ||
+      pendingScans.length > 0
+    );
+  }, [
+    sourceEntity,
+    officeId,
+    faxSummary,
+    notes,
+    actionTaken,
+    branchHeadDecision,
+    isCopyDistributed,
+    distributedToName,
+    pendingScans.length,
+  ]);
+
+  useEffect(() => {
+    setDirty(isDirty);
+  }, [isDirty, setDirty]);
+
+  useEffect(() => {
+    return () => setDirty(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     loadOffices();
   }, []);
@@ -58,7 +97,7 @@ export function ArchiveIncomingNewPage() {
       const data = await fetchMailOffices();
       setOffices(data);
     } catch (err: any) {
-      console.error("Load offices error:", err);
+
       setError("حدث خطأ أثناء تحميل قائمة المكاتب");
     } finally {
       setLoadingOffices(false);
@@ -191,12 +230,15 @@ export function ArchiveIncomingNewPage() {
           details: `ملخص الفاكس: ${faxSummaryTrimmed || "بدون ملخص"}`,
         });
       } catch (auditError) {
-        console.error("Audit log error:", auditError);
+
       }
+
+      // ✅ الفاكس اتحفظ فعليًا في قاعدة البيانات
+      setDirty(false);
 
       navigate(`/dashboard/archive/incoming/${faxId}`);
     } catch (err: any) {
-      console.error("Create incoming mail error:", err);
+
       setError(err?.message || "حدث خطأ أثناء حفظ الفاكس");
     } finally {
       setSaving(false);
@@ -496,7 +538,9 @@ export function ArchiveIncomingNewPage() {
 
           <button
             type="button"
-            onClick={() => navigate("/dashboard/archive/incoming")}
+            onClick={() =>
+              guardNavigation(() => navigate("/dashboard/archive/incoming"))
+            }
             disabled={saving}
             className="h-[48px] px-6 rounded-[8px] border border-[#cbd5e1]"
             style={{ ...F, fontSize: 15, color: "#475569" }}

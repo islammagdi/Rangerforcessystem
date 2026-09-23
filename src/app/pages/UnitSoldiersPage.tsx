@@ -26,7 +26,23 @@ interface PrimaryUnitFilter {
   id: string;
   name: string;
 }
+interface AdministrationFilterOption {
+  id: string;
+  name: string;
+  code: string;
+}
 
+function extractAdministrationCode(
+  milId: string
+): string | null {
+  const digitsOnly = milId.replace(/\D/g, "");
+
+  if (digitsOnly.length !== 13) {
+    return null;
+  }
+
+  return digitsOnly.substring(6, 8);
+}
 interface SoldierRow {
   id: string;
   primaryUnitId: string | null;
@@ -37,9 +53,9 @@ interface SoldierRow {
   status: "داخل الوحده" | "خارج الوحده";
   attachment: string;
   dischargeDate: string;
-  // مبنيّة من lib/personnelRules — مصدر واحد لتعريف "متطوع"/"مجند"
   isVolunteer: boolean;
   isConscript: boolean;
+  administrationCode: string | null;
 }
 
 interface UnitMeta {
@@ -602,6 +618,17 @@ export function UnitSoldiersPage() {
   >([]);
 
   const [
+    administrations,
+    setAdministrations,
+  ] = useState<
+    AdministrationFilterOption[]
+  >([]);
+
+  const [
+    administrationFilter,
+    setAdministrationFilter,
+  ] = useState<string>("all");
+  const [
     rankFilter,
     setRankFilter,
   ] = useState<RankFilter>("all");
@@ -726,7 +753,42 @@ export function UnitSoldiersPage() {
       if (statusesError) {
         throw statusesError;
       }
+const {
+  data: administrationsData,
+  error: administrationsError,
+} = await supabase
+  .from("external_administrations")
+  .select("id, name, code")
+  .eq("is_active", true)
+  .order("name", { ascending: true });
 
+if (administrationsError) {
+  throw administrationsError;
+}
+
+const administrationOptions: AdministrationFilterOption[] =
+  (administrationsData ?? [])
+    .filter((a) => !!a.code)
+    .map((a) => ({
+      id: a.id,
+      name: a.name,
+      code: a.code as string,
+    }));
+
+setAdministrations(administrationOptions);
+
+setAdministrationFilter((current) => {
+  if (
+    current === "all" ||
+    administrationOptions.some(
+      (item) => item.id === current
+    )
+  ) {
+    return current;
+  }
+
+  return "all";
+});
       const statusById = new Map<
         string,
         StatusLike
@@ -1072,7 +1134,13 @@ function isAllowedStatus(
 
               isVolunteer,
               isConscript,
-            };
+                  isVolunteer,
+    isConscript,
+    administrationCode: extractAdministrationCode(
+      person.military_number ?? ""
+    ),
+  };
+           
 
           return {
             ...baseRow,
@@ -1167,74 +1235,90 @@ function isAllowedStatus(
   // Filters
   // ───────────────────────────────────────────────────────────────────────────
 
-  const filtered = useMemo(() => {
-    if (!unit) return [];
+const filtered = useMemo(() => {
+  if (!unit) return [];
 
-    return unit.rows.filter(
-      (row) => {
-        // الوحدة الأساسية فقط
-        // تستخدم فلتر داخل / خارج
-        const matchLocation =
-          !unit.isMain
+  // ✅ جديد: كود الإدارة اللي اليوزر مختارها دلوقتي
+  const selectedAdminCode =
+    administrationFilter === "all"
+      ? null
+      : administrations.find(
+          (a) => a.id === administrationFilter
+        )?.code ?? null;
+
+  return unit.rows.filter(
+    (row) => {
+      // الوحدة الأساسية فقط
+      // تستخدم فلتر داخل / خارج
+      const matchLocation =
+        !unit.isMain
+          ? true
+          : locationFilter ===
+              "all"
             ? true
             : locationFilter ===
-                "all"
-              ? true
-              : locationFilter ===
-                  "inside"
-                ? row.status ===
-                  "داخل الوحده"
-                : row.status ===
-                  "خارج الوحده";
+                "inside"
+              ? row.status ===
+                "داخل الوحده"
+              : row.status ===
+                "خارج الوحده";
 
-        // الوحدة الإدارية تستخدم
-        // الوحدة الأساسية للفرد
-        const matchPrimaryUnit =
-          unit.isMain ||
-          primaryUnitFilter ===
-            "all"
-            ? true
-            : row.primaryUnitId ===
-              primaryUnitFilter;
+      // الوحدة الإدارية تستخدم
+      // الوحدة الأساسية للفرد
+      const matchPrimaryUnit =
+        unit.isMain ||
+        primaryUnitFilter ===
+          "all"
+          ? true
+          : row.primaryUnitId ===
+            primaryUnitFilter;
 
-        // ⬅️ فلتر الرتبة بقى معتمد على row.isConscript/row.isVolunteer
-        //    (نفس تعريف lib/personnelRules) بدل مقارنة النصوص
-        const matchRank =
-          rankFilter === "all"
-            ? true
-            : rankFilter ===
-                "soldiers"
-              ? row.isConscript
-              : row.isVolunteer;
+      const matchRank =
+        rankFilter === "all"
+          ? true
+          : rankFilter ===
+              "soldiers"
+            ? row.isConscript
+            : row.isVolunteer;
 
-        const normalizedSearch =
-          search.trim();
+      // ✅ جديد: فلتر الإدارة
+      const matchAdministration =
+        administrationFilter === "all"
+          ? true
+          : row.administrationCode ===
+            selectedAdminCode;
 
-        const matchSearch =
-          normalizedSearch ===
-            "" ||
-          row.milId.includes(
-            normalizedSearch
-          ) ||
-          row.name.includes(
-            normalizedSearch
-          );
+      const normalizedSearch =
+        search.trim();
 
-        return (
-          matchLocation &&
-          matchPrimaryUnit &&
-          matchRank &&
-          matchSearch
+      const matchSearch =
+        normalizedSearch ===
+          "" ||
+        row.milId.includes(
+          normalizedSearch
+        ) ||
+        row.name.includes(
+          normalizedSearch
         );
-      }
-    );
-  }, [
-    unit,
-    locationFilter,
-    primaryUnitFilter,
-    rankFilter,
-    search,
-  ]);
+
+      return (
+        matchLocation &&
+        matchPrimaryUnit &&
+        matchRank &&
+        matchAdministration && // ✅ جديد
+        matchSearch
+      );
+    }
+  );
+}, [
+  unit,
+  locationFilter,
+  primaryUnitFilter,
+  rankFilter,
+  administrationFilter, // ✅ جديد
+  administrations,      // ✅ جديد
+  search,
+]);
 
   const locationOptions: {
     value: LocationFilter;
@@ -1691,7 +1775,62 @@ function isAllowedStatus(
                 }
               />
             )}
+{/* Administration filter */}
 
+<div className="relative min-w-[200px]">
+  <select
+    value={administrationFilter}
+    onChange={(e) =>
+      setAdministrationFilter(e.target.value)
+    }
+    className="
+      appearance-none
+      w-full
+      bg-white
+      border
+      border-[#e2e7f0]
+      rounded-[8px]
+      px-4
+      py-2.5
+      pl-10
+      outline-none
+      cursor-pointer
+      hover:border-[#00b867]
+      focus:border-[#00b867]
+      transition-colors
+    "
+    style={{
+      ...F,
+      fontSize: 15,
+      color: "#2d3648",
+    }}
+    dir="rtl"
+  >
+    <option value="all">كل الإدارات</option>
+
+    {administrations.map((admin) => (
+      <option key={admin.id} value={admin.id}>
+        {admin.name}
+      </option>
+    ))}
+  </select>
+
+  <svg
+    className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+    width="16"
+    height="16"
+    viewBox="0 0 16 16"
+    fill="none"
+  >
+    <path
+      d="M4 6L8 10L12 6"
+      stroke="#717d96"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+</div>
             {/* Rank filter */}
 
             <FilterBtnGroup

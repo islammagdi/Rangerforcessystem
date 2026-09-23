@@ -174,7 +174,142 @@ function FilterDropdown({
     </div>
   );
 }
+function SearchableFilterDropdown({
+  placeholder,
+  options,
+  value,
+  onChange,
+  loading = false,
+}: {
+  placeholder: string;
+  options: string[];
+  value: string;
+  onChange: (v: string) => void;
+  loading?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [inputValue, setInputValue] = useState(value);
 
+  useEffect(() => {
+    setInputValue(value);
+  }, [value]);
+
+  const filteredOptions = useMemo(() => {
+    const q = inputValue.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter((opt) => opt.toLowerCase().includes(q));
+  }, [options, inputValue]);
+
+  function selectOption(opt: string) {
+    onChange(opt);
+    setInputValue(opt);
+    setOpen(false);
+  }
+
+  function clearSelection() {
+    onChange("");
+    setInputValue("");
+    setOpen(false);
+  }
+
+  return (
+    <div className="relative flex-1 min-w-[140px]">
+      <div className="w-full h-[52px] bg-white border border-[#e2e7f0] rounded-[8px] flex items-center gap-2 px-3 focus-within:border-[#a0aec0] transition-colors">
+        <ChevronDown
+          size={16}
+          className={`shrink-0 text-[#2d3648] transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
+          onClick={() => setOpen((o) => !o)}
+          style={{ cursor: "pointer" }}
+        />
+
+        <input
+          type="text"
+          value={inputValue}
+          placeholder={placeholder}
+          onFocus={() => setOpen(true)}
+          onChange={(e) => {
+            setInputValue(e.target.value);
+            setOpen(true);
+            if (!e.target.value) onChange("");
+          }}
+          onBlur={() => {
+            // تأخير بسيط عشان الضغط على عنصر من القايمة يتسجل الأول
+            setTimeout(() => setOpen(false), 150);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && filteredOptions.length > 0) {
+              selectOption(filteredOptions[0]);
+            } else if (e.key === "Escape") {
+              setOpen(false);
+            }
+          }}
+          className="flex-1 bg-transparent outline-none text-right"
+          style={{
+            ...F,
+            fontSize: 16,
+            color: value ? "#2d3648" : "#4a5468",
+          }}
+          dir="rtl"
+        />
+      </div>
+
+      {open && (
+        <ul
+          className="absolute z-50 top-full mt-1 w-full bg-white border border-[#e2e7f0] rounded-[8px] shadow-lg overflow-hidden max-h-[240px] overflow-y-auto"
+          dir="rtl"
+        >
+          <li>
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="w-full text-right px-4 py-2.5 hover:bg-[#f5f6fb]"
+              style={{ ...F, fontSize: 14, color: "#717d96" }}
+            >
+              الكل
+            </button>
+          </li>
+
+          {loading ? (
+            <li
+              className="px-4 py-2.5"
+              style={{ ...F, fontSize: 14, color: "#a1aebe" }}
+            >
+              جاري تحميل الأنواع...
+            </li>
+          ) : filteredOptions.length === 0 ? (
+            <li
+              className="px-4 py-2.5"
+              style={{ ...F, fontSize: 14, color: "#a1aebe" }}
+            >
+              لا توجد نتائج
+            </li>
+          ) : (
+            filteredOptions.map((opt) => (
+              <li key={opt}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()} // يمنع الـ blur من قفل القايمة قبل الاختيار
+                  onClick={() => selectOption(opt)}
+                  className={[
+                    "w-full text-right px-4 py-2.5 transition-colors",
+                    opt === value
+                      ? "bg-[#f0f2fd] text-[#1f3d97]"
+                      : "hover:bg-[#f5f6fb] text-[#2d3648]",
+                  ].join(" ")}
+                  style={{ ...F, fontSize: 14 }}
+                >
+                  {opt}
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
 function LettersTable({
   records,
   onView,
@@ -505,6 +640,7 @@ function GeneralArchiveTab({
             status,
             letter_type_id,
             issuing_unit_id,
+            destination_name,
 
             letter_types (
               id,
@@ -518,9 +654,6 @@ function GeneralArchiveTab({
               code
             )
           `)
-          .order("letter_date", {
-            ascending: false,
-          });
 
         if (error) {
           throw error;
@@ -563,7 +696,7 @@ function GeneralArchiveTab({
                   : "-"),
 
               destination:
-                issuingUnit?.name ?? "-",
+                row.destination_name || issuingUnit?.name || "-",
 
               soldiersCount:
                 Number(row.personnel_count) || 0,
@@ -577,7 +710,7 @@ function GeneralArchiveTab({
 
         setRecords(mapped);
       } catch (err: any) {
-        console.error("LOAD LETTERS ERROR:", err);
+
 
         if (!mounted) return;
 
@@ -600,7 +733,44 @@ function GeneralArchiveTab({
       mounted = false;
     };
   }, []);
+const [letterTypes, setLetterTypes] = useState<string[]>([]);
+const [letterTypesLoading, setLetterTypesLoading] = useState(true);
 
+useEffect(() => {
+  let mounted = true;
+
+  async function loadLetterTypes() {
+    setLetterTypesLoading(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("letter_types")
+        .select("name")
+        .order("name", { ascending: true });
+        // ملاحظة: مفيش فلتر على is_active هنا عمدًا
+        // عشان تيجي كل الأنواع بغض النظر عن حالة التفعيل
+
+      if (error) throw error;
+      if (!mounted) return;
+
+      const names = (data ?? [])
+        .map((row: any) => row.name)
+        .filter(Boolean);
+
+      setLetterTypes(names);
+    } catch (err) {
+   
+    } finally {
+      if (mounted) setLetterTypesLoading(false);
+    }
+  }
+
+  void loadLetterTypes();
+
+  return () => {
+    mounted = false;
+  };
+}, []);
   const filtered = useMemo(() => {
     return records.filter((l) => {
       if (
@@ -840,12 +1010,13 @@ function GeneralArchiveTab({
       نوع الخطاب
     </label>
 
-    <FilterDropdown
-      placeholder="عرض حسب النوع"
-      options={["الحاق", "إنهاء الحاق", "خطاب ضم أفراد صاعقة", "خطاب ضم أفراد إدارات خارجية"]}
-      value={filterType}
-      onChange={setFilterType}
-    />
+<SearchableFilterDropdown
+  placeholder="ابحث عن نوع الخطاب"
+  options={letterTypes}
+  value={filterType}
+  onChange={setFilterType}
+  loading={letterTypesLoading}
+/>
   </div>
 
   {/* إعادة تعيين الفلاتر */}
@@ -1101,10 +1272,7 @@ function IndividualTab({
         return;
       }
 
-      console.log("FOUND PERSONNEL:", {
-        id: personnel.id,
-        military_number: personnel.military_number,
-      });
+
 
       const rank = Array.isArray(personnel.rank)
         ? personnel.rank[0]
@@ -1155,14 +1323,6 @@ function IndividualTab({
         .select("letter_id")
         .eq("personnel_id", personnel.id);
 
-      console.log(
-        "PERSONNEL ID USED:",
-        personnel.id
-      );
-
-      console.log("LINKS RESULT:", links);
-      console.log("LINKS ERROR:", linksError);
-
       if (linksError) {
         throw linksError;
       }
@@ -1199,6 +1359,7 @@ function IndividualTab({
           status,
           letter_type_id,
           issuing_unit_id,
+          destination_name,
 
           letter_types (
             id,
@@ -1212,10 +1373,6 @@ function IndividualTab({
             code
           )
         `)
-        .in("id", letterIds)
-        .order("letter_date", {
-          ascending: false,
-        });
 
       if (lettersError) {
         throw lettersError;
@@ -1257,19 +1414,15 @@ function IndividualTab({
 
             /*
              * ======================================================
-             * جهة الخطاب الصحيحة
-             *
-             * قبل التعديل كان:
-             * destination: letter.reason || "-"
-             *
-             * وده كان يعرض سبب الخطاب.
-             *
-             * الآن:
-             * destination = اسم الوحدة المصدرة للخطاب
+             * جهة الخطاب: أولوية لاسم الجهة النصي المحفوظ وقت
+             * الإصدار (destination_name)، لأنه بيغطي الجهات غير
+             * المسجّلة كمان. لو مش موجود (خطابات قديمة)، نرجع
+             * لاسم الوحدة المسجّلة كـ fallback.
              * ======================================================
              */
             destination:
-              issuingUnit?.name ??
+              letter.destination_name ||
+              issuingUnit?.name ||
               "-",
 
             soldiersCount:
@@ -1284,10 +1437,6 @@ function IndividualTab({
 
       setLetters(mapped);
     } catch (err: any) {
-      console.error(
-        "SEARCH SOLDIER LETTERS ERROR:",
-        err
-      );
 
       setError(
         err?.message ||

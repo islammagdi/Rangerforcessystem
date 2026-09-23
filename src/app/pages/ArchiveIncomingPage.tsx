@@ -30,6 +30,8 @@ export function ArchiveIncomingPage() {
   const [dateFromFilter, setDateFromFilter] = useState("");
   const [dateToFilter, setDateToFilter] = useState("");
   const [officeFilter, setOfficeFilter] = useState("");
+  const [faxSummaryFilter, setFaxSummaryFilter] = useState("");
+  const [sourceEntityFilter, setSourceEntityFilter] = useState("");
 
   const yearOptions = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -53,6 +55,8 @@ export function ArchiveIncomingPage() {
     dateFromFilter,
     dateToFilter,
     officeFilter,
+    faxSummaryFilter,
+    sourceEntityFilter,
   ]);
 
   async function loadOffices() {
@@ -60,7 +64,7 @@ export function ArchiveIncomingPage() {
       const data = await fetchMailOffices();
       setOffices(data);
     } catch (err: any) {
-      console.error("Load offices error:", err);
+
     }
   }
 
@@ -75,10 +79,12 @@ export function ArchiveIncomingPage() {
         dateFrom: dateFromFilter || undefined,
         dateTo: dateToFilter || undefined,
         officeId: officeFilter || undefined,
+        faxSummary: faxSummaryFilter || undefined,
+        sourceEntity: sourceEntityFilter || undefined,
       });
       setMails(data);
     } catch (err: any) {
-      console.error("Load incoming mails error:", err);
+
       setError(
         err?.message || "حدث خطأ أثناء تحميل بيانات الفاكسات الواردة"
       );
@@ -92,6 +98,8 @@ export function ArchiveIncomingPage() {
     setDateFromFilter("");
     setDateToFilter("");
     setOfficeFilter("");
+    setFaxSummaryFilter("");
+    setSourceEntityFilter("");
   }
 
   const thClass =
@@ -147,6 +155,7 @@ export function ArchiveIncomingPage() {
       {/* الفلاتر */}
 
       <section className="bg-white rounded-[20px] border border-[#eff0f6] p-5">
+        {/* الصف الأول */}
         <div className="flex flex-wrap items-end gap-3 w-full">
           <div className="flex flex-col gap-1.5 flex-1 min-w-[160px]">
             <label style={{ ...F, fontSize: 13, color: "#717d96" }}>
@@ -215,6 +224,7 @@ export function ArchiveIncomingPage() {
               />
             </div>
           </div>
+
           <div className="flex flex-col gap-1.5 flex-1 min-w-[140px]">
             <label style={{ ...F, fontSize: 13, color: "#717d96" }}>
               السنة
@@ -235,7 +245,10 @@ export function ArchiveIncomingPage() {
               ))}
             </select>
           </div>
+        </div>
 
+        {/* الصف الثاني */}
+        <div className="flex flex-wrap items-end gap-3 w-full mt-3">
           <div className="flex flex-col gap-1.5 flex-1 min-w-[180px]">
             <label style={{ ...F, fontSize: 13, color: "#717d96" }}>
               المكتب المختص
@@ -257,6 +270,50 @@ export function ArchiveIncomingPage() {
             </select>
           </div>
 
+          <div className="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+            <label style={{ ...F, fontSize: 13, color: "#717d96" }}>
+              ملخص الفاكس
+            </label>
+
+            <div
+              className="flex items-center gap-2 bg-white border border-[#e2e7f0] rounded-[8px] px-3 h-[44px]"
+              dir="rtl"
+            >
+              <input
+                type="text"
+                value={faxSummaryFilter}
+                onChange={(e) => setFaxSummaryFilter(e.target.value)}
+                placeholder="ابحث في ملخص الفاكس"
+                className="flex-1 bg-transparent outline-none text-right"
+                style={{ ...F, fontSize: 14, color: "#2d3648" }}
+              />
+
+              <Search size={16} className="text-[#a1aebe]" />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+            <label style={{ ...F, fontSize: 13, color: "#717d96" }}>
+              الجهة الواردة منها
+            </label>
+
+            <div
+              className="flex items-center gap-2 bg-white border border-[#e2e7f0] rounded-[8px] px-3 h-[44px]"
+              dir="rtl"
+            >
+              <input
+                type="text"
+                value={sourceEntityFilter}
+                onChange={(e) => setSourceEntityFilter(e.target.value)}
+                placeholder="ابحث باسم الجهة"
+                className="flex-1 bg-transparent outline-none text-right"
+                style={{ ...F, fontSize: 14, color: "#2d3648" }}
+              />
+
+              <Search size={16} className="text-[#a1aebe]" />
+            </div>
+          </div>
+
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -269,7 +326,6 @@ export function ArchiveIncomingPage() {
           </div>
         </div>
       </section>
-
       {/* الجدول */}
 
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
@@ -308,7 +364,7 @@ export function ArchiveIncomingPage() {
                     </span>
                   </th>
 
-                                   <th className={thClass}>
+                  <th className={thClass}>
                     <span style={{ ...F, fontSize: 13, color: "#717d96" }}>
                       المكتب المختص
                     </span>
@@ -362,7 +418,7 @@ export function ArchiveIncomingPage() {
                       </span>
                     </td>
 
-                                        <td className={tdClass}>
+                    <td className={tdClass}>
                       <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
                         {mail.mail_offices?.name ?? "-"}
                       </span>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../../lib/supabase";
 import {
   Activity,
@@ -23,6 +23,12 @@ function ActivityLogPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // فلاتر
+  const [actionTypeFilter, setActionTypeFilter] = useState("");
+  const [userNameFilter, setUserNameFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
   async function loadLogs() {
     try {
       setLoading(true);
@@ -41,10 +47,7 @@ function ActivityLogPage() {
         });
 
       if (fetchError) {
-        console.error(
-          "GET ACTIVITY LOG ERROR:",
-          fetchError
-        );
+      
 
         setError(
           `حدث خطأ أثناء تحميل سجل العمليات: ${fetchError.message}`
@@ -55,10 +58,7 @@ function ActivityLogPage() {
 
       setLogs(data ?? []);
     } catch (err) {
-      console.error(
-        "ACTIVITY LOG EXCEPTION:",
-        err
-      );
+
 
       setError(
         "حدث خطأ غير متوقع أثناء تحميل سجل العمليات"
@@ -71,6 +71,59 @@ function ActivityLogPage() {
   useEffect(() => {
     loadLogs();
   }, []);
+
+  // =====================================================
+  // قوائم الفلاتر (مستخرجة من البيانات)
+  // =====================================================
+
+  const actionTypeOptions = useMemo(() => {
+    const types = new Set(logs.map((l) => l.action_type).filter(Boolean));
+    return Array.from(types);
+  }, [logs]);
+
+  const userNameOptions = useMemo(() => {
+    const names = new Set(logs.map((l) => l.user_name).filter(Boolean));
+    return Array.from(names);
+  }, [logs]);
+
+  // =====================================================
+  // تطبيق الفلاتر
+  // =====================================================
+
+  const filteredLogs = useMemo(() => {
+    return logs.filter((log) => {
+      if (actionTypeFilter && log.action_type !== actionTypeFilter) {
+        return false;
+      }
+
+      if (userNameFilter && log.user_name !== userNameFilter) {
+        return false;
+      }
+
+      if (dateFrom) {
+        const logDate = new Date(log.created_at);
+        const fromDate = new Date(dateFrom);
+        fromDate.setHours(0, 0, 0, 0);
+        if (logDate < fromDate) return false;
+      }
+
+      if (dateTo) {
+        const logDate = new Date(log.created_at);
+        const toDate = new Date(dateTo);
+        toDate.setHours(23, 59, 59, 999);
+        if (logDate > toDate) return false;
+      }
+
+      return true;
+    });
+  }, [logs, actionTypeFilter, userNameFilter, dateFrom, dateTo]);
+
+  function resetFilters() {
+    setActionTypeFilter("");
+    setUserNameFilter("");
+    setDateFrom("");
+    setDateTo("");
+  }
 
   // =====================================================
   // تنسيق التفاصيل
@@ -285,6 +338,92 @@ function ActivityLogPage() {
       </div>
 
       {/* =================================================
+          شريط الفلاتر
+      ================================================= */}
+
+      {!loading && !error && (
+        <div className="bg-white rounded-2xl border border-[#e2e8f0] p-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            {/* فلتر نوع العملية */}
+            <div>
+              <label className="block text-xs font-bold text-[#64748b] mb-1">
+                نوع العملية
+              </label>
+              <select
+                value={actionTypeFilter}
+                onChange={(e) => setActionTypeFilter(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-[#e2e8f0] text-sm bg-white"
+              >
+                <option value="">الكل</option>
+                {actionTypeOptions.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* فلتر اسم المستخدم */}
+            <div>
+              <label className="block text-xs font-bold text-[#64748b] mb-1">
+                اسم المستخدم
+              </label>
+              <select
+                value={userNameFilter}
+                onChange={(e) => setUserNameFilter(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-[#e2e8f0] text-sm bg-white"
+              >
+                <option value="">الكل</option>
+                {userNameOptions.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* فلتر التاريخ من */}
+            <div>
+              <label className="block text-xs font-bold text-[#64748b] mb-1">
+                من تاريخ
+              </label>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-[#e2e8f0] text-sm bg-white"
+              />
+            </div>
+
+            {/* فلتر التاريخ إلى */}
+            <div>
+              <label className="block text-xs font-bold text-[#64748b] mb-1">
+                إلى تاريخ
+              </label>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-[#e2e8f0] text-sm bg-white"
+              />
+            </div>
+          </div>
+
+          {(actionTypeFilter || userNameFilter || dateFrom || dateTo) && (
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="text-xs font-bold text-[#00522E] hover:underline"
+              >
+                إعادة تعيين الفلاتر
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* =================================================
           عدد العمليات
       ================================================= */}
 
@@ -295,8 +434,15 @@ function ActivityLogPage() {
           </span>
 
           <span className="font-bold text-[#081021]">
-            {logs.length}
+            {filteredLogs.length}
           </span>
+
+          {filteredLogs.length !== logs.length && (
+            <span className="text-sm text-[#94a3b8]">
+              {" "}
+              (من أصل {logs.length})
+            </span>
+          )}
         </div>
       )}
 
@@ -379,7 +525,7 @@ function ActivityLogPage() {
               </thead>
 
               <tbody>
-                {logs.length === 0 ? (
+                {filteredLogs.length === 0 ? (
                   <tr>
                     <td
                       colSpan={6}
@@ -394,7 +540,7 @@ function ActivityLogPage() {
                     </td>
                   </tr>
                 ) : (
-                  logs.map((log) => (
+                  filteredLogs.map((log) => (
                     <tr
                       key={log.id}
                       className="

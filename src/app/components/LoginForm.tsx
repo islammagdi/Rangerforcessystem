@@ -1,622 +1,596 @@
-  import {
-    useState,
-    useEffect,
-    FormEvent,
-  } from "react";
-  import { useNavigate } from "react-router";
-  import { EgyptEmblem } from "./EgyptEmblem";
-  import { LoginInput } from "./LoginInput";
-  import { LoginButton } from "./LoginButton";
-  import { supabase } from "../../lib/supabase";
-  import { logActivity } from "../../lib/logActivity";
-  interface FormErrors {
-    username?: string;
-    password?: string;
+import { useState, useEffect, FormEvent } from "react";
+import { useNavigate } from "react-router";
+import saqaLogo from "../../assets/Sa'ka_Forces_logo.png";
+import { LoginInput } from "./LoginInput";
+import { LoginButton } from "./LoginButton";
+import { supabase } from "../../lib/supabase";
+import { logActivity } from "../../lib/logActivity";
+
+interface FormErrors {
+  username?: string;
+  password?: string;
+}
+
+interface ForgotStatus {
+  type: "error" | "success";
+  text: string;
+}
+
+function validate(username: string, password: string): FormErrors {
+  const errors: FormErrors = {};
+
+  if (!username.trim()) {
+    errors.username = "اسم المستخدم مطلوب";
   }
 
-  function validate(
-    username: string,
-    password: string
-  ): FormErrors {
-    const errors: FormErrors = {};
-
-    if (!username.trim()) {
-      errors.username = "اسم المستخدم مطلوب";
-    }
-
-    if (!password.trim()) {
-      errors.password = "كلمة المرور مطلوبة";
-    } else if (password.length < 4) {
-      errors.password = "كلمة المرور قصيرة جداً";
-    }
-
-    return errors;
+  if (!password.trim()) {
+    errors.password = "كلمة المرور مطلوبة";
+  } else if (password.length < 4) {
+    errors.password = "كلمة المرور قصيرة جداً";
   }
 
-  export function LoginForm() {
-    const [username, setUsername] = useState("");
-    const [password, setPassword] = useState("");
+  return errors;
+}
 
-    const [errors, setErrors] =
-      useState<FormErrors>({});
+const FONT = { fontFamily: "'Almarai', sans-serif" } as const;
 
-    const [loading, setLoading] =
-      useState(false);
+export function LoginForm() {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
 
-    const [submitted, setSubmitted] =
-      useState(false);
-      const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  // نسيت كلمة المرور
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [sendingRequest, setSendingRequest] = useState(false);
+  const [forgotStatus, setForgotStatus] = useState<ForgotStatus | null>(null);
 
-    // مهم: نمنع ظهور LoginForm لحظياً
-    // أثناء فحص الـ Session
-    const [checkingSession, setCheckingSession] =
-      useState(true);
+  // مهم: نمنع ظهور LoginForm لحظياً أثناء فحص الـ Session
+  const [checkingSession, setCheckingSession] = useState(true);
 
-    const navigate = useNavigate();
+  const navigate = useNavigate();
 
-    // =====================================================
-    // Check Existing Session
-    // =====================================================
+  // =====================================================
+  // Check Existing Session
+  // =====================================================
 
-    useEffect(() => {
-      let mounted = true;
+  useEffect(() => {
+    let mounted = true;
 
-      async function checkExistingSession() {
-        try {
-          const {
-            data: { session },
-            error,
-          } = await supabase.auth.getSession();
+    async function checkExistingSession() {
+      try {
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
 
-          if (error) {
-            console.error(
-              "CHECK SESSION ERROR:",
-              error
-            );
+        if (error) {
+          console.error("CHECK SESSION ERROR:", error);
+          return;
+        }
 
-            return;
-          }
-
-          // ===============================================
-          // يوجد Session بالفعل
-          // ===============================================
-
-          if (session) {
-            console.log(
-              "Existing session found:",
-              session.user.id
-            );
-
-            // تأكد أن بيانات الـ role القديمة
-            // لا تسبب مشكلة
-            // لأن LoginForm سبق وخزنها في sessionStorage
-
-            if (mounted) {
-              navigate("/dashboard", {
-                replace: true,
-              });
-            }
-
-            return;
-          }
-
-          // ===============================================
-          // لا توجد Session
-          // ===============================================
-
-          console.log(
-            "No existing session"
-          );
-        } catch (error) {
-          console.error(
-            "SESSION CHECK EXCEPTION:",
-            error
-          );
-        } finally {
+        // يوجد Session بالفعل
+        if (session) {
           if (mounted) {
-            setCheckingSession(false);
+            navigate("/dashboard", { replace: true });
           }
+          return;
+        }
+      } catch (error) {
+        console.error("SESSION CHECK EXCEPTION:", error);
+      } finally {
+        if (mounted) {
+          setCheckingSession(false);
         }
       }
+    }
 
-      checkExistingSession();
+    checkExistingSession();
 
-      return () => {
-        mounted = false;
-      };
-    }, [navigate]);
+    return () => {
+      mounted = false;
+    };
+  }, [navigate]);
 
-    // =====================================================
-    // Login
-    // =====================================================
+  // =====================================================
+  // Close forgot-password modal with Escape
+  // =====================================================
 
-    const handleSubmit = async (
-      e: FormEvent
-    ) => {
-      e.preventDefault();
+  useEffect(() => {
+    if (!showForgotPassword) return;
 
-      const errs = validate(
-        username,
-        password
-      );
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowForgotPassword(false);
+        setForgotEmail("");
+        setForgotStatus(null);
+      }
+    };
 
-      if (Object.keys(errs).length > 0) {
-        setErrors(errs);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showForgotPassword]);
+
+  const closeForgot = () => {
+    setShowForgotPassword(false);
+    setForgotEmail("");
+    setForgotStatus(null);
+  };
+
+  // =====================================================
+  // Login
+  // =====================================================
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+
+    const errs = validate(username, password);
+
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+      return;
+    }
+
+    setErrors({});
+    setLoading(true);
+
+    try {
+      // ============================================
+      // 1. Login Supabase Auth
+      // ============================================
+
+      const email = username.trim().includes("@")
+        ? username.trim().toLowerCase()
+        : `${username.trim().toLowerCase()}@auth.local`;
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        console.error("LOGIN ERROR:", error);
+
+        setErrors({
+          username: "بيانات تسجيل الدخول غير صحيحة",
+        });
+
         return;
       }
 
-      setErrors({});
-      setLoading(true);
+      if (!data.user) {
+        setErrors({
+          username: "تعذر تسجيل الدخول",
+        });
 
-      try {
-        // ============================================
-        // 1. Login Supabase Auth
-        // ============================================
+        return;
+      }
 
-      const email =
-  username.trim().includes("@")
-    ? username.trim().toLowerCase()
-    : `${username.trim().toLowerCase()}@auth.local`;
+      // ============================================
+      // 2. Check Session
+      // ============================================
 
-const { data, error } =
-  await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
+      const { data: sessionData, error: sessionError } =
+        await supabase.auth.getSession();
 
-        if (error) {
-          console.error(
-            "LOGIN ERROR:",
-            error
-          );
+      if (sessionError) {
+        console.error("SESSION ERROR:", sessionError);
+      }
 
-          setErrors({
-            username:
-              "بيانات تسجيل الدخول غير صحيحة",
-          });
+      if (!sessionData.session) {
+        setErrors({
+          username: "تم تسجيل الدخول ولكن لم يتم إنشاء جلسة للمستخدم",
+        });
 
-          return;
-        }
+        return;
+      }
 
-        if (!data.user) {
-          setErrors({
-            username:
-              "تعذر تسجيل الدخول",
-          });
+      // ============================================
+      // 3. Get Profile
+      // ============================================
 
-          return;
-        }
-
-        // ============================================
-        // 2. Check Session
-        // ============================================
-
-        const {
-          data: sessionData,
-          error: sessionError,
-        } =
-          await supabase.auth.getSession();
-
-        if (sessionError) {
-          console.error(
-            "SESSION ERROR:",
-            sessionError
-          );
-        }
-
-        if (!sessionData.session) {
-          setErrors({
-            username:
-              "تم تسجيل الدخول ولكن لم يتم إنشاء جلسة للمستخدم",
-          });
-
-          return;
-        }
-        const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  console.log("Auth User:", user);
-
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  console.log("Session:", session);
-  console.log("Auth User ID:", user?.id);
-  console.log("Session User ID:", session?.user.id);
-
-        // ============================================
-        // 3. Get Profile
-        // ============================================
-
-        const {
-          data: profile,
-          error: profileError,
-        } = await supabase
-          .from("profiles")
-          .select(`
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select(
+          `
             id,
             username,
             is_active
-          `)
-          .eq(
-            "id",
-            data.user.id
-          )
-          .maybeSingle();
+          `
+        )
+        .eq("id", data.user.id)
+        .maybeSingle();
 
-        if (profileError) {
-          console.error(
-            "PROFILE ERROR:",
-            profileError
-          );
+      if (profileError) {
+        console.error("PROFILE ERROR:", profileError);
 
-          await supabase.auth.signOut();
+        await supabase.auth.signOut();
 
-          setErrors({
-            username:
-              "حدث خطأ أثناء تحميل بيانات المستخدم",
-          });
+        setErrors({
+          username: "حدث خطأ أثناء تحميل بيانات المستخدم",
+        });
 
-          return;
-        }
+        return;
+      }
 
-        if (!profile) {
-          await supabase.auth.signOut();
+      if (!profile) {
+        await supabase.auth.signOut();
 
-          setErrors({
-            username:
-              "الحساب غير مرتبط بملف مستخدم في النظام",
-          });
+        setErrors({
+          username: "الحساب غير مرتبط بملف مستخدم في النظام",
+        });
 
-          return;
-        }
+        return;
+      }
 
-        // ============================================
-        // 4. Check Active
-        // ============================================
+      // ============================================
+      // 4. Check Active
+      // ============================================
 
-        if (profile.is_active !== true) {
-          await supabase.auth.signOut();
+      if (profile.is_active !== true) {
+        await supabase.auth.signOut();
 
-          setErrors({
-            username:
-              "تم ايقاف حسابك, الرجاء الرجوع لمدير النظام",
-          });
+        setErrors({
+          username: "تم ايقاف حسابك, الرجاء الرجوع لمدير النظام",
+        });
 
-          return;
-        }
+        return;
+      }
 
-        // ============================================
-        // 5. Get Role
-        // ============================================
+      // ============================================
+      // 5. Get Role
+      // ============================================
 
-        const {
-          data: userRole,
-          error: roleError,
-        } = await supabase
-          .from("user_roles")
-          .select(`
+      const { data: userRole, error: roleError } = await supabase
+        .from("user_roles")
+        .select(
+          `
             role_id,
             roles (
               id,
               name,
               code
             )
-          `)
-          .eq(
-            "user_id",
-            data.user.id
-          )
-          .maybeSingle();
+          `
+        )
+        .eq("user_id", data.user.id)
+        .maybeSingle();
 
-        if (roleError) {
-          console.error(
-            "ROLE ERROR:",
-            roleError
-          );
+      if (roleError) {
+        console.error("ROLE ERROR:", roleError);
 
-          await supabase.auth.signOut();
-
-          setErrors({
-            username:
-              "حدث خطأ أثناء تحميل صلاحيات المستخدم",
-          });
-
-          return;
-        }
-
-        if (!userRole) {
-          await supabase.auth.signOut();
-
-          setErrors({
-            username:
-              "المستخدم غير مرتبط بدور في النظام",
-          });
-
-          return;
-        }
-
-        // ============================================
-        // 6. Extract Role
-        // ============================================
-
-        const role =
-          Array.isArray(userRole.roles)
-            ? userRole.roles[0]
-            : userRole.roles;
-
-        const roleCode =
-          (role as any)?.code;
-
-        const roleName =
-          (role as any)?.name;
-
-        // ============================================
-        // 7. Save User Data
-        // ============================================
-
-        sessionStorage.setItem(
-          "user_role",
-          roleCode ?? ""
-        );
-
-        sessionStorage.setItem(
-          "user_role_name",
-          roleName ?? ""
-        );
-
-        sessionStorage.setItem(
-          "user_id",
-          data.user.id
-        );
-
-        sessionStorage.setItem(
-          "username",
-          profile.username
-        );
-        // ============================================
-  // 8. تسجيل عملية الدخول في سجل العمليات
-  // ============================================
-
-  await logActivity({
-    userId: data.user.id,
-    userName: profile.username,
-    actionType: "LOGIN",
-    action: "تسجيل دخول",
-    entity: "النظام",
-  details: `تم تسجيل الدخول إلى المنظومة بواسطة ${profile.username}`,
-  });
-
-
-        // ============================================
-        // 8. Login Success
-        // ============================================
-
-        setSubmitted(true);
-
-        setTimeout(() => {
-          navigate("/dashboard", {
-            replace: true,
-          });
-        }, 600);
-
-      } catch (error) {
-        console.error(
-          "LOGIN EXCEPTION:",
-          error
-        );
+        await supabase.auth.signOut();
 
         setErrors({
-          username:
-            "حدث خطأ أثناء تسجيل الدخول",
+          username: "حدث خطأ أثناء تحميل صلاحيات المستخدم",
         });
-      } finally {
-        setLoading(false);
+
+        return;
       }
-    };
+
+      if (!userRole) {
+        await supabase.auth.signOut();
+
+        setErrors({
+          username: "المستخدم غير مرتبط بدور في النظام",
+        });
+
+        return;
+      }
+
+      // ============================================
+      // 6. Extract Role
+      // ============================================
+
+      const role = Array.isArray(userRole.roles)
+        ? userRole.roles[0]
+        : userRole.roles;
+
+      const roleCode = (role as any)?.code;
+      const roleName = (role as any)?.name;
+
+      // ============================================
+      // 7. Save User Data
+      // ============================================
+
+      sessionStorage.setItem("user_role", roleCode ?? "");
+      sessionStorage.setItem("user_role_name", roleName ?? "");
+      sessionStorage.setItem("user_id", data.user.id);
+      sessionStorage.setItem("username", profile.username);
+
+      // ============================================
+      // 8. تسجيل عملية الدخول في سجل العمليات
+      // ============================================
+
+      await logActivity({
+        userId: data.user.id,
+        userName: profile.username,
+        actionType: "LOGIN",
+        action: "تسجيل دخول",
+        entity: "النظام",
+        details: `تم تسجيل الدخول إلى المنظومة بواسطة ${profile.username}`,
+      });
+
+      // ============================================
+      // 9. Login Success
+      // ============================================
+
+      setSubmitted(true);
+
+      setTimeout(() => {
+        navigate("/dashboard", { replace: true });
+      }, 600);
+    } catch (error) {
+      console.error("LOGIN EXCEPTION:", error);
+
+      setErrors({
+        username: "حدث خطأ أثناء تسجيل الدخول",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // =====================================================
+  // Forgot Password
+  // =====================================================
+
   const handleForgotPassword = async () => {
-  if (!forgotEmail.trim()) {
-    alert("يرجى إدخال اسم المستخدم");
-    return;
-  }
-
-  setSendingRequest(true);
-
-  try {
-    const email = forgotEmail.trim().includes("@")
-      ? forgotEmail.trim().toLowerCase()
-      : `${forgotEmail.trim().toLowerCase()}@auth.local`;
-
-    const { data, error } = await supabase.functions.invoke(
-      "hyper-action",
-      {
-        body: {
-          email,
-        },
-      }
-    );
-
-    console.log(data);
-    console.log(error);
-    if (error) throw error;
-
-    alert("تم إرسال طلب إعادة تعيين كلمة المرور إلى مدير النظام.");
-
-    setForgotEmail("");
-    setShowForgotPassword(false);
-  } catch (err: any) {
-    alert(err.message ?? "حدث خطأ أثناء إرسال الطلب");
-  } finally {
-    setSendingRequest(false);
-  }
-};
-    // =====================================================
-    // أثناء فحص Session
-    // =====================================================
-
-    if (checkingSession) {
-      
-      return (
-        <div
-          dir="rtl"
-          className="w-full flex items-center justify-center py-20"
-          style={{
-            fontFamily:
-              "'Almarai', sans-serif",
-          }}
-        >
-          جاري التحقق من الجلسة...
-        </div>
-      );
+    if (!forgotEmail.trim()) {
+      setForgotStatus({ type: "error", text: "يرجى إدخال اسم المستخدم" });
+      return;
     }
 
-    // =====================================================
-    // UI
-    // =====================================================
+    setSendingRequest(true);
+    setForgotStatus(null);
 
+    try {
+      const email = forgotEmail.trim().includes("@")
+        ? forgotEmail.trim().toLowerCase()
+        : `${forgotEmail.trim().toLowerCase()}@auth.local`;
+
+      const { error } = await supabase.functions.invoke("hyper-action", {
+        body: { email },
+      });
+
+      if (error) throw error;
+
+      setForgotEmail("");
+      setForgotStatus({
+        type: "success",
+        text: "تم إرسال طلب إعادة تعيين كلمة المرور إلى مدير النظام.",
+      });
+    } catch (err: any) {
+      setForgotStatus({
+        type: "error",
+        text: err?.message ?? "حدث خطأ أثناء إرسال الطلب",
+      });
+    } finally {
+      setSendingRequest(false);
+    }
+  };
+
+  // =====================================================
+  // أثناء فحص Session
+  // =====================================================
+
+  if (checkingSession) {
     return (
-      
       <div
         dir="rtl"
-        className="w-full flex flex-col items-center gap-8"
+        role="status"
+        className="flex w-full items-center justify-center gap-3 py-20 text-[14px] text-[#5b6b5f]"
+        style={FONT}
       >
-        {showForgotPassword && (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div
-        dir="rtl"
-        className="bg-white rounded-xl shadow-xl w-[420px] p-6"
-      >
-        <h2
-          className="text-xl font-bold mb-4 text-center"
-          style={{ fontFamily: "'Almarai', sans-serif" }}
-        >
-          إعادة تعيين كلمة المرور
-        </h2>
-
-        <p
-          className="mb-3 text-gray-600"
-          style={{ fontFamily: "'Almarai', sans-serif" }}
-        >
-          أدخل البريد الإلكتروني المسجل بالنظام.
-        </p>
-
-        <input
-  type="text"
-  value={forgotEmail}
-  onChange={(e) => setForgotEmail(e.target.value)}
-  className="w-full border rounded-lg px-3 py-2 mb-5"
-  placeholder="اكتب اسم المستخدم فقط"
-/>
-
-        <div className="flex gap-3">
-          <button
-            onClick={handleForgotPassword}
-            disabled={sendingRequest}
-            className="flex-1 bg-green-600 text-white rounded-lg py-2 hover:bg-green-800"
-          >
-            {sendingRequest ? "جارٍ الإرسال..." : "إرسال"}
-          </button>
-
-          <button
-            onClick={() => {
-              setShowForgotPassword(false);
-              setForgotEmail("");
-            }}
-            className="flex-1 border rounded-lg py-2"
-          >
-            إلغاء
-          </button>
-        </div>
+        <span
+          className="h-5 w-5 animate-spin rounded-full border-2 border-[#dbe3dc] border-t-[#067647]"
+          aria-hidden="true"
+        />
+        جاري التحقق من الجلسة...
       </div>
-    </div>
-  )}
-        <div className="flex flex-col items-center gap-5 w-full">
-          <EgyptEmblem />
+    );
+  }
 
+  // =====================================================
+  // UI
+  // =====================================================
+
+  return (
+    <div dir="rtl" className="flex w-full flex-col gap-6 sm:gap-8" style={FONT}>
+      {/* ───────────── Forgot password modal ───────────── */}
+      {showForgotPassword && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#14201a]/55 px-4 backdrop-blur-sm"
+          onClick={closeForgot}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="forgot-title"
+            dir="rtl"
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-[90vh] w-full max-w-[420px] overflow-y-auto rounded-2xl bg-white p-5 shadow-[0_30px_80px_-20px_rgba(20,32,26,0.45)] sm:p-7"
+          >
+            <h2
+              id="forgot-title"
+              className="text-[18px] font-extrabold text-[#1c2b20] sm:text-[20px]"
+              style={FONT}
+            >
+              نسيت كلمة المرور؟
+            </h2>
+
+            <p
+              className="mt-2 text-[13px] leading-6 text-[#5b6b5f] sm:text-[14px]"
+              style={FONT}
+            >
+              اكتب اسم المستخدم وسيصل طلب إعادة التعيين إلى مدير النظام.
+            </p>
+
+            {forgotStatus?.type === "success" ? (
+              <div className="mt-5 flex flex-col gap-5">
+                <div
+                  role="status"
+                  className="flex items-start gap-3 rounded-xl border border-[#cfe6d6] bg-[#f0f8f2] p-4 text-[14px] leading-6 text-[#0b5c36]"
+                  style={FONT}
+                >
+                  <svg
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    width={20}
+                    height={20}
+                    stroke="#067647"
+                    strokeWidth={2.2}
+                    className="mt-0.5 shrink-0"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M4.5 12.75l6 6 9-13.5"
+                    />
+                  </svg>
+                  <span>{forgotStatus.text}</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeForgot}
+                  className="h-12 rounded-xl bg-[#067647] font-bold text-white transition-colors hover:bg-[#055d39] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#067647]/25"
+                  style={FONT}
+                >
+                  تم
+                </button>
+              </div>
+            ) : (
+              <form
+                className="mt-5 flex flex-col gap-5"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleForgotPassword();
+                }}
+                noValidate
+              >
+                <LoginInput
+                  id="forgot-username"
+                  label="اسم المستخدم"
+                  placeholder="اكتب اسم المستخدم فقط"
+                  value={forgotEmail}
+                  onChange={(e) => {
+                    setForgotEmail(e.target.value);
+                    if (forgotStatus) setForgotStatus(null);
+                  }}
+                  icon="user"
+                  autoComplete="username"
+                  autoFocus
+                  disabled={sendingRequest}
+                  error={
+                    forgotStatus?.type === "error"
+                      ? forgotStatus.text
+                      : undefined
+                  }
+                />
+
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:gap-3">
+                  <button
+                    type="button"
+                    onClick={closeForgot}
+                    className="h-12 flex-1 rounded-xl border border-[#dbe3dc] font-bold text-[#1c2b20] transition-colors hover:bg-[#f3f6f3] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#1c2b20]/10"
+                    style={FONT}
+                  >
+                    إلغاء
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={sendingRequest}
+                    className="h-12 flex-1 rounded-xl bg-[#067647] font-bold text-white transition-colors hover:bg-[#055d39] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#067647]/25 disabled:cursor-not-allowed disabled:opacity-60"
+                    style={FONT}
+                  >
+                    {sendingRequest ? "جارٍ الإرسال..." : "إرسال الطلب"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ───────────── Header ───────────── */}
+      <header className="flex flex-col items-start gap-4 sm:gap-5">
+        <img
+          src={saqaLogo}
+          alt="شعار قوات الصاعقة"
+          className="h-16 w-auto object-contain sm:h-20"
+          draggable={false}
+        />
+
+        <div className="flex flex-col gap-2">
           <h1
-            className="text-center text-[#344736]"
+            className="text-[#1c2b20]"
             style={{
-              fontFamily:
-                "'Almarai', sans-serif",
+              ...FONT,
               fontWeight: 800,
-              fontSize:
-                "clamp(28px, 4vw, 44px)",
-              lineHeight: 1.2,
+              fontSize: "clamp(22px, 5.5vw, 32px)",
+              lineHeight: 1.25,
             }}
           >
             منظومة الخوارج الداخلية
           </h1>
 
           <p
-            className="text-center text-[#344736]"
-            style={{
-              fontFamily:
-                "'Almarai', sans-serif",
-              fontWeight: 700,
-              fontSize:
-                "clamp(18px, 2.5vw, 28px)",
-              lineHeight: 1.2,
-            }}
+            className="text-[13px] leading-6 text-[#5b6b5f] sm:text-[14px]"
+            style={{ ...FONT, fontWeight: 400 }}
           >
-            فرع التنظيم والادارة لقوات الصاعقة
+            سجّل دخولك باستخدام الرقم العسكري للمتابعة.
           </p>
         </div>
+      </header>
 
-        {submitted ? (
-          <SuccessMessage />
-        ) : (
-          <form
-            onSubmit={handleSubmit}
-            noValidate
-            className="w-full max-w-[400px] flex flex-col gap-6"
-          >
-            <div className="flex flex-col gap-4">
+      {/* ───────────── Form / Success ───────────── */}
+      {submitted ? (
+        <SuccessMessage />
+      ) : (
+        <form
+          onSubmit={handleSubmit}
+          noValidate
+          className="flex w-full flex-col gap-5 sm:gap-6"
+        >
+          <div className="flex flex-col gap-4 sm:gap-5">
+            <LoginInput
+              id="username"
+              label="اسم المستخدم"
+              placeholder="اكتب الرقم العسكري"
+              type="text"
+              value={username}
+              onChange={(e) => {
+                setUsername(e.target.value);
 
-              <LoginInput
-                id="username"
-                label="اسم المستخدم"
-                placeholder='اكتب الرقم العسكري'
-                type="text"
-                value={username}
-                onChange={(e) => {
-                  setUsername(e.target.value);
+                if (errors.username) {
+                  setErrors((prev) => ({ ...prev, username: undefined }));
+                }
+              }}
+              icon="user"
+              autoComplete="username"
+              error={errors.username}
+              hint=''
+              disabled={loading}
+            />
 
-                  if (errors.username) {
-                    setErrors((prev) => ({
-                      ...prev,
-                      username: undefined,
-                    }));
-                  }
-                }}
-                icon="user"
-                autoComplete="username"
-                error={errors.username}
-                disabled={loading}
-              />
-<p
-  className="text-xs text-gray-500"
-  style={{ fontFamily: "'Almarai', sans-serif" }}
->
-  لا تكتب @auth.local، سيتم إضافتها تلقائياً.
-</p>
+            <div className="flex flex-col gap-2">
               <LoginInput
                 id="password"
-                label="كلمه المرور"
-                placeholder='اكتب كلمة المرور '
+                label="كلمة المرور"
+                placeholder="اكتب كلمة المرور"
                 type="password"
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);
 
                   if (errors.password) {
-                    setErrors((prev) => ({
-                      ...prev,
-                      password: undefined,
-                    }));
+                    setErrors((prev) => ({ ...prev, password: undefined }));
                   }
                 }}
                 icon="lock"
@@ -625,86 +599,62 @@ const { data, error } =
                 disabled={loading}
               />
 
+              <button
+                type="button"
+                onClick={() => setShowForgotPassword(true)}
+                className="self-end rounded-md px-1 text-[13px] font-bold text-[#067647] underline-offset-4 transition-colors hover:text-[#055d39] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#067647]/40"
+                style={FONT}
+              >
+                نسيت كلمة المرور؟
+              </button>
             </div>
+          </div>
 
-            <LoginButton
-              type="submit"
-              loading={loading}
-              disabled={loading}
-            >
-              تسجيل الدخول
-            </LoginButton>
-            
-            <button
-    type="button"
-    onClick={() => setShowForgotPassword(true)}
-    className="text-sm text-[#067647] hover:underline text-center"
-    style={{
-      fontFamily: "'Almarai', sans-serif",
-      fontWeight: "bold",
-      fontSize: "14px",
-      textAlign:"start"
-    }}
-  >
-    نسيت كلمة المرور؟
-  </button>
-          </form>
-        )}
-      </div>
-      
-    );
-    
-  }
+          <LoginButton type="submit" loading={loading} disabled={loading}>
+            تسجيل الدخول
+          </LoginButton>
+        </form>
+      )}
+    </div>
+  );
+}
 
-  // =====================================================
-  // Success Message
-  // =====================================================
+// =====================================================
+// Success Message
+// =====================================================
 
-  function SuccessMessage() {
-    return (
-      <div
-        className="w-full max-w-[400px] bg-green-50 border border-green-200 rounded-[8px] p-6 flex flex-col items-center gap-3 text-center"
-        role="alert"
-      >
-        <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-          <svg
-            fill="none"
-            viewBox="0 0 24 24"
-            width={24}
-            height={24}
-            stroke="#00b867"
-            strokeWidth={2.5}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M4.5 12.75l6 6 9-13.5"
-            />
-          </svg>
-        </div>
-
-        <p
-          className="text-green-800"
-          style={{
-            fontFamily:
-              "'Almarai', sans-serif",
-            fontWeight: 700,
-            fontSize: "16px",
-          }}
+function SuccessMessage() {
+  return (
+    <div
+      className="flex w-full flex-col items-center gap-3 rounded-2xl border border-[#cfe6d6] bg-[#f0f8f2] p-5 text-center sm:p-6"
+      role="status"
+      style={FONT}
+    >
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#d9eee1]">
+        <svg
+          fill="none"
+          viewBox="0 0 24 24"
+          width={24}
+          height={24}
+          stroke="#067647"
+          strokeWidth={2.5}
+          aria-hidden="true"
         >
-          تم تسجيل الدخول بنجاح
-        </p>
-
-        <p
-          className="text-green-600"
-          style={{
-            fontFamily:
-              "'Almarai', sans-serif",
-            fontSize: "14px",
-          }}
-        >
-          مرحباً بك في منظومة الخوارج الداخلية
-        </p>
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M4.5 12.75l6 6 9-13.5"
+          />
+        </svg>
       </div>
-    );
-  }
+
+      <p className="text-[15px] font-bold text-[#0b5c36] sm:text-[16px]">
+        تم تسجيل الدخول بنجاح
+      </p>
+
+      <p className="text-[13px] text-[#3f7a58] sm:text-[14px]">
+        مرحباً بك في منظومة الخوارج الداخلية
+      </p>
+    </div>
+  );
+}

@@ -27,6 +27,10 @@ export interface OutgoingMail {
   mail_offices?: {
     name: string;
   } | null;
+
+  mail_outgoing_destinations?: {
+    destination_entity: string;
+  }[];
 }
 
 export interface OutgoingMailDestination {
@@ -154,6 +158,8 @@ export interface OutgoingMailFilters {
   dateFrom?: string;
   dateTo?: string;
   officeId?: string;
+  faxSummary?: string;
+  destinationEntity?: string;
 }
 export async function fetchOutgoingMails(
   filters: OutgoingMailFilters = {}
@@ -174,7 +180,8 @@ export async function fetchOutgoingMails(
       created_by_name,
       created_at,
       updated_at,
-      mail_offices ( name )
+      mail_offices ( name ),
+      mail_outgoing_destinations ( destination_entity )
     `
     )
     .order("fax_date", { ascending: false })
@@ -201,6 +208,32 @@ export async function fetchOutgoingMails(
 
   if (filters.officeId) {
     query = query.eq("issuing_office_id", filters.officeId);
+  }
+
+  if (filters.faxSummary) {
+    query = query.ilike("fax_summary", `%${filters.faxSummary}%`);
+  }
+
+  // الجهة الصادر لها متخزنة في جدول فرعي (فاكس واحد ممكن
+  // يكون ليه أكتر من جهة)، فبنجيب أولًا الـ fax_id بتاعة
+  // الجهات المطابقة للبحث، وبعدين بنفلتر الفاكسات على أساسها
+  if (filters.destinationEntity) {
+    const { data: destRows, error: destErr } = await supabase
+      .from("mail_outgoing_destinations")
+      .select("fax_id")
+      .ilike("destination_entity", `%${filters.destinationEntity}%`);
+
+    if (destErr) throw destErr;
+
+    const matchingIds = Array.from(
+      new Set((destRows ?? []).map((r) => r.fax_id))
+    );
+
+    if (matchingIds.length === 0) {
+      return [];
+    }
+
+    query = query.in("id", matchingIds);
   }
 
   const { data, error } = await query;
@@ -525,6 +558,8 @@ export interface IncomingMailFilters {
   dateFrom?: string;
   dateTo?: string;
   officeId?: string;
+  faxSummary?: string;
+  sourceEntity?: string;
 }
 export async function fetchIncomingMails(
   filters: IncomingMailFilters = {}
@@ -576,6 +611,14 @@ export async function fetchIncomingMails(
 
   if (filters.officeId) {
     query = query.eq("receiving_office_id", filters.officeId);
+  }
+
+  if (filters.faxSummary) {
+    query = query.ilike("fax_summary", `%${filters.faxSummary}%`);
+  }
+
+  if (filters.sourceEntity) {
+    query = query.ilike("source_entity", `%${filters.sourceEntity}%`);
   }
 
   const { data, error } = await query;

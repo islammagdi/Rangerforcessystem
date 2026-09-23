@@ -53,6 +53,12 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/sheets": "كشوفات",
   "/dashboard/manage-external-administrations": "الإدارات الخارجية",
   "/dashboard/manage-education-levels": "المستويات التعليمية",
+  "/dashboard/manage-letter-types": "إدارة الخطابات",
+  "/dashboard/social-record": "السجل الاجتماعي",
+"/dashboard/martyrs-record": "سجل الشهداء",
+"/dashboard/incidents-record": "سجل الحوادث",
+ "/dashboard/manage-jobs": "إدارة الوظائف", // ✅ جديدب
+ "/dashboard/units-tree": "الهيكل التنظيمي", // ✅ جديد
 };
 
 // ============================================================
@@ -66,6 +72,8 @@ const PAGE_TITLES: Record<string, string> = {
 // نفس المنطق تلقائيًا حسب الصلاحيات المعطاة له.
 
 const PATH_PERMISSION_MAP: { prefix: string; permission: string }[] = [
+  { prefix: "/dashboard/social-record", permission: "social_record:view" },
+{ prefix: "/dashboard/martyrs-record", permission: "martyrs_record:view" },
   { prefix: "/dashboard/individual-query", permission: "individual_query:view" },
   { prefix: "/dashboard/units-report", permission: "units_report:view" },
   { prefix: "/dashboard/daily-reports", permission: "daily_reports:view" },
@@ -100,8 +108,11 @@ const PATH_PERMISSION_MAP: { prefix: string; permission: string }[] = [
   // صفحات متاحة لأي مستخدم مسجل دخول (مفيش صلاحية module خاصة بيها)
   { prefix: "/dashboard/notifications", permission: "general_status:view" },
   { prefix: "/dashboard/user-guide", permission: "general_status:view" },
+  { prefix: "/dashboard/manage-letter-types", permission: "letter_types:manage" },
+  { prefix: "/dashboard/incidents-record", permission: "incidents_record:view" },
+    { prefix: "/dashboard/manage-jobs", permission: "manage_jobs:view" }, // ✅ جديد
+    { prefix: "/dashboard/units-tree", permission: "units_tree:view" }, // ✅ جديد
 ];
-
 function isPathAllowed(
   pathname: string,
   hasPermission: (code: string) => boolean
@@ -213,7 +224,15 @@ function resolvePageTitle(pathname: string): string {
   if (pathname.includes("/manage-external-administrations")) {
     return "الإدارات الخارجية";
   }
-
+if (pathname.includes("/manage-letter-types")) {
+  return "إدارة الخطابات";
+}
+  if (pathname.includes("/manage-jobs")) {
+    return "إدارة الوظائف";
+  }
+  if (pathname.includes("/units-tree")) {
+    return "الهيكل التنظيمي";
+  }
   // القيمة الافتراضية
   return "الموقف العام";
 }
@@ -224,6 +243,8 @@ function resolvePageTitle(pathname: string): string {
 
 export function DashboardLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // الموبايل: هل الـ drawer الجانبي مفتوح دلوقتي
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [accountDisabled, setAccountDisabled] = useState(false);
   const [checkingPasswordFlag, setCheckingPasswordFlag] = useState(true);
   const [mustChangePassword, setMustChangePassword] = useState(false);
@@ -235,6 +256,11 @@ export function DashboardLayout() {
 
   const navigate = useNavigate();
   const location = useLocation();
+
+  // كل تنقل جديد (اختيار صفحة) يقفل الـ drawer على الموبايل تلقائيًا
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     let mounted = true;
@@ -265,7 +291,7 @@ export function DashboardLayout() {
         }
 
         if (error) {
-          console.error("CHECK ACCOUNT STATUS ERROR:", error);
+ 
           if (mounted) setCheckingPasswordFlag(false);
           return;
         }
@@ -289,7 +315,7 @@ export function DashboardLayout() {
 
         setMustChangePassword(Boolean(data?.must_change_password));
       } catch (err) {
-        console.error("CHECK ACCOUNT STATUS EXCEPTION:", err);
+        // تجاهل الخطأ بصمت — فحص دوري في الخلفية، الـ finally هيتكفل بإيقاف حالة التحميل
       } finally {
         if (mounted && currentCheckId === checkIdRef.current) {
           setCheckingPasswordFlag(false);
@@ -377,6 +403,21 @@ export function DashboardLayout() {
     else if (label === "كشوفات") {
       navigate("/dashboard/sheets");
     }
+    else if (label === "إدارة الخطابات") {
+  navigate("/dashboard/manage-letter-types");
+}
+else if (label === "السجل الاجتماعي") {
+  navigate("/dashboard/social-record");
+} else if (label === "سجل الشهداء") {
+  navigate("/dashboard/martyrs-record");
+  
+}
+else if (label === "سجل الحوادث") {
+  navigate("/dashboard/incidents-record");
+}
+else if (label === "الهيكل التنظيمي") {
+  navigate("/dashboard/units-tree");
+}
   }
 
   // ==========================================================
@@ -396,13 +437,18 @@ export function DashboardLayout() {
         onToggle={() => setSidebarCollapsed((previous) => !previous)}
         onNavSelect={handleNavSelect}
         activePath={location.pathname}
+        mobileOpen={mobileNavOpen}
+        onMobileClose={() => setMobileNavOpen(false)}
       />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <DashboardHeader pageTitle={pageTitle} />
+        <DashboardHeader
+          pageTitle={pageTitle}
+          onMenuClick={() => setMobileNavOpen(true)}
+        />
 
         <main className="flex-1 overflow-y-auto">
-          <div className="flex flex-col gap-6 p-6">
+          <div className="flex flex-col gap-4 p-3 sm:gap-6 sm:p-6">
             {permsLoading ? (
               <div className="flex items-center justify-center py-20">
                 <span
@@ -436,15 +482,15 @@ export function DashboardLayout() {
 
       {accountDisabled && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center"
+          className="fixed inset-0 z-[100] flex items-center justify-center px-4"
           style={{ background: "rgba(0,0,0,.55)" }}
           dir="rtl"
         >
           <div
-            className="bg-white rounded-[20px] flex flex-col items-center text-center"
+            className="bg-white rounded-[20px] flex flex-col items-center text-center w-full"
             style={{
-              width: "clamp(300px,45vw,480px)",
-              padding: "48px 32px",
+              maxWidth: "clamp(300px,45vw,480px)",
+              padding: "40px 24px",
               fontFamily: "'Almarai', sans-serif",
             }}
           >

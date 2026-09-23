@@ -117,7 +117,7 @@
         setHeads(headsResult.data ?? []);
         setRanks(ranksResult.data ?? []);
       } catch (err: any) {
-        console.error("Load branch heads error:", err);
+
         setError(err?.message || "حدث خطأ أثناء تحميل بيانات رؤساء الفرع");
       } finally {
         setLoading(false);
@@ -182,7 +182,7 @@
         setShowAddModal(false);
         await loadData();
       } catch (err: any) {
-        console.error("Add branch head error:", err);
+    
         setError(err?.message || "حدث خطأ أثناء إضافة رئيس الفرع");
       } finally {
         setSaving(false);
@@ -256,7 +256,7 @@
         setEditingHead(null);
         await loadData();
       } catch (err: any) {
-        console.error("Edit branch head error:", err);
+    
         setError(err?.message || "حدث خطأ أثناء تعديل بيانات رئيس الفرع");
       } finally {
         setEditSaving(false);
@@ -310,7 +310,7 @@
 
         await loadData();
       } catch (err: any) {
-        console.error("Set current branch head error:", err);
+      
         setError(err?.message || "حدث خطأ أثناء تعيين رئيس الفرع الحالي");
       } finally {
         setSettingCurrentId(null);

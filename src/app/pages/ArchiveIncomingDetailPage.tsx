@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Upload, ArrowRight, Printer } from "lucide-react";
 import {
@@ -11,6 +11,7 @@ import {
 } from "../../lib/mailArchive";
 import { logActivity } from "../../lib/logActivity";
 import { supabase } from "../../lib/supabase";
+import { useUnsavedChanges } from "../../lib/unsavedChanges";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
@@ -40,16 +41,52 @@ export function ArchiveIncomingDetailPage() {
   const [successMsg, setSuccessMsg] = useState("");
 
   // حقول قابلة للتعديل
-   // حقول قابلة للتعديل
   const [faxSummary, setFaxSummary] = useState("");
   const [notes, setNotes] = useState("");
   const [isCopyDistributed, setIsCopyDistributed] = useState(false);
   const [distributedToName, setDistributedToName] = useState("");
   const [actionTaken, setActionTaken] = useState("");
   const [branchHeadDecision, setBranchHeadDecision] = useState("");
-
   const [saving, setSaving] = useState(false);
   const [uploadingScan, setUploadingScan] = useState(false);
+
+  // ─────────────────────────────────────────────────────────
+  // تتبّع التعديلات غير المحفوظة
+  // ─────────────────────────────────────────────────────────
+  const { setDirty, guardNavigation } = useUnsavedChanges();
+
+  const initialSnapshotRef = useRef<string>("");
+
+  const isDirty = useMemo(() => {
+    if (!initialSnapshotRef.current) return false;
+
+    const current = JSON.stringify({
+      faxSummary,
+      notes,
+      isCopyDistributed,
+      distributedToName,
+      actionTaken,
+      branchHeadDecision,
+    });
+
+    return current !== initialSnapshotRef.current;
+  }, [
+    faxSummary,
+    notes,
+    isCopyDistributed,
+    distributedToName,
+    actionTaken,
+    branchHeadDecision,
+  ]);
+
+  useEffect(() => {
+    setDirty(isDirty);
+  }, [isDirty, setDirty]);
+
+  useEffect(() => {
+    return () => setDirty(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (id) {
@@ -62,9 +99,8 @@ export function ArchiveIncomingDetailPage() {
     setError("");
 
     try {
-         const data = await fetchIncomingMailById(mailId);
+      const data = await fetchIncomingMailById(mailId);
       setMail(data);
-
       setFaxSummary(data.fax_summary ?? "");
       setNotes(data.notes ?? "");
       setIsCopyDistributed(data.is_copy_distributed);
@@ -72,7 +108,15 @@ export function ArchiveIncomingDetailPage() {
       setActionTaken(data.action_taken ?? "");
       setBranchHeadDecision(data.branch_head_decision ?? "");
 
-
+      // ✅ نلتقط الـ snapshot بعد تعمير كل الحقول القابلة للتعديل
+      initialSnapshotRef.current = JSON.stringify({
+        faxSummary: data.fax_summary ?? "",
+        notes: data.notes ?? "",
+        isCopyDistributed: data.is_copy_distributed,
+        distributedToName: data.distributed_to_name ?? "",
+        actionTaken: data.action_taken ?? "",
+        branchHeadDecision: data.branch_head_decision ?? "",
+      });
 
       const urls: Record<string, string> = {};
 
@@ -81,14 +125,14 @@ export function ArchiveIncomingDetailPage() {
           try {
             urls[scan.id] = await getScanSignedUrl(scan.file_path);
           } catch (err) {
-            console.error("Signed url error:", err);
+
           }
         })
       );
 
       setScanUrls(urls);
     } catch (err: any) {
-      console.error("Load mail detail error:", err);
+
       setError(err?.message || "حدث خطأ أثناء تحميل بيانات الفاكس");
     } finally {
       setLoading(false);
@@ -246,15 +290,20 @@ export function ArchiveIncomingDetailPage() {
           });
         }
       } catch (auditError) {
-        console.error("Audit log error:", auditError);
+
       }
 
       setSuccessMsg("تم حفظ التعديلات بنجاح");
       setTimeout(() => setSuccessMsg(""), 3000);
 
+      // ✅ التعديلات اتحفظت فعليًا؛ loadMail هيعيد تعمير الـ
+      // snapshot تلقائيًا برضو، لكن نصفّر الحالة فورًا هنا
+      // عشان مايحصلش وميض (flash) للبوب اب في اللحظة البينية
+      setDirty(false);
+
       await loadMail(mail.id);
     } catch (err: any) {
-      console.error("Update mail error:", err);
+
       setError(err?.message || "حدث خطأ أثناء حفظ التعديلات");
     } finally {
       setSaving(false);
@@ -293,7 +342,7 @@ export function ArchiveIncomingDetailPage() {
 
       await loadMail(mail.id);
     } catch (err: any) {
-      console.error("Add scan error:", err);
+
       setError(err?.message || "حدث خطأ أثناء رفع الصورة");
     } finally {
       setUploadingScan(false);
@@ -463,7 +512,9 @@ export function ArchiveIncomingDetailPage() {
 
         <button
           type="button"
-          onClick={() => navigate("/dashboard/archive/incoming")}
+          onClick={() =>
+            guardNavigation(() => navigate("/dashboard/archive/incoming"))
+          }
           className="flex items-center gap-1.5"
           style={{ ...F, fontSize: 14, color: "#1f3d97" }}
         >

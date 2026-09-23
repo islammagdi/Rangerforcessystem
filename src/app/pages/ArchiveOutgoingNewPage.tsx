@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Plus, Trash2, Upload, X } from "lucide-react";
 
 import { supabase } from "../../lib/supabase";
 import { logActivity } from "../../lib/logActivity";
+import { useUnsavedChanges } from "../../lib/unsavedChanges";
 import {
   fetchMailOffices,
   createOutgoingMail,
@@ -62,6 +63,50 @@ export function ArchiveOutgoingNewPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // ─────────────────────────────────────────────────────────
+  // تتبّع التعديلات غير المحفوظة
+  // ─────────────────────────────────────────────────────────
+  // الصفحة دي "إنشاء" بحت، فبدل مقارنة snapshot بنتحقق مباشرة
+  // من وجود أي محتوى فعلي دخله المستخدم في أي حقل
+  const { setDirty, guardNavigation } = useUnsavedChanges();
+
+  const isDirty = useMemo(() => {
+    const hasDestinations = destinations.some((d) => d.trim());
+    const hasNotes = notes.some((n) => n.trim());
+    const hasRecipients = recipients.some(
+      (r) => r.name.trim() || r.entity.trim()
+    );
+
+    return (
+      Boolean(officeId) ||
+      faxSummary.trim() !== "" ||
+      hasDestinations ||
+      hasNotes ||
+      hasRecipients ||
+      pendingScans.length > 0 ||
+      isOriginalReceived ||
+      originalReceivedBy.trim() !== ""
+    );
+  }, [
+    officeId,
+    faxSummary,
+    destinations,
+    notes,
+    recipients,
+    pendingScans.length,
+    isOriginalReceived,
+    originalReceivedBy,
+  ]);
+
+  useEffect(() => {
+    setDirty(isDirty);
+  }, [isDirty, setDirty]);
+
+  useEffect(() => {
+    return () => setDirty(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     loadOffices();
   }, []);
@@ -72,7 +117,7 @@ export function ArchiveOutgoingNewPage() {
       const data = await fetchMailOffices();
       setOffices(data);
     } catch (err: any) {
-      console.error("Load offices error:", err);
+
       setError("حدث خطأ أثناء تحميل قائمة المكاتب");
     } finally {
       setLoadingOffices(false);
@@ -282,12 +327,15 @@ export function ArchiveOutgoingNewPage() {
           details: `ملخص الفاكس: ${faxSummaryTrimmed || "بدون ملخص"}`,
         });
       } catch (auditError) {
-        console.error("Audit log error:", auditError);
+
       }
+
+      // ✅ الفاكس اتحفظ فعليًا في قاعدة البيانات
+      setDirty(false);
 
       navigate(`/dashboard/archive/outgoing/${faxId}`);
     } catch (err: any) {
-      console.error("Create outgoing mail error:", err);
+
       setError(
         err?.message || "حدث خطأ أثناء حفظ الفاكس"
       );
@@ -388,8 +436,6 @@ export function ArchiveOutgoingNewPage() {
         </div>
 
         <div className="w-full h-px bg-[#eff0f6]" />
-
-        {/* جهات الإرسال */}
 
         {/* جهات الإرسال */}
 
@@ -672,7 +718,9 @@ export function ArchiveOutgoingNewPage() {
 
           <button
             type="button"
-            onClick={() => navigate("/dashboard/archive/outgoing")}
+            onClick={() =>
+              guardNavigation(() => navigate("/dashboard/archive/outgoing"))
+            }
             disabled={saving}
             className="h-[48px] px-6 rounded-[8px] border border-[#cbd5e1]"
             style={{ ...F, fontSize: 15, color: "#475569" }}

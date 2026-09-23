@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import type { CSSProperties } from "react";
-import { ArrowLeftRight, LogIn, UserPlus } from "lucide-react";
+import type { CSSProperties, ComponentType } from "react";
+import {
+  ArrowLeftRight,
+  UserPlus,
+  LogIn,
+  FileText,
+} from "lucide-react";
 import { supabase } from "../../lib/supabase";
 
 const F: CSSProperties = {
@@ -13,7 +18,58 @@ type LetterType = {
   name: string;
   code: string;
   is_active: boolean;
+  numbering_digit: number | null;
 };
+
+/* =========================================================
+   خريطة الأشكال (أيقونة + لون) لكل كود خطاب معروف حاليًا.
+
+   ✅ أي نوع خطاب جديد يُضاف من التاب الإداري ومش موجود هنا
+   ياخد تلقائيًا الشكل الافتراضي العام في الأسفل — من غير أي
+   تعديل كود مطلوب.
+========================================================= */
+
+type LetterTypeVisual = {
+  icon: ComponentType<{ size?: number; color?: string; style?: CSSProperties }>;
+  iconBg: string;
+  iconColor: string;
+  flipIcon?: boolean;
+};
+
+const LETTER_TYPE_VISUALS: Record<string, LetterTypeVisual> = {
+  ATTACH: {
+    icon: ArrowLeftRight,
+    iconBg: "#e5f8ee",
+    iconColor: "#00854a",
+  },
+  DEATTACH: {
+    icon: ArrowLeftRight,
+    iconBg: "#fdeaea",
+    iconColor: "#b3261e",
+    flipIcon: true,
+  },
+  JOIN_SAEQA: {
+    icon: UserPlus,
+    iconBg: "#fef3e8",
+    iconColor: "#c2670c",
+  },
+  JOIN_EXTERNAL: {
+    icon: LogIn,
+    iconBg: "#eef2ff",
+    iconColor: "#4338ca",
+  },
+};
+
+// الشكل الافتراضي لأي نوع خطاب جديد مش موجود في الخريطة فوق
+const DEFAULT_LETTER_TYPE_VISUAL: LetterTypeVisual = {
+  icon: FileText,
+  iconBg: "#f1f3f9",
+  iconColor: "#4a5468",
+};
+
+function getLetterTypeVisual(code: string): LetterTypeVisual {
+  return LETTER_TYPE_VISUALS[code] ?? DEFAULT_LETTER_TYPE_VISUAL;
+}
 
 function Step({
   number,
@@ -77,28 +133,25 @@ function LetterCard({
   onClick,
   icon,
   iconBg,
-  iconColor,
 }: {
   title: string;
   selected: boolean;
   onClick: () => void;
   icon: React.ReactNode;
   iconBg: string;
-  iconColor: string;
 }) {
   return (
     <button
-    
       type="button"
       onClick={onClick}
       className="aspect-square flex flex-col items-center justify-center gap-4 px-3 rounded-[20px] transition-all bg-white"
       style={{
-  width: "100%",
-  height: "200px",  // 👈 رقم ثابت للارتفاع بس
-  boxShadow: selected
-    ? "0 0 0 2.5px #00B867, 0 6px 16px rgba(0,184,103,.20)"
-    : "0 1px 3px rgba(0,0,0,.10)",
-}}
+        width: "100%",
+        height: "200px",
+        boxShadow: selected
+          ? "0 0 0 2.5px #00B867, 0 6px 16px rgba(0,184,103,.20)"
+          : "0 1px 3px rgba(0,0,0,.10)",
+      }}
     >
       <div
         className="w-16 h-16 rounded-full flex items-center justify-center shrink-0"
@@ -110,20 +163,20 @@ function LetterCard({
       </div>
 
       <span
-  className="text-center leading-[1.35] line-clamp-2"
-  style={{
-    ...F,
-    fontWeight: 700,
-    fontSize: 14,
-    color: selected ? "#00854a" : "#4a5468",
-    display: "-webkit-box",
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: "vertical",
-    overflow: "hidden",
-  }}
->
-  {title}
-</span>
+        className="text-center leading-[1.35] line-clamp-2"
+        style={{
+          ...F,
+          fontWeight: 700,
+          fontSize: 14,
+          color: selected ? "#00854a" : "#4a5468",
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }}
+      >
+        {title}
+      </span>
     </button>
   );
 }
@@ -147,14 +200,14 @@ export function IssueLetterPage() {
 
         const { data, error } = await supabase
           .from("letter_types")
-          .select("id, name, code, is_active")
+          .select("id, name, code, is_active, numbering_digit")
           .eq("is_active", true)
-          .order("name", { ascending: true });
+          .order("numbering_digit", { ascending: true });
 
         if (!mounted) return;
 
         if (error) {
-          console.error("LETTER TYPES ERROR:", error);
+
           setError(`تعذر تحميل أنواع الخطابات: ${error.message}`);
           setLetterTypes([]);
           return;
@@ -162,7 +215,7 @@ export function IssueLetterPage() {
 
         setLetterTypes(data ?? []);
       } catch (err) {
-        console.error("Unexpected error:", err);
+
         if (!mounted) return;
         setError("حدث خطأ أثناء الاتصال بقاعدة البيانات");
         setLetterTypes([]);
@@ -189,8 +242,12 @@ export function IssueLetterPage() {
       letterType = "join-saeqa";
     } else if (selected.code === "JOIN_EXTERNAL") {
       letterType = "join-external";
-    } else {
+    } else if (selected.code === "ATTACH") {
       letterType = "attachment";
+    } else {
+      // ✅ أي نوع خطاب جديد مش من الأنواع الأربعة الحالية:
+      // نبعت كود النوع نفسه بدل ما نجبره على واحد من الأربعة القدامى
+      letterType = selected.code;
     }
 
     navigate("/dashboard/issue-letter/soldiers", {
@@ -202,17 +259,6 @@ export function IssueLetterPage() {
       },
     });
   }
-
-  const attachmentType =
-    letterTypes.find((x) => x.code === "ATTACH") ??
-    letterTypes.find((x) => x.name === "الحاق");
-
-  const endAttachmentType =
-    letterTypes.find((x) => x.code === "DEATTACH") ??
-    letterTypes.find((x) => x.name === "إنهاء الحاق");
-
-  const joinSaeqaType = letterTypes.find((x) => x.code === "JOIN_SAEQA");
-  const joinExternalType = letterTypes.find((x) => x.code === "JOIN_EXTERNAL");
 
   return (
     <div className="flex flex-col items-center gap-10 w-full pb-10" dir="rtl">
@@ -238,7 +284,8 @@ export function IssueLetterPage() {
         <Step number="04" label="المراجعة والتصديق" />
       </div>
 
-      <div className="flex flex-col items-center gap-8 w-full max-w-[600px]">
+      {/* ملحوظة: تم توسيع الحاوية لتستوعب 4 كروت في كل صف بدل 2 */}
+      <div className="flex flex-col items-center gap-8 w-full max-w-[1040px]">
         <p
           className="text-center"
           style={{
@@ -285,88 +332,36 @@ export function IssueLetterPage() {
                 لا توجد أنواع خطابات متاحة
               </div>
             ) : (
-        <div className="grid grid-cols-2 gap-5 w-full">
-  {attachmentType && (
-    <LetterCard
-      title={attachmentType.name}
-      selected={selected?.id === attachmentType.id}
-      onClick={() => setSelected(attachmentType)}
-      iconBg="#e5f8ee"
-      iconColor="#00854a"
-      icon={
-        <ArrowLeftRight
-          size={28}
-          color={
-            selected?.id === attachmentType.id
-              ? "#00854a"
-              : "#00854a"
-          }
-        />
-      }
-    />
-  )}
+              // ✅ 4 كروت في كل صف، وأي كروت زيادة تنزل تلقائي للصف اللي بعده
+              // بنفس تصميم الكارد الحالي بدون أي تغيير في شكله
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-5 w-full">
+                {letterTypes.map((type) => {
+                  const visual = getLetterTypeVisual(type.code);
+                  const Icon = visual.icon;
+                  const isSelected = selected?.id === type.id;
 
-  {endAttachmentType && (
-    <LetterCard
-      title={endAttachmentType.name}
-      selected={selected?.id === endAttachmentType.id}
-      onClick={() => setSelected(endAttachmentType)}
-      iconBg="#fdeaea"
-      iconColor="#b3261e"
-      icon={
-        <ArrowLeftRight
-          size={28}
-          style={{ transform: "scaleX(-1)" }}
-          color={
-            selected?.id === endAttachmentType.id
-              ? "#00854a"
-              : "#b3261e"
-          }
-        />
-      }
-    />
-  )}
-
-  {joinSaeqaType && (
-    <LetterCard
-      title={joinSaeqaType.name}
-      selected={selected?.id === joinSaeqaType.id}
-      onClick={() => setSelected(joinSaeqaType)}
-      iconBg="#fef3e8"
-      iconColor="#c2670c"
-      icon={
-        <UserPlus
-          size={28}
-          color={
-            selected?.id === joinSaeqaType.id
-              ? "#00854a"
-              : "#c2670c"
-          }
-        />
-      }
-    />
-  )}
-
-  {joinExternalType && (
-    <LetterCard
-      title={joinExternalType.name}
-      selected={selected?.id === joinExternalType.id}
-      onClick={() => setSelected(joinExternalType)}
-      iconBg="#eef2ff"
-      iconColor="#4338ca"
-      icon={
-        <LogIn
-          size={28}
-          color={
-            selected?.id === joinExternalType.id
-              ? "#00854a"
-              : "#4338ca"
-          }
-        />
-      }
-    />
-  )}
-</div>
+                  return (
+                    <LetterCard
+                      key={type.id}
+                      title={type.name}
+                      selected={isSelected}
+                      onClick={() => setSelected(type)}
+                      iconBg={visual.iconBg}
+                      icon={
+                        <Icon
+                          size={28}
+                          color={isSelected ? "#00854a" : visual.iconColor}
+                          style={
+                            visual.flipIcon
+                              ? { transform: "scaleX(-1)" }
+                              : undefined
+                          }
+                        />
+                      }
+                    />
+                  );
+                })}
+              </div>
             )}
           </>
         )}

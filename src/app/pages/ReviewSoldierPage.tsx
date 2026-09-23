@@ -1,8 +1,9 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { LoadingOverlay } from "../components/LoadingOverlay";
 import { supabase } from "../../lib/supabase";
 import { logActivity } from "../../lib/logActivity";
+import { useUnsavedChanges } from "../../lib/unsavedChanges";
 
 // ============================================================================
 // Style
@@ -36,6 +37,8 @@ interface ReviewFormData {
   status_name: string;
   primary_unit_name: string;
   attachment_unit_name: string;
+    job_id?: string | null;
+  job_name?: string;
 }
 
 interface InsertedPersonnel {
@@ -51,6 +54,7 @@ interface InsertedPersonnel {
   discharge_date: string | null;
   is_active: boolean;
   updated_at: string | null;
+  job_id: string | null;
 }
 
 // ============================================================================
@@ -71,9 +75,24 @@ export function ReviewSoldierPage() {
   const form =
     (location.state as ReviewFormData | null) ?? null;
 
-  // ==========================================================================
+  // ─────────────────────────────────────────────────────────
+  // تتبّع التعديلات غير المحفوظة
+  // ─────────────────────────────────────────────────────────
+  // الصفحة دي معندهاش حقول تتعدل، لكن وجود "form" معناه إن فيه
+  // بيانات جاهزة للاعتماد لسه محفوظتش في قاعدة البيانات — لو
+  // المستخدم غادر من غير اعتماد، هيفقدها ويضطر يملى الفورم تاني
+  const { setDirty } = useUnsavedChanges();
+
+  useEffect(() => {
+    setDirty(Boolean(form));
+
+    return () => setDirty(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Boolean(form)]);
+
+  // ==========================================================
   // اعتماد القيد
-  // ==========================================================================
+  // ==========================================================
 
   const handleConfirm = useCallback(async () => {
     if (!form) {
@@ -201,6 +220,7 @@ export function ReviewSoldierPage() {
           form.attachment_unit_id || null,
 
         discharge_date: dischargeDate,
+        job_id: form.job_id || null,
 
         is_active: true,
       };
@@ -232,7 +252,8 @@ export function ReviewSoldierPage() {
           attachment_unit_id,
           discharge_date,
           is_active,
-          updated_at
+          updated_at,
+          job_id
         `)
         .single();
 
@@ -316,6 +337,7 @@ await logActivity({
     serviceStatus: form.status_name,
     primaryUnit: form.primary_unit_name,
     attachmentUnit: form.attachment_unit_name,
+        job: form.job_name || null,
     dischargeDate,
   }),
 });
@@ -343,6 +365,10 @@ await logActivity({
        *
        * لذلك يجب إرسال personnelId هنا.
        */
+
+      // ✅ الحفظ نجح فعليًا في قاعدة البيانات، فمن هنا فصاعدًا
+      // مفيش داعي نحذّر المستخدم لو غادر الصفحة
+      setDirty(false);
 
       navigate(
         "/dashboard/add-soldier/success",
@@ -560,15 +586,16 @@ await logActivity({
             />
 
             <InfoRow
-              label="تاريخ التسريح"
-              value={
-                form.personnel_category ===
-                "متطوع"
-                  ? "لا يوجد"
-                  : form.discharge_date ||
-                    "لا يوجد"
-              }
+              label="الوظيفة"
+              value={form.job_name || "لا يوجد"}
             />
+
+            {form.personnel_category !== "متطوع" && (
+              <InfoRow
+                label="تاريخ التسريح"
+                value={form.discharge_date || "لا يوجد"}
+              />
+            )}
           </div>
 
           {/* =================================================================

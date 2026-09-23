@@ -11,6 +11,7 @@ import { ChevronDown, CalendarDays } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { logActivity } from "../../lib/logActivity";
 import { createNotification } from "../../lib/createNotification";
+import { useUnsavedChanges } from "../../lib/unsavedChanges";
 // ─────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────
@@ -34,6 +35,7 @@ const DISCHARGED_STATUS_ID = "ac8ddfa3-1578-455b-9b6a-b056260fcb1f";
 
 // طول الرقم العسكري المطلوب بالظبط
 const MILITARY_NUMBER_LENGTH = 13;
+const NO_JOB_OPTION_ID = "__no_job__";
 function isSoldierRankName(name?: string | null): boolean {
   const n = (name ?? "").trim();
   return n === "جندي" || n === "جندى";
@@ -64,6 +66,8 @@ type Soldier = {
   attachmentPlace: string;
   administration: string;
   educationLevel: string;
+    job: string;              // ✅ جديد
+  jobId: string | null;     // ✅ جديد
 
   rankId: string | null;
   categoryId: string | null;
@@ -107,6 +111,11 @@ function useFloatingPosition(
       // نفتحه تحت الحقل ولا نقلبه فوقه لو مفيش مساحة كفاية تحت.
       const panelHeight = panelRef.current?.offsetHeight ?? 0;
 
+      // ✅ FIX: بنقيس عرض البانل الفعلي (بعض البانلز، زي التقويم،
+      // ليها عرض ثابت مختلف عن عرض الزرار نفسه). لو مش متاح لسه
+      // (أول رسمة) نرجع لعرض الزرار كتقريب.
+      const panelWidth = panelRef.current?.offsetWidth || anchorBounds.width;
+
       const spaceBelow = window.innerHeight - anchorBounds.bottom;
       const spaceAbove = anchorBounds.top;
 
@@ -119,9 +128,25 @@ function useFloatingPosition(
         ? Math.max(VIEWPORT_MARGIN, anchorBounds.top - panelHeight - 4)
         : anchorBounds.bottom + 4;
 
+      // ✅ FIX: نضمن إن البانل يفضل بالكامل جوه عرض الشاشة أفقيًا،
+      // بدل ما يتحط بس على left الزرار من غير أي تحقق. ده بيمنع خروج
+      // التقويم (اللي عرضه ثابت 280px) برّه الشاشة على الموبايل أو
+      // لما الحقل يكون قريب من حافة الشاشة.
+      let left = anchorBounds.left;
+
+      const maxLeft = window.innerWidth - panelWidth - VIEWPORT_MARGIN;
+
+      if (left > maxLeft) {
+        left = Math.max(VIEWPORT_MARGIN, maxLeft);
+      }
+
+      if (left < VIEWPORT_MARGIN) {
+        left = VIEWPORT_MARGIN;
+      }
+
       setRect({
         top,
-        left: anchorBounds.left,
+        left,
         width: anchorBounds.width,
       });
     }
@@ -221,8 +246,11 @@ function EditDropdown({
           }}
         />
 
+        {/* ✅ FIX: truncate عشان نص placeholder الطويل (زي "غير مفعّل -
+            الموقف الخدمي ليس ملحق") ميكسرش ارتفاع الزرار الثابت على
+            الشاشات الضيقة */}
         <span
-          className="flex-1 text-right"
+          className="flex-1 text-right truncate"
           style={{
             ...FONT,
             fontSize: 14,
@@ -324,7 +352,7 @@ function ReadonlyInput({
 
         {value ? (
           <span
-            className="flex-1 text-right"
+            className="flex-1 text-right truncate"
             style={{
               ...FONT,
               fontSize: 14,
@@ -335,7 +363,7 @@ function ReadonlyInput({
           </span>
         ) : (
           <span
-            className="flex-1 text-right"
+            className="flex-1 text-right truncate"
             style={{
               ...FONT,
               fontSize: 14,
@@ -604,7 +632,7 @@ function DatePickerDDMMYYYY({
         />
 
         <span
-          className="flex-1 text-right"
+          className="flex-1 text-right truncate"
           style={{
             ...FONT,
             fontSize: 14,
@@ -624,7 +652,7 @@ function DatePickerDDMMYYYY({
         createPortal(
           <div
             ref={panelRef}
-            className="fixed z-[9999] w-[280px] bg-white border border-[#e2e7f0] rounded-[8px] shadow-lg p-3"
+            className="fixed z-[9999] w-[280px] max-w-[calc(100vw-16px)] bg-white border border-[#e2e7f0] rounded-[8px] shadow-lg p-3"
             style={{
               top: floatingRect.top,
               left: floatingRect.left,
@@ -1064,11 +1092,13 @@ export function SoldierEditPage() {
   const [serviceStatusOptions, setServiceStatusOptions] = useState<Option[]>([]);
   const [attachmentUnitOptions, setAttachmentUnitOptions] = useState<Option[]>([]);
   const [reserveBatchOptions, setReserveBatchOptions] = useState<Option[]>([]);
+    const [jobOptions, setJobOptions] = useState<Option[]>([]);
   // ───────────────────────────────────────────────────────────
   // Selected values
   // ───────────────────────────────────────────────────────────
 
   const [militaryNumber, setMilitaryNumber] = useState("");
+  const [fullName, setFullName] = useState("");
   const [rankId, setRankId] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [unitId, setUnitId] = useState<string | null>(null);
@@ -1081,7 +1111,7 @@ export function SoldierEditPage() {
   const [dischargeDateIso, setDischargeDateIso] = useState<string | null>(
     null
   );
-
+  const [jobId, setJobId] = useState<string | null>(null);
   // ───────────────────────────────────────────────────────────
   // States
   // ───────────────────────────────────────────────────────────
@@ -1092,8 +1122,58 @@ export function SoldierEditPage() {
   const [unitError, setUnitError] = useState("");
   const [attachmentError, setAttachmentError] = useState("");
   const [militaryNumberError, setMilitaryNumberError] = useState("");
+  const [nameError, setNameError] = useState("");
   const [error, setError] = useState("");
 
+  // ─────────────────────────────────────────────────────────
+  // تتبّع التعديلات غير المحفوظة (يُبلّغ الـ context المركزي
+  // اللي بيحمي أي تنقل من الـ Sidebar / Breadcrumbs / إغلاق الصفحة)
+  // ─────────────────────────────────────────────────────────
+
+  const { setDirty } = useUnsavedChanges();
+
+  // نسخة من قيم الفورم زي ما جاءت من قاعدة البيانات، بنقارن
+  // بيها القيم الحالية عشان نعرف لو المستخدم عدّل حاجة فعلاً
+  const initialSnapshotRef = useRef<string>("");
+
+  const isDirty = useMemo(() => {
+    if (!initialSnapshotRef.current) return false;
+
+    const current = JSON.stringify({
+      militaryNumber,
+      fullName,
+      rankId,
+      categoryId,
+      unitId,
+      serviceStatusId,
+      attachmentUnitId,
+      dischargeDateIso,
+      jobId,
+    });
+
+    return current !== initialSnapshotRef.current;
+  }, [
+    militaryNumber,
+    fullName,
+    rankId,
+    categoryId,
+    unitId,
+    serviceStatusId,
+    attachmentUnitId,
+    dischargeDateIso,
+    jobId,
+  ]);
+
+  useEffect(() => {
+    setDirty(isDirty);
+  }, [isDirty, setDirty]);
+
+  // لو المستخدم غادر الصفحة من غير ما يرجع من هنا بشكل طبيعي
+  // (unmount)، نصفّر الحالة عشان مايفضلش أثر على صفحة تانية
+  useEffect(() => {
+    return () => setDirty(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // هل الموقف الخدمي الحالي المختار = "ملحق"؟
   const selectedServiceStatusName =
     serviceStatusOptions.find((o) => o.id === serviceStatusId)?.name ??
@@ -1126,6 +1206,7 @@ const filteredRankOptions = useMemo(() => {
         unitsResult,
         serviceStatusesResult,
         reserveBatchesResult,
+        jobsResult,
       ] = await Promise.all([
         supabase
           .from("ranks")
@@ -1153,6 +1234,10 @@ const filteredRankOptions = useMemo(() => {
           .select("id,batch_date,name,is_active")
           .eq("is_active", true)
           .order("batch_date", { ascending: true }),
+                  supabase
+          .from("jobs")
+          .select("id,name")
+          .order("name", { ascending: true }),
       ]);
 
       if (ranksResult.error) {
@@ -1174,6 +1259,16 @@ const filteredRankOptions = useMemo(() => {
       if (reserveBatchesResult.error) {
         throw reserveBatchesResult.error;
       }
+            if (jobsResult.error) {
+        throw jobsResult.error;
+      }
+
+      setJobOptions(
+        (jobsResult.data ?? []).map((row) => ({
+          id: row.id,
+          name: row.name,
+        }))
+      );
       setRankOptions(
         (ranksResult.data ?? []).map((row) => ({
           id: row.id,
@@ -1262,6 +1357,7 @@ const filteredRankOptions = useMemo(() => {
           discharge_date,
                    administration_id,
           education_level_id,
+                    job_id,
 
           personnel_categories (
             id,
@@ -1295,11 +1391,15 @@ const filteredRankOptions = useMemo(() => {
             name,
             code
           ),
-
           education_level:education_levels!education_level_id (
             id,
             name,
             code
+          ),
+
+          job:jobs!job_id (
+            id,
+            name
           )
         `)
         .eq("id", id)
@@ -1344,6 +1444,8 @@ const filteredRankOptions = useMemo(() => {
         administration: raw.administration?.name ?? "",
 
         educationLevel: raw.education_level?.name ?? "",
+                job: raw.job?.name ?? "",
+        jobId: raw.job_id ?? null,
 
         rankId: raw.rank_id ?? null,
 
@@ -1362,12 +1464,28 @@ const filteredRankOptions = useMemo(() => {
 
       // تحديد القيم الحالية بالـ IDs
       setMilitaryNumber(mappedSoldier.militaryId);
+      setFullName(mappedSoldier.name);
       setRankId(mappedSoldier.rankId);
       setCategoryId(mappedSoldier.categoryId);
       setUnitId(mappedSoldier.unitId);
       setServiceStatusId(mappedSoldier.serviceStatusId);
       setAttachmentUnitId(mappedSoldier.attachmentUnitId);
       setDischargeDateIso(mappedSoldier.dischargeDateRaw);
+            setJobId(mappedSoldier.jobId);
+
+      // ✅ نلتقط نسخة "قبل أي تعديل" بعد ما تحميل البيانات يخلص،
+      // عشان isDirty يقارن صح من اللحظة دي فصاعدًا
+      initialSnapshotRef.current = JSON.stringify({
+        militaryNumber: mappedSoldier.militaryId,
+        fullName: mappedSoldier.name,
+        rankId: mappedSoldier.rankId,
+        categoryId: mappedSoldier.categoryId,
+        unitId: mappedSoldier.unitId,
+        serviceStatusId: mappedSoldier.serviceStatusId,
+        attachmentUnitId: mappedSoldier.attachmentUnitId,
+        dischargeDateIso: mappedSoldier.dischargeDateRaw,
+        jobId: mappedSoldier.jobId,
+      });
     } catch (err) {
       console.error("Unexpected error:", err);
 
@@ -1444,12 +1562,18 @@ function handleCategoryChange(option: Option) {
     if (!soldier) return;
 
     const trimmedMilitaryNumber = militaryNumber.trim();
+    const trimmedFullName = fullName.trim();
 
     // Validation
     if (!/^\d{13}$/.test(trimmedMilitaryNumber)) {
       setMilitaryNumberError(
         `الرقم العسكري يجب أن يتكون من ${MILITARY_NUMBER_LENGTH} رقمًا بالضبط`
       );
+      return;
+    }
+
+    if (!trimmedFullName) {
+      setNameError("اسم الفرد مطلوب");
       return;
     }
 
@@ -1486,6 +1610,7 @@ function handleCategoryChange(option: Option) {
     setUnitError("");
     setAttachmentError("");
     setMilitaryNumberError("");
+    setNameError("");
     setError("");
     setSaving(true);
 
@@ -1524,6 +1649,7 @@ function handleCategoryChange(option: Option) {
         .from("personnel")
         .update({
           military_number: trimmedMilitaryNumber,
+          full_name: trimmedFullName,
           rank_id: rankId,
           personnel_category_id: categoryId,
           primary_unit_id: unitId,
@@ -1535,6 +1661,7 @@ function handleCategoryChange(option: Option) {
           // ✅ FIX: تحديث is_active بما يتوافق مع الموقف الخدمي المختار
           // عشان تفضل كل الصفحات (Dashboard / تفاصيل الفرد / دفعات الرديف)
           // متوافقة مع بعضها دايمًا
+                    job_id: jobId, // ✅ جديد
           is_active: !isDischargedStatus,
         })
         .eq("id", soldier.id);
@@ -1560,6 +1687,7 @@ function handleCategoryChange(option: Option) {
         entity: `الفرد: ${soldier.name}`,
         details: [
           `الرقم العسكري: ${soldier.militaryId} → ${trimmedMilitaryNumber}`,
+          `الاسم: ${soldier.name} → ${trimmedFullName}`,
           `الدرجة: ${soldier.rank} → ${
             rankOptions.find((o) => o.id === rankId)?.name ?? "-"
           }`,
@@ -1580,6 +1708,9 @@ function handleCategoryChange(option: Option) {
           `تاريخ التسريح: ${soldier.dischargeDate || "-"} → ${
             dischargeDateIso ? isoToDisplayDate(dischargeDateIso) : "-"
           }`,
+                    `الوظيفة: ${soldier.job || "-"} → ${
+            jobOptions.find((o) => o.id === jobId)?.name ?? "-"
+          }`,
         ].join("\n"),
         
       });
@@ -1591,6 +1722,22 @@ await createNotification({
         entityId: soldier.id,
         userName: currentUserName,
       });   
+      // ✅ نعتبر البيانات "متحفوظة" دلوقتي عشان مايظهرش بوب اب
+      // التحذير وهو بيتنقل لصفحة النجاح مباشرة بعد الحفظ
+      initialSnapshotRef.current = JSON.stringify({
+        militaryNumber: trimmedMilitaryNumber,
+        fullName: trimmedFullName,
+        rankId,
+        categoryId,
+        unitId,
+        serviceStatusId,
+        attachmentUnitId: isAttachmentEnabled ? attachmentUnitId : null,
+        dischargeDateIso: isVolunteerCategory ? null : dischargeDateIso,
+        jobId,
+      });
+
+      setDirty(false);
+
       // الرجوع لشاشة بيانات الفرد بعد نجاح الحفظ
       navigate(`/dashboard/individual-query/soldier/${soldier.id}`);
     } catch (err) {
@@ -1629,7 +1776,7 @@ await createNotification({
   if (!soldier) {
     return (
       <div
-        className="flex flex-col items-center justify-center h-64 gap-4"
+        className="flex flex-col items-center justify-center h-64 gap-4 px-4 text-center"
         dir="rtl"
       >
         <p
@@ -1685,7 +1832,7 @@ await createNotification({
         <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full overflow-hidden">
           {/* Header */}
 
-          <div className="flex items-center justify-start gap-3 px-6 py-4 border-b border-[#cbd2e0]">
+          <div className="flex items-center justify-start gap-3 px-4 sm:px-6 py-4 border-b border-[#cbd2e0]">
             <span
               style={{
                 ...FONT,
@@ -1699,7 +1846,7 @@ await createNotification({
 
           {/* Fields */}
 
-          <div className="flex flex-col gap-5 px-6 py-5">
+          <div className="flex flex-col gap-5 px-4 sm:px-6 py-5">
 
             {/* ==================================================
                 Section 1: البيانات التعريفية
@@ -1777,7 +1924,42 @@ await createNotification({
                       الاسم
                     </p>
 
-                    <ReadonlyInput value={soldier.name} />
+                    <input
+                      type="text"
+                      value={fullName}
+                      onChange={(e) => {
+                        setFullName(e.target.value);
+                        setNameError("");
+                        setError("");
+                      }}
+                      dir="rtl"
+                      placeholder="اسم الفرد"
+                      className={[
+                        "w-full h-[42px] rounded-[6px] border bg-white px-3",
+                        "text-right outline-none transition-colors",
+                        nameError
+                          ? "border-[#ef4444]"
+                          : "border-[#e2e7f0] focus:border-[#294dbb]",
+                      ].join(" ")}
+                      style={{
+                        ...FONT,
+                        fontSize: 14,
+                        color: "#2d3648",
+                      }}
+                    />
+
+                    {nameError && (
+                      <p
+                        className="text-right mt-1"
+                        style={{
+                          ...FONT,
+                          fontSize: 12,
+                          color: "#ef4444",
+                        }}
+                      >
+                        {nameError}
+                      </p>
+                    )}
                   </div>
                 }
                 right={
@@ -1907,7 +2089,24 @@ await createNotification({
       )}
     </div>}
   right={
-<div></div>
+    <div>
+      <p style={{ ...FONT, fontSize: 13, color: "#717d96", marginBottom: 6 }}>
+        الوظيفة
+      </p>
+
+      <EditDropdown
+        options={[
+          { id: NO_JOB_OPTION_ID, name: "بدون وظيفة" },
+          ...jobOptions,
+        ]}
+        value={jobId}
+        onChange={(option) => {
+          setJobId(option.id === NO_JOB_OPTION_ID ? null : option.id);
+          setError("");
+        }}
+        placeholder="اختر الوظيفة (اختياري)"
+      />
+    </div>
   }
 />
             </div>
@@ -1925,7 +2124,6 @@ await createNotification({
 
             <div className="flex flex-col gap-4">
               <FieldsSectionTitle>بيانات إضافية</FieldsSectionTitle>
-
               {/* Row 1: الإدارة / تاريخ التسريح */}
 
               <FieldPair
@@ -1949,46 +2147,32 @@ await createNotification({
                   </div>
                 }
                 right={
-                  <div>
-                    <p
-                      style={{
-                        ...FONT,
-                        fontSize: 13,
-                        color: "#717d96",
-                        marginBottom: 6,
-                      }}
-                    >
-                      تاريخ التسريح
-                    </p>
-
-                    <EditDropdown
-                      options={reserveBatchOptions}
-                      value={
-                        isVolunteerCategory
-                          ? null
-                          : dischargeDateIso
-                      }
-                      onChange={(option) => {
-                        setDischargeDateIso(option.id);
-                        setError("");
-                      }}
-                      disabled={isVolunteerCategory}
-                      placeholder="اختر دفعة الرديف"
-                    />
-
-                    {isVolunteerCategory && (
+                  isVolunteerCategory ? (
+                    <div></div>
+                  ) : (
+                    <div>
                       <p
-                        className="text-right mt-1"
                         style={{
                           ...FONT,
-                          fontSize: 12,
+                          fontSize: 13,
                           color: "#717d96",
+                          marginBottom: 6,
                         }}
                       >
-                        غير مطلوب لفئة "متطوع" — سيتم حفظه بقيمة فارغة
+                        تاريخ التسريح
                       </p>
-                    )}
-                  </div>
+
+                      <EditDropdown
+                        options={reserveBatchOptions}
+                        value={dischargeDateIso}
+                        onChange={(option) => {
+                          setDischargeDateIso(option.id);
+                          setError("");
+                        }}
+                        placeholder="اختر دفعة الرديف"
+                      />
+                    </div>
+                  )
                 }
               />
 
@@ -2039,7 +2223,7 @@ await createNotification({
                 type="submit"
                 disabled={saving}
                 className={[
-                  "flex items-center justify-center px-5 h-10 rounded-[8px]",
+                  "w-full sm:w-auto flex items-center justify-center px-5 h-10 rounded-[8px]",
                   "transition-opacity",
                   saving
                     ? "opacity-60 cursor-not-allowed"

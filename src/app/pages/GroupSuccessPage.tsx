@@ -14,7 +14,6 @@ const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
 
-// ⚠️ عدّل هذا الاسم لو جدول الأفراد الفعلي مختلف (نفس الاسم المستخدم في باقي الصفحات)
 const PERSONNEL_TABLE_NAME = "personnel";
 
 // ─── البيانات القادمة من صفحة المراجعة عبر navigate state ─────────────────────
@@ -444,7 +443,6 @@ export function GroupSuccessPage() {
 
         setCurrentUserLabel(rankName ? `${rankName} / ${fullName}` : fullName);
       } catch (error) {
-        console.error("Error loading current user:", error);
         setCurrentUserLabel("—");
       }
     }
@@ -757,25 +755,6 @@ export function GroupSuccessPage() {
                 العودة إلى لوحة المتابعة
               </span>
             </button>
-
-          
-             {/* اصدار خطاب — text underline */}
-            <button
-              type="button"
-              className="h-[44px] px-4 flex items-center justify-center rounded-[8px] transition-opacity hover:opacity-70"
-            >
-              <span
-                style={{
-                  ...F,
-                  fontSize: 16,
-                  color: "#273629",
-                  textDecoration: "underline",
-                }}
-              >
-                اصدار خطاب
-              </span>
-            </button>
-
           </div>
         </div>
       </div>

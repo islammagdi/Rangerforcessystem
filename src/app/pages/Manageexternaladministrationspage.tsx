@@ -101,7 +101,7 @@ export function ManageExternalAdministrationsPage() {
 
       setAdministrations(data ?? []);
     } catch (err: any) {
-      console.error("Load external administrations error:", err);
+   
       setError(
         err?.message || "حدث خطأ أثناء تحميل بيانات الإدارات الخارجية"
       );
@@ -163,7 +163,7 @@ export function ManageExternalAdministrationsPage() {
           }`,
         });
       } catch (auditError) {
-        console.error("Audit log error:", auditError);
+       
       }
 
       setSuccessMsg("تم إضافة الإدارة بنجاح");
@@ -172,7 +172,7 @@ export function ManageExternalAdministrationsPage() {
       setShowAddModal(false);
       await loadData();
     } catch (err: any) {
-      console.error("Add external administration error:", err);
+    
       setError(err?.message || "حدث خطأ أثناء إضافة الإدارة");
     } finally {
       setSaving(false);
@@ -241,7 +241,7 @@ export function ManageExternalAdministrationsPage() {
           }) (${editIsActive ? "مفعّلة" : "غير مفعّلة"})`,
         });
       } catch (auditError) {
-        console.error("Audit log error:", auditError);
+    
       }
 
       setSuccessMsg("تم تعديل بيانات الإدارة بنجاح");
@@ -251,7 +251,7 @@ export function ManageExternalAdministrationsPage() {
       setEditingItem(null);
       await loadData();
     } catch (err: any) {
-      console.error("Edit external administration error:", err);
+    
       setError(err?.message || "حدث خطأ أثناء تعديل بيانات الإدارة");
     } finally {
       setEditSaving(false);
@@ -301,7 +301,7 @@ export function ManageExternalAdministrationsPage() {
           details: `اسم الإدارة: ${deletedItem?.name ?? "غير معروف"}`,
         });
       } catch (auditError) {
-        console.error("Audit log error:", auditError);
+    
       }
 
       setSuccessMsg("تم حذف الإدارة بنجاح");
@@ -311,7 +311,7 @@ export function ManageExternalAdministrationsPage() {
         previous.filter((item) => item.id !== deleteTargetId)
       );
     } catch (err: any) {
-      console.error("Delete external administration error:", err);
+    
       setError(err?.message || "حدث خطأ أثناء حذف الإدارة");
     } finally {
       setDeleting(false);

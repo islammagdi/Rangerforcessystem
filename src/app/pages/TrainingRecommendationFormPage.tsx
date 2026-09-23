@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { AlertTriangle, Info } from "lucide-react";
 import { logActivity } from "../../lib/logActivity";
 import { supabase } from "../../lib/supabase";
+import { useUnsavedChanges } from "../../lib/unsavedChanges";
 import {
   createRecommendation,
   updateRecommendation,
@@ -117,10 +118,68 @@ export function TrainingRecommendationFormPage() {
   const [showLogModal, setShowLogModal] = useState(false);
   const [logs, setLogs] = useState<RecommendationLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  // ─────────────────────────────────────────────────────────
+  // تتبّع التعديلات غير المحفوظة
+  // ─────────────────────────────────────────────────────────
+
+  const { setDirty, guardNavigation } = useUnsavedChanges();
+
+  const initialSnapshotRef = useRef<string>("");
+
+  const currentSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        stageYear,
+        stageMonth,
+        listType,
+        listTypeOther,
+        fullName,
+        recommender,
+        recruitmentArea,
+        nationalId,
+        tripleNumber,
+        qualification,
+        requiredWeapon,
+        currentWeapon,
+        requiredUnit,
+        currentUnit,
+      }),
+    [
+      stageYear,
+      stageMonth,
+      listType,
+      listTypeOther,
+      fullName,
+      recommender,
+      recruitmentArea,
+      nationalId,
+      tripleNumber,
+      qualification,
+      requiredWeapon,
+      currentWeapon,
+      requiredUnit,
+      currentUnit,
+    ]
+  );
+
+  useEffect(() => {
+    if (!initialSnapshotRef.current) return;
+    setDirty(currentSnapshot !== initialSnapshotRef.current);
+  }, [currentSnapshot, setDirty]);
+
+  useEffect(() => {
+    return () => setDirty(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (id) {
       loadExisting(id);
+    } else {
+      // ✅ وضع الإضافة: نلتقط القيم الافتراضية فورًا كـ snapshot
+      initialSnapshotRef.current = currentSnapshot;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   async function loadExisting(recId: string) {
@@ -148,6 +207,26 @@ export function TrainingRecommendationFormPage() {
 
       setCreatedByName(data.created_by_name ?? "غير معروف");
       setCreatedAt(data.created_at);
+
+      // ✅ نلتقط الـ snapshot هنا بعد ما كل الحقول اتعمرت، عشان
+      // isDirty يقارن صح من اللحظة دي فصاعدًا
+      initialSnapshotRef.current = JSON.stringify({
+        stageYear: data.stage_year,
+        stageMonth: data.stage_month,
+        listType: data.list_type,
+        listTypeOther: data.list_type_other ?? "",
+        fullName: data.full_name,
+        recommender: data.recommender,
+        recruitmentArea: data.recruitment_area,
+        nationalId: data.national_id ?? "",
+        tripleNumber: data.triple_number ?? "",
+        qualification: data.qualification ?? "",
+        requiredWeapon: data.required_weapon ?? "",
+        currentWeapon: data.current_weapon ?? "",
+        requiredUnit: data.required_unit ?? "",
+        currentUnit: data.current_unit ?? "",
+      });
+
        setOriginalPayload({
         stage_month: data.stage_month,
         stage_year: data.stage_year,
@@ -367,6 +446,10 @@ if (isEditMode && id) {
           console.error("Audit log error:", auditError);
         }
 }
+
+      // ✅ الحفظ نجح فعليًا (إضافة أو تعديل)، مفيش داعي نحذّر
+      // المستخدم بعد كده وهو بيتنقل لصفحة القائمة
+      setDirty(false);
 
       navigate("/dashboard/training-recommendations");
     } catch (err: any) {
@@ -868,7 +951,9 @@ if (isEditMode && id) {
           <button
             type="button"
             onClick={() =>
-              navigate("/dashboard/training-recommendations")
+              guardNavigation(() =>
+                navigate("/dashboard/training-recommendations")
+              )
             }
             disabled={saving}
             className="h-[48px] px-6 rounded-[8px] border border-[#cbd5e1]"

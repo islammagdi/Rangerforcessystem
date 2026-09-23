@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { usePermissions } from "../../lib/usePermissions";
+import { useUnsavedChanges } from "../../lib/unsavedChanges";
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
@@ -34,6 +35,12 @@ type SoldierStatus =
   | "بالخدمة"
   | "منتهي خدمته";
 
+// ✅ حالة مراجعة النموذج (1س)
+type Model1sReviewState =
+  | "تمت المراجعة"
+  | "لم تتم المراجعة"
+  | "به ملاحظات";
+
 type Soldier = {
   id: string;
   militaryId: string;
@@ -45,11 +52,19 @@ type Soldier = {
   receivedLiteracy: DocumentState;
   requiresLiteracy: boolean;
   status: SoldierStatus;
+  model1sReview: Model1sReviewState; // ✅ جديد
+  model1sNotes: string; // ✅ جديد
 };
 
 const DISCHARGED_STATUS_ID =
   "ac8ddfa3-1578-455b-9b6a-b056260fcb1f";
-
+const FIELD_LABELS: Record<string, string> = {
+  receivedKariza: "استلام الكارنيه",
+  receivedLicense: "استلام الرخصة",
+  receivedLiteracy: "استلام محو الأمية",
+  model1sReview: "مراجعة النموذج (1س)",
+  model1sNotes: "ملاحظات النموذج (1س)",
+};
 /* =========================================================
    أهلية الرخصة
    الرقم السابع والثامن = 66
@@ -126,6 +141,54 @@ function dbStateToDocumentState(
   }
 
   return "لم يتم الاستلام";
+}
+
+/* =========================================================
+   تحويل حالة مراجعة النموذج (1س)
+   ========================================================= */
+
+const MODEL1S_OPTIONS: Model1sReviewState[] = [
+  "تمت المراجعة",
+  "لم تتم المراجعة",
+  "به ملاحظات",
+];
+
+const MODEL1S_COLORS: Record<Model1sReviewState, string> = {
+  "تمت المراجعة": "#166534",
+  "لم تتم المراجعة": "#9a3412",
+  "به ملاحظات": "#9d2e15",
+};
+
+const MODEL1S_BACKGROUNDS: Record<Model1sReviewState, string> = {
+  "تمت المراجعة": "#dcfce7",
+  "لم تتم المراجعة": "#fff7ed",
+  "به ملاحظات": "#fce9ea",
+};
+
+function model1sStateToDb(value: Model1sReviewState) {
+  if (value === "تمت المراجعة") {
+    return "REVIEWED";
+  }
+
+  if (value === "به ملاحظات") {
+    return "HAS_NOTES";
+  }
+
+  return "PENDING";
+}
+
+function dbToModel1sState(
+  value: string | null
+): Model1sReviewState {
+  if (value === "REVIEWED") {
+    return "تمت المراجعة";
+  }
+
+  if (value === "HAS_NOTES") {
+    return "به ملاحظات";
+  }
+
+  return "لم تتم المراجعة";
 }
 
 /* =========================================================
@@ -255,21 +318,47 @@ function GenericDropdown({
 }
 
 /* =========================================================
-   DOCUMENT DROPDOWN
+   DOCUMENT DROPDOWN (معمّمة: تُستخدم لحالة المستندات
+   ولحالة مراجعة النموذج (1س) بنفس الكومبوننت)
    ========================================================= */
 
-function DocumentDropdown({
+const DEFAULT_DOCUMENT_OPTIONS: DocumentState[] = [
+  "تم الاستلام",
+  "لم يتم الاستلام",
+  "تالف",
+];
+
+const DEFAULT_DOCUMENT_COLORS: Record<DocumentState, string> = {
+  "تم الاستلام": "#166534",
+  "لم يتم الاستلام": "#9a3412",
+  "تالف": "#991b1b",
+};
+
+const DEFAULT_DOCUMENT_BACKGROUNDS: Record<DocumentState, string> = {
+  "تم الاستلام": "#dcfce7",
+  "لم يتم الاستلام": "#fff7ed",
+  "تالف": "#fee2e2",
+};
+
+function DocumentDropdown<T extends string = DocumentState>({
   value,
   onChange,
   disabled = false,
-  options: customOptions,
+  options = DEFAULT_DOCUMENT_OPTIONS as unknown as T[],
+  colors = DEFAULT_DOCUMENT_COLORS as unknown as Record<T, string>,
+  backgrounds = DEFAULT_DOCUMENT_BACKGROUNDS as unknown as Record<
+    T,
+    string
+  >,
+  disabledLabel = "غير متاح",
 }: {
-  value: DocumentState;
-  onChange: (
-    value: DocumentState
-  ) => void;
+  value: T;
+  onChange: (value: T) => void;
   disabled?: boolean;
-  options?: DocumentState[];
+  options?: T[];
+  colors?: Record<T, string>;
+  backgrounds?: Record<T, string>;
+  disabledLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -282,30 +371,6 @@ function DocumentDropdown({
       left: 0,
       openUp: true,
     });
-
-  const options: DocumentState[] =
-    customOptions ?? [
-      "تم الاستلام",
-      "لم يتم الاستلام",
-      "تالف",
-    ];
-  const colors: Record<
-    DocumentState,
-    string
-  > = {
-    "تم الاستلام": "#166534",
-    "لم يتم الاستلام": "#9a3412",
-    "تالف": "#991b1b",
-  };
-
-  const backgrounds: Record<
-    DocumentState,
-    string
-  > = {
-    "تم الاستلام": "#dcfce7",
-    "لم يتم الاستلام": "#fff7ed",
-    "تالف": "#fee2e2",
-  };
 
   function updateMenuPosition() {
     if (!buttonRef.current) {
@@ -507,7 +572,7 @@ function DocumentDropdown({
 
           <span>
             {disabled
-              ? "غير متاح"
+              ? disabledLabel
               : value}
           </span>
         </button>
@@ -900,6 +965,142 @@ function TransferDialog({
 }
 
 /* =========================================================
+   PRINT COLUMNS DIALOG
+   ========================================================= */
+
+function PrintColumnsDialog({
+  columns,
+  selectedColumns,
+  onToggleColumn,
+  onSelectAll,
+  onClearAll,
+  onCancel,
+  onConfirm,
+}: {
+  columns: { id: string; label: string }[];
+  selectedColumns: Set<string>;
+  onToggleColumn: (id: string) => void;
+  onSelectAll: () => void;
+  onClearAll: () => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/50 p-4"
+      dir="rtl"
+    >
+      <div
+        className="bg-white rounded-[16px] p-5 w-full max-w-md flex flex-col gap-4 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2">
+          <span
+            className="flex-1 text-right"
+            style={{
+              ...F,
+              fontSize: 18,
+              color: "#333",
+              fontWeight: 700,
+            }}
+          >
+            اختر أعمدة الطباعة
+          </span>
+
+          <button
+            type="button"
+            onClick={onCancel}
+            className="shrink-0 text-[#aaa] hover:text-[#555]"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3 justify-start">
+          <button
+            type="button"
+            onClick={onSelectAll}
+            className="text-sm underline"
+            style={{ ...F, fontSize: 13, color: "#1f3d97" }}
+          >
+            تحديد الكل
+          </button>
+
+          <button
+            type="button"
+            onClick={onClearAll}
+            className="text-sm underline"
+            style={{ ...F, fontSize: 13, color: "#717d96" }}
+          >
+            إلغاء التحديد
+          </button>
+        </div>
+
+        <div
+          className="grid grid-cols-2 gap-2 max-h-[320px] overflow-y-auto"
+          dir="rtl"
+        >
+          {columns.map((col) => {
+            const checked = selectedColumns.has(col.id);
+
+            return (
+              <button
+                key={col.id}
+                type="button"
+                onClick={() => onToggleColumn(col.id)}
+                className="flex items-center gap-2 px-3 py-2 rounded-[8px] border border-[#e2e7f0] hover:bg-[#f5f6fb] transition-colors text-right"
+              >
+                {checked ? (
+                  <CheckSquare size={16} style={{ color: "#1f3d97" }} />
+                ) : (
+                  <Square size={16} style={{ color: "#a1aebe" }} />
+                )}
+
+                <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>
+                  {col.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-2 justify-start">
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={selectedColumns.size === 0}
+            className="px-4 py-2 rounded-[8px] disabled:opacity-50"
+            style={{
+              background:
+                "linear-gradient(to bottom, #00b867, #00522e)",
+              ...F,
+              fontSize: 15,
+              color: "#fff",
+            }}
+          >
+            طباعة
+          </button>
+
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 rounded-[8px]"
+            style={{
+              ...F,
+              fontSize: 15,
+              color: "#888",
+            }}
+          >
+            إلغاء
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/* =========================================================
    SORT ICON
    ========================================================= */
 
@@ -966,16 +1167,78 @@ export function ReserveBatchesPage() {
 
   const [saving, setSaving] =
     useState(false);
+  // ✅ نسخة من بيانات الأفراد "زي ما جت من قاعدة البيانات" قبل أي تعديل
+  // بنستخدمها وقت الحفظ عشان نعرف إيه اللي اتغيّر بالظبط
+  const originalSoldierDataRef =
+    useRef<Map<string, Soldier>>(new Map());
+
+  // ─────────────────────────────────────────────────────────
+  // تتبّع التعديلات غير المحفوظة
+  // ─────────────────────────────────────────────────────────
+  // بنقارن كل صف في الجدول بنسخته الأصلية (originalSoldierDataRef)
+  // على نفس الحقول اللي فعليًا بتتحفظ (الكارنيه/الرخصة/محو الأمية/
+  // مراجعة النموذج وملاحظاته)
+  const { setDirty, guardNavigation } = useUnsavedChanges();
+
+  const isDirty = useMemo(() => {
+    return soldierData.some((soldier) => {
+      const original = originalSoldierDataRef.current.get(soldier.id);
+      if (!original) return false;
+
+      return (
+        original.receivedKariza !== soldier.receivedKariza ||
+        original.receivedLicense !== soldier.receivedLicense ||
+        original.receivedLiteracy !== soldier.receivedLiteracy ||
+        original.model1sReview !== soldier.model1sReview ||
+        (original.model1sNotes ?? "") !== (soldier.model1sNotes ?? "")
+      );
+    });
+  }, [soldierData]);
+
+  useEffect(() => {
+    setDirty(isDirty);
+  }, [isDirty, setDirty]);
+
+  useEffect(() => {
+    return () => setDirty(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ✅ إعدادات طباعة الأعمدة: قائمة كل الأعمدة القابلة للطباعة
+  const PRINT_COLUMNS: {
+    id: string;
+    label: string;
+  }[] = [
+    { id: "index", label: "م" },
+    { id: "militaryId", label: "رقم عسكري" },
+    { id: "rank", label: "درجة" },
+    { id: "name", label: "اسم" },
+    { id: "unit", label: "الوحدة" },
+    { id: "kariza", label: "استلام كارنيه" },
+    { id: "license", label: "استلام رخصة" },
+    { id: "literacy", label: "استلام محو الأمية" },
+    { id: "model1s", label: "مراجعة النموذج (1س)" },
+    { id: "model1sNotes", label: "ملاحظات النموذج (1س)" },
+    { id: "status", label: "حالة الفرد" },
+  ];
+
+  const [selectedPrintColumns, setSelectedPrintColumns] =
+    useState<Set<string>>(new Set(PRINT_COLUMNS.map((c) => c.id)));
+
+  const [showPrintDialog, setShowPrintDialog] = useState(false);
 
   // ✅ فلتر الوحدة: يعمل على الوحدات الموجودة فعليًا داخل الأفراد
   // المحمّلين حاليًا في الجدول (مش استعلام منفصل لجدول units).
-  const [unitFilter, setUnitFilter] =
-    useState("");
-const [statusFilter, setStatusFilter] =
-    useState("");
+  const [unitFilter, setUnitFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   // ✅ بحث بالرقم العسكري: مطابقة جزئية (includes) مش شرط كتابته كامل.
-  const [militarySearch, setMilitarySearch] =
-    useState("");
+  const [militarySearch, setMilitarySearch] = useState("");
+
+  // ✅ فلاتر حالة المستندات ومراجعة النموذج (1س)
+  const [karizaFilter, setKarizaFilter] = useState<DocumentState | "">("");
+  const [licenseFilter, setLicenseFilter] = useState<DocumentState | "">("");
+  const [literacyFilter, setLiteracyFilter] = useState<DocumentState | "">("");
+  const [model1sFilter, setModel1sFilter] = useState<Model1sReviewState | "">("");
 
   /* =========================================================
      allChecked أصبح قيمة محسوبة
@@ -1168,7 +1431,8 @@ const [statusFilter, setStatusFilter] =
       .select(`
         personnel_id,
         document_type,
-        status
+        status,
+        notes
       `)
       .eq(
         "reserve_batch_id",
@@ -1198,6 +1462,8 @@ const [statusFilter, setStatusFilter] =
         kariza?: string;
         license?: string;
         literacy?: string;
+        model1s?: string;
+        model1sNotes?: string | null;
       }
     >();
 
@@ -1241,6 +1507,17 @@ const [statusFilter, setStatusFilter] =
         ) {
           current.literacy =
             doc.status;
+        }
+
+        if (
+          doc.document_type ===
+          "MODEL_1S"
+        ) {
+          current.model1s =
+            doc.status;
+
+          current.model1sNotes =
+            doc.notes;
         }
       }
     );
@@ -1303,12 +1580,29 @@ const [statusFilter, setStatusFilter] =
               DISCHARGED_STATUS_ID
                 ? "منتهي خدمته"
                 : "بالخدمة",
+
+            // ✅ مراجعة النموذج (1س) + ملاحظاتها
+            model1sReview:
+              dbToModel1sState(
+                docs?.model1s ||
+                  null
+              ),
+
+            model1sNotes:
+              docs?.model1sNotes ||
+              "",
           };
         }
       );
 
     setSoldierData(mapped);
     setCheckedRows(new Set());
+
+    // ✅ نحفظ نسخة "قبل التعديل" من كل فرد، عشان نقارن بيها وقت الحفظ
+    const snapshot = new Map<string, Soldier>();
+    mapped.forEach((s) => snapshot.set(s.id, { ...s }));
+    originalSoldierDataRef.current = snapshot;
+
     const { userId, userName } = await getCurrentUserInfo();
 
 await logActivity({
@@ -1330,6 +1624,48 @@ const statusFilterOptions = [
     { value: "بالخدمة", label: "بالخدمة" },
     { value: "منتهي خدمته", label: "منتهي خدمته" },
   ];
+
+  // ✅ خيارات فلاتر حالة المستندات ومراجعة النموذج (1س)
+  const karizaFilterOptions = DEFAULT_DOCUMENT_OPTIONS.map((opt) => ({
+    value: opt,
+    label: opt,
+  }));
+
+  const licenseFilterOptions = DEFAULT_DOCUMENT_OPTIONS.map((opt) => ({
+    value: opt,
+    label: opt,
+  }));
+
+  const literacyFilterOptions: { value: DocumentState; label: string }[] = [
+    { value: "تم الاستلام", label: "تم الاستلام" },
+    { value: "لم يتم الاستلام", label: "لم يتم الاستلام" },
+  ];
+
+  const model1sFilterOptions = MODEL1S_OPTIONS.map((opt) => ({
+    value: opt,
+    label: opt,
+  }));
+
+  // ✅ هل فيه أي فلتر مفعّل حاليًا (بنستخدمها لتفعيل/تعطيل زرار إعادة التعيين)
+  const hasActiveFilters =
+    !!unitFilter ||
+    !!statusFilter ||
+    !!militarySearch.trim() ||
+    !!karizaFilter ||
+    !!licenseFilter ||
+    !!literacyFilter ||
+    !!model1sFilter;
+
+  // ✅ إعادة تعيين كل الفلاتر للقيم الافتراضية (عرض الكل)
+  function resetFilters() {
+    setUnitFilter("");
+    setStatusFilter("");
+    setMilitarySearch("");
+    setKarizaFilter("");
+    setLicenseFilter("");
+    setLiteracyFilter("");
+    setModel1sFilter("");
+  }
   /* =========================================================
      ✅ قائمة الوحدات لفلتر الجدول
      مبنية من الوحدات الموجودة فعليًا في الأفراد المحمّلين حاليًا
@@ -1380,6 +1716,34 @@ const filteredSoldierData = useMemo(() => {
         }
 
         if (
+          karizaFilter &&
+          soldier.receivedKariza !== karizaFilter
+        ) {
+          return false;
+        }
+
+        if (
+          licenseFilter &&
+          soldier.receivedLicense !== licenseFilter
+        ) {
+          return false;
+        }
+
+        if (
+          literacyFilter &&
+          soldier.receivedLiteracy !== literacyFilter
+        ) {
+          return false;
+        }
+
+        if (
+          model1sFilter &&
+          soldier.model1sReview !== model1sFilter
+        ) {
+          return false;
+        }
+
+        if (
           searchTerm &&
           !soldier.militaryId.includes(
             searchTerm
@@ -1395,6 +1759,10 @@ const filteredSoldierData = useMemo(() => {
     soldierData,
     unitFilter,
     statusFilter,
+    karizaFilter,
+    licenseFilter,
+    literacyFilter,
+    model1sFilter,
     militarySearch,
   ]);
 
@@ -1454,8 +1822,9 @@ const filteredSoldierData = useMemo(() => {
     field:
       | "receivedKariza"
       | "receivedLicense"
-      | "receivedLiteracy",
-    value: DocumentState
+      | "receivedLiteracy"
+      | "model1sReview",
+    value: DocumentState | Model1sReviewState
   ) {
     setSoldierData((prev) =>
       prev.map((s) =>
@@ -1463,7 +1832,30 @@ const filteredSoldierData = useMemo(() => {
           ? {
               ...s,
               [field]: value,
+              // ✅ لو حالة مراجعة النموذج (1س) اتغيرت من "به ملاحظات"
+              // لأي حالة تانية، نصفّر نص الملاحظات تلقائيًا
+              ...(field === "model1sReview" &&
+              value !== "به ملاحظات"
+                ? { model1sNotes: "" }
+                : {}),
             }
+          : s
+      )
+    );
+  }
+
+  /* =========================================================
+     تعديل ملاحظات مراجعة النموذج (1س)
+     ========================================================= */
+
+  function updateSoldierModel1sNotes(
+    id: string,
+    value: string
+  ) {
+    setSoldierData((prev) =>
+      prev.map((s) =>
+        s.id === id
+          ? { ...s, model1sNotes: value }
           : s
       )
     );
@@ -1473,25 +1865,15 @@ const filteredSoldierData = useMemo(() => {
      حفظ التعديلات
      ========================================================= */
 
-  async function handleSaveChanges() {
+   async function handleSaveChanges() {
     if (!selectedBatchObject) {
-      setBatchError(
-        "يرجى اختيار دفعة أولاً"
-      );
+      setBatchError("يرجى اختيار دفعة أولاً");
       return;
     }
 
     if (soldierData.length === 0) {
-      setSuccessMsg(
-        "لا توجد بيانات لحفظها"
-      );
-      
-
-      setTimeout(
-        () => setSuccessMsg(""),
-        3000
-      );
-
+      setSuccessMsg("لا توجد بيانات لحفظها");
+      setTimeout(() => setSuccessMsg(""), 3000);
       return;
     }
 
@@ -1499,130 +1881,168 @@ const filteredSoldierData = useMemo(() => {
     setBatchError("");
 
     try {
-      const documentsToSave: any[] =
-        [];
+      const documentsToSave: any[] = [];
 
-      soldierData.forEach(
-        (soldier) => {
-          documentsToSave.push({
-            personnel_id:
-              soldier.id,
+      // ✅ هنا هنجمع كل سطر تغيير حصل، عشان نحفظه بعدين في سجل العمليات
+      const changeLines: string[] = [];
 
-            reserve_batch_id:
-              selectedBatchObject.id,
-
-            document_type:
-              "KARIZA",
-
-            status:
-              documentStateToDb(
-                soldier.receivedKariza
-              ),
-
-            updated_at:
-              new Date().toISOString(),
-          });
-
-                  if (
-            hasLicenseEligibility(
-              soldier.militaryId
-            )
-          ) {
-            documentsToSave.push({
-              personnel_id:
-                soldier.id,
-
-              reserve_batch_id:
-                selectedBatchObject.id,
-
-              document_type:
-                "LICENSE",
-
-              status:
-                documentStateToDb(
-                  soldier.receivedLicense
-                ),
-
-              updated_at:
-                new Date().toISOString(),
-            });
-          }
-
-          if (soldier.requiresLiteracy) {
-            documentsToSave.push({
-              personnel_id:
-                soldier.id,
-
-              reserve_batch_id:
-                selectedBatchObject.id,
-
-              document_type:
-                "LITERACY",
-
-              status:
-                documentStateToDb(
-                  soldier.receivedLiteracy
-                ),
-
-              updated_at:
-                new Date().toISOString(),
-            });
-          }
-        }
+      const canUpdateDocuments = hasPermission(
+        "reserve_batches:update_documents"
       );
 
-      const { error } =
-        await supabase
-          .from(
-            "reserve_batch_documents"
-          )
-          .upsert(
-            documentsToSave,
-            {
-              onConflict:
-                "personnel_id,reserve_batch_id,document_type",
+      const canUpdateLiteracy = hasPermission(
+        "reserve_batches:update_literacy"
+      );
+
+      const canUpdateModel1s =
+        hasPermission("reserve_batches:update_model1s_review") ||
+        hasPermission("reserve_batches:update_model1s_notes");
+
+      soldierData.forEach((soldier) => {
+        // القيمة الأصلية بتاعت الفرد ده قبل أي تعديل
+        const original = originalSoldierDataRef.current.get(soldier.id);
+
+        if (canUpdateDocuments) {
+          documentsToSave.push({
+            personnel_id: soldier.id,
+            reserve_batch_id: selectedBatchObject.id,
+            document_type: "KARIZA",
+            status: documentStateToDb(soldier.receivedKariza),
+            updated_at: new Date().toISOString(),
+          });
+
+          if (
+            original &&
+            original.receivedKariza !== soldier.receivedKariza
+          ) {
+            changeLines.push(
+              `تحديث بيانات ${soldier.militaryId} حقل ${FIELD_LABELS.receivedKariza} من ${original.receivedKariza} إلي ${soldier.receivedKariza}`
+            );
+          }
+
+          if (hasLicenseEligibility(soldier.militaryId)) {
+            documentsToSave.push({
+              personnel_id: soldier.id,
+              reserve_batch_id: selectedBatchObject.id,
+              document_type: "LICENSE",
+              status: documentStateToDb(soldier.receivedLicense),
+              updated_at: new Date().toISOString(),
+            });
+
+            if (
+              original &&
+              original.receivedLicense !== soldier.receivedLicense
+            ) {
+              changeLines.push(
+                `تحديث بيانات ${soldier.militaryId} حقل ${FIELD_LABELS.receivedLicense} من ${original.receivedLicense} إلي ${soldier.receivedLicense}`
+              );
             }
-          );
+          }
+        }
+
+        if (canUpdateLiteracy && soldier.requiresLiteracy) {
+          documentsToSave.push({
+            personnel_id: soldier.id,
+            reserve_batch_id: selectedBatchObject.id,
+            document_type: "LITERACY",
+            status: documentStateToDb(soldier.receivedLiteracy),
+            updated_at: new Date().toISOString(),
+          });
+
+          if (
+            original &&
+            original.receivedLiteracy !== soldier.receivedLiteracy
+          ) {
+            changeLines.push(
+              `تحديث بيانات ${soldier.militaryId} حقل ${FIELD_LABELS.receivedLiteracy} من ${original.receivedLiteracy} إلي ${soldier.receivedLiteracy}`
+            );
+          }
+        }
+
+        if (canUpdateModel1s) {
+          documentsToSave.push({
+            personnel_id: soldier.id,
+            reserve_batch_id: selectedBatchObject.id,
+            document_type: "MODEL_1S",
+            status: model1sStateToDb(soldier.model1sReview),
+            notes:
+              soldier.model1sReview === "به ملاحظات"
+                ? soldier.model1sNotes?.trim() || null
+                : null,
+            updated_at: new Date().toISOString(),
+          });
+
+          if (
+            original &&
+            original.model1sReview !== soldier.model1sReview
+          ) {
+            changeLines.push(
+              `تحديث بيانات ${soldier.militaryId} حقل ${FIELD_LABELS.model1sReview} من ${original.model1sReview} إلي ${soldier.model1sReview}`
+            );
+          }
+
+          // ✅ مقارنة الملاحظات بشكل منفصل
+          const oldNotes =
+            original?.model1sNotes?.trim() || "لا يوجد";
+
+          const newNotes =
+            soldier.model1sReview === "به ملاحظات"
+              ? soldier.model1sNotes?.trim() || "لا يوجد"
+              : "لا يوجد";
+
+          if (original && oldNotes !== newNotes) {
+            changeLines.push(
+              `تحديث بيانات ${soldier.militaryId} حقل ${FIELD_LABELS.model1sNotes} من ${oldNotes} إلي ${newNotes}`
+            );
+          }
+        }
+      });
+
+      if (documentsToSave.length === 0) {
+        setSuccessMsg("لا توجد لديك صلاحية لحفظ أي تعديلات");
+        setTimeout(() => setSuccessMsg(""), 3000);
+        setSaving(false);
+        return;
+      }
+
+      const { error } = await supabase
+        .from("reserve_batch_documents")
+        .upsert(documentsToSave, {
+          onConflict: "personnel_id,reserve_batch_id,document_type",
+        });
 
       if (error) {
         throw error;
       }
-      const { userId, userName } = await getCurrentUserInfo();
 
-await logActivity({
-  userId,
-  userName,
-  actionType: "UPDATE",
-  action: "تحديث حالة الكارنيه/الرخصة للأفراد",
-  entity: "reserve_batch_documents",
-  details: JSON.stringify({
-    queryBasis: "دفعة الرديف",
-    queryValue:
-      selectedBatchObject.name ||
-      formatBatchDate(selectedBatchObject.batch_date),
-    resultsCount: soldierData.length,
-    militaryNumbers: soldierData.map((s) => s.militaryId),
-  }),
-});
+      // ✅ نسجّل في سجل العمليات بس لو فيه تغييرات فعلية حصلت
+      if (changeLines.length > 0) {
+        const { userId, userName } = await getCurrentUserInfo();
 
-      setSuccessMsg(
-        "تم حفظ جميع التعديلات بنجاح"
-      );
+        await logActivity({
+          userId,
+          userName,
+          actionType: "UPDATE",
+          action: "تحديث حالة الكارنيه/الرخصة للأفراد",
+          entity: "reserve_batch_documents",
+          details: changeLines.join("\n"),
+        });
+      }
+      // ✅ بعد نجاح الحفظ، النسخة الحالية بقت هي "الأصلية" الجديدة
+      const newSnapshot = new Map<string, Soldier>();
+      soldierData.forEach((s) => newSnapshot.set(s.id, { ...s }));
+      originalSoldierDataRef.current = newSnapshot;
 
-      setTimeout(
-        () => setSuccessMsg(""),
-        3000
-      );
+      setDirty(false);
+
+      setSuccessMsg("تم حفظ جميع التعديلات بنجاح");
+      setTimeout(() => setSuccessMsg(""), 3000);
     } catch (error: any) {
-      console.error(
-        "save all documents error:",
-        error
-      );
+      console.error("save all documents error:", error);
 
       setBatchError(
         `حدث خطأ أثناء حفظ التعديلات: ${
-          error?.message ||
-          "خطأ غير معروف"
+          error?.message || "خطأ غير معروف"
         }`
       );
     } finally {
@@ -1813,7 +2233,13 @@ await logActivity({
           (soldier) =>
             ids.includes(soldier.id)
         );
-
+      // ✅ سطور التغيير - بس للأفراد اللي فعلاً هتتغير حالتهم
+      const changeLines = selectedPersonnel
+        .filter((s) => s.status !== "منتهي خدمته")
+        .map(
+          (s) =>
+            `تحديث بيانات ${s.militaryId} حقل حالة الفرد من ${s.status} إلي منتهي خدمته`
+        );
         selectedPersonnel.forEach(
         (soldier) => {
           if (
@@ -1891,17 +2317,13 @@ await logActivity({
         throw documentsUpsertError;
       }
       const { userId, userName } = await getCurrentUserInfo();
-
 await logActivity({
   userId,
   userName,
   actionType: "UPDATE",
   action: "إنهاء خدمة أفراد",
   entity: "personnel",
-  details: JSON.stringify({
-    resultsCount: selectedPersonnel.length,
-    militaryNumbers: selectedPersonnel.map((s) => s.militaryId),
-  }),
+  details: changeLines.join("\n"),
 });
 await createNotification({
   title: "تم إنهاء خدمة أفراد",
@@ -2023,7 +2445,13 @@ await createNotification({
 const transferredSoldiers = soldierData.filter((s) =>
   ids.includes(s.id)
 );
-
+// ✅ سطور التغيير - دفعة الترحيل القديمة والجديدة لكل فرد
+const changeLines = transferredSoldiers.map(
+  (s) =>
+    `تحديث بيانات ${s.militaryId} حقل دفعة الترحيل من ${selectedBatchLabel} إلي ${
+      targetBatch.name || formatBatchDate(targetBatch.batch_date)
+    }`
+);
 const { userId, userName } = await getCurrentUserInfo();
 
 await logActivity({
@@ -2032,13 +2460,7 @@ await logActivity({
   actionType: "UPDATE",
   action: "ترحيل أفراد إلى دفعة أخرى",
   entity: "personnel",
-  details: JSON.stringify({
-    queryValue:
-      targetBatch.name ||
-      formatBatchDate(targetBatch.batch_date),
-    resultsCount: transferredSoldiers.length,
-    militaryNumbers: transferredSoldiers.map((s) => s.militaryId),
-  }),
+  details: changeLines.join("\n"),
 });
 await createNotification({
   title: "تم ترحيل أفراد",
@@ -2091,6 +2513,35 @@ await createNotification({
      الطباعة
      ========================================================= */
 
+  function togglePrintColumn(id: string) {
+    setSelectedPrintColumns((prev) => {
+      const next = new Set(prev);
+
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+
+      return next;
+    });
+  }
+
+  function selectAllPrintColumns() {
+    setSelectedPrintColumns(
+      new Set(PRINT_COLUMNS.map((c) => c.id))
+    );
+  }
+
+  function clearAllPrintColumns() {
+    setSelectedPrintColumns(new Set());
+  }
+
+  function confirmPrint() {
+    setShowPrintDialog(false);
+    void handlePrint();
+  }
+
   async function handlePrint() {
   const { userId, userName } = await getCurrentUserInfo();
 
@@ -2129,6 +2580,11 @@ await createNotification({
 
   const tdClass =
     "px-4 py-3 text-right border-b border-[#e2e7f0]";
+
+  // ✅ دالة بترجع كلاس مخصص لكل عمود عشان نقدر نتحكم في إخفائه وقت الطباعة
+  function printColClass(id: string) {
+    return `print-col-${id}`;
+  }
 
   /* =========================================================
      RETURN
@@ -2181,6 +2637,21 @@ await createNotification({
         `}
       </style>
 
+      {/* ✅ ستايل ديناميكي لإخفاء الأعمدة الغير مختارة وقت الطباعة فقط */}
+      <style>
+        {`
+          @media print {
+            ${PRINT_COLUMNS.filter(
+              (col) => !selectedPrintColumns.has(col.id)
+            )
+              .map(
+                (col) =>
+                  `.print-col-${col.id} { display: none !important; }`
+              )
+              .join("\n")}
+          }
+        `}
+      </style>
       {/* =====================================================
           العنوان
           ===================================================== */}
@@ -2245,7 +2716,6 @@ await createNotification({
             />
           )}
         </div>
-
         <button
           type="button"
           disabled={
@@ -2253,7 +2723,7 @@ await createNotification({
             loadingBatches
           }
           onClick={
-            loadSoldiers
+            () => guardNavigation(loadSoldiers)
           }
           className="h-[54px] px-6 rounded-[8px] flex items-center justify-center transition-opacity hover:opacity-90 shrink-0 disabled:opacity-50"
           style={{
@@ -2563,6 +3033,54 @@ await createNotification({
               </div>
             </div>
 
+            {/* الصف الثالث: مراجعة النموذج (1س) */}
+
+            <div className="flex gap-4 w-full mt-4 no-print">
+              <div className="flex-1">
+                <ProgressCard
+                  icon={
+                    <CheckSquare
+                      size={20}
+                      color="#00b867"
+                    />
+                  }
+                  label="تمت مراجعة النموذج (1س)"
+                  current={
+                    soldierData.filter(
+                      (s) =>
+                        s.model1sReview ===
+                        "تمت المراجعة"
+                    ).length
+                  }
+                  total={
+                    soldierData.length
+                  }
+                />
+              </div>
+
+              <div className="flex-1">
+                <ProgressCard
+                  icon={
+                    <AlertTriangle
+                      size={20}
+                      color="#3eb712"
+                    />
+                  }
+                  label="نماذج (1س) بها ملاحظات"
+                  current={
+                    soldierData.filter(
+                      (s) =>
+                        s.model1sReview ===
+                        "به ملاحظات"
+                    ).length
+                  }
+                  total={
+                    soldierData.length
+                  }
+                />
+              </div>
+            </div>
+
             {/* =================================================
                 FILTERS (فلتر الوحدة + بحث الرقم العسكري)
                 ================================================= */}
@@ -2688,6 +3206,133 @@ await createNotification({
             </div>
 
             {/* =================================================
+                فلاتر إضافية: حالة المستندات ومراجعة النموذج (1س)
+                + زرار إعادة تعيين الفلاتر
+                ================================================= */}
+
+            <div className="flex flex-wrap items-end gap-3 mt-3 no-print">
+
+              {/* فلتر حالة الكارنيه */}
+
+              <div className="flex flex-col gap-1.5 flex-1 min-w-[220px] max-w-xs">
+                <label
+                  style={{
+                    ...F,
+                    fontSize: 14,
+                    color: "#717d96",
+                  }}
+                >
+                  فلتر حسب حالة الكارنيه
+                </label>
+
+                <GenericDropdown
+                  value={karizaFilter}
+                  options={karizaFilterOptions}
+                  onChange={(v) =>
+                    setKarizaFilter(v as DocumentState | "")
+                  }
+                  placeholder="عرض الكل"
+                  allowClear
+                  clearLabel="عرض الكل"
+                />
+              </div>
+
+              {/* فلتر حالة الرخصة */}
+
+              <div className="flex flex-col gap-1.5 flex-1 min-w-[220px] max-w-xs">
+                <label
+                  style={{
+                    ...F,
+                    fontSize: 14,
+                    color: "#717d96",
+                  }}
+                >
+                  فلتر حسب حالة الرخصة
+                </label>
+
+                <GenericDropdown
+                  value={licenseFilter}
+                  options={licenseFilterOptions}
+                  onChange={(v) =>
+                    setLicenseFilter(v as DocumentState | "")
+                  }
+                  placeholder="عرض الكل"
+                  allowClear
+                  clearLabel="عرض الكل"
+                />
+              </div>
+
+              {/* فلتر محو الأمية */}
+
+              <div className="flex flex-col gap-1.5 flex-1 min-w-[220px] max-w-xs">
+                <label
+                  style={{
+                    ...F,
+                    fontSize: 14,
+                    color: "#717d96",
+                  }}
+                >
+                  فلتر حسب محو الأمية
+                </label>
+
+                <GenericDropdown
+                  value={literacyFilter}
+                  options={literacyFilterOptions}
+                  onChange={(v) =>
+                    setLiteracyFilter(v as DocumentState | "")
+                  }
+                  placeholder="عرض الكل"
+                  allowClear
+                  clearLabel="عرض الكل"
+                />
+              </div>
+
+              {/* فلتر مراجعة النموذج (1س) */}
+
+              <div className="flex flex-col gap-1.5 flex-1 min-w-[220px] max-w-xs">
+                <label
+                  style={{
+                    ...F,
+                    fontSize: 14,
+                    color: "#717d96",
+                  }}
+                >
+                  فلتر حسب مراجعة النموذج (1س)
+                </label>
+
+                <GenericDropdown
+                  value={model1sFilter}
+                  options={model1sFilterOptions}
+                  onChange={(v) =>
+                    setModel1sFilter(v as Model1sReviewState | "")
+                  }
+                  placeholder="عرض الكل"
+                  allowClear
+                  clearLabel="عرض الكل"
+                />
+              </div>
+
+              {/* إعادة تعيين الفلاتر */}
+
+              <button
+                type="button"
+                onClick={resetFilters}
+                disabled={!hasActiveFilters}
+                className="h-[54px] px-5 rounded-[8px] border border-[#e2e7f0] bg-white shrink-0 disabled:opacity-50"
+                style={{
+                  ...F,
+                  fontSize: 15,
+                  color: "#2d3648",
+                  cursor: hasActiveFilters
+                    ? "pointer"
+                    : "not-allowed",
+                }}
+              >
+                إعادة تعيين الفلاتر
+              </button>
+            </div>
+
+            {/* =================================================
                 BUTTONS
                 ================================================= */}
 
@@ -2746,8 +3391,8 @@ await createNotification({
               {hasPermission("reserve_batches:print") && (
                 <button
                   type="button"
-                  onClick={
-                    handlePrint
+                  onClick={() =>
+                    setShowPrintDialog(true)
                   }
                   className="h-[44px] px-5 rounded-[8px] border border-[#e2e7f0] bg-white"
                   style={{
@@ -2772,7 +3417,11 @@ await createNotification({
         >
          افراد دفعة الرديف
         </h2>
-              {hasPermission("reserve_batches:update_documents") && (
+              {(hasPermission("reserve_batches:update_documents") ||
+                hasPermission("reserve_batches:update_literacy") ||
+                hasPermission(
+                  "reserve_batches:update_model1s_review"
+                )) && (
                 <button
                   type="button"
                   onClick={
@@ -2799,7 +3448,7 @@ await createNotification({
             <div className="bg-white rounded-[12px] border border-[#e2e7f0] w-full overflow-x-auto mt-4">
 
               <table
-                className="w-full min-w-[1100px] border-collapse"
+                className="w-full min-w-[1350px] border-collapse"
                 dir="rtl"
               >
                 <thead>
@@ -2833,22 +3482,10 @@ await createNotification({
                       </button>
                     </th>
 
-                                     {[
-                      "م",
-                      "رقم عسكري",
-                      "درجة",
-                      "اسم",
-                      "الوحدة",
-                      "استلام كارنيه",
-                      "استلام رخصة",
-                      "استلام محو الأمية",
-                      "حالة الفرد",
-                    ].map((h) => (
+                                     {PRINT_COLUMNS.map((col) => (
                       <th
-                        key={h}
-                        className={
-                          thClass
-                        }
+                        key={col.id}
+                        className={`${thClass} ${printColClass(col.id)}`}
                       >
                         <div className="flex items-center gap-1">
                           <span
@@ -2859,7 +3496,7 @@ await createNotification({
                                 "#717d96",
                             }}
                           >
-                            {h}
+                            {col.label}
                           </span>
 
                           <SortIcon />
@@ -2874,7 +3511,7 @@ await createNotification({
                   0 ? (
                     <tr>
                       <td
-                        colSpan={9}
+                        colSpan={11}
                         className="py-10 text-center"
                         style={{
                           ...F,
@@ -2891,7 +3528,7 @@ await createNotification({
                     0 ? (
                     <tr>
                       <td
-                        colSpan={9}
+                        colSpan={11}
                         className="py-10 text-center"
                         style={{
                           ...F,
@@ -2967,9 +3604,7 @@ await createNotification({
                             {/* م */}
 
                             <td
-                              className={
-                                tdClass
-                              }
+                              className={`${tdClass} ${printColClass("index")}`}
                             >
                               <span
                                 style={{
@@ -2984,9 +3619,7 @@ await createNotification({
                             {/* الرقم العسكري */}
 
                             <td
-                              className={
-                                tdClass
-                              }
+                              className={`${tdClass} ${printColClass("militaryId")}`}
                             >
                               <span
                                 style={{
@@ -3003,9 +3636,7 @@ await createNotification({
                             {/* الدرجة */}
 
                             <td
-                              className={
-                                tdClass
-                              }
+                              className={`${tdClass} ${printColClass("rank")}`}
                             >
                               <span
                                 style={{
@@ -3022,9 +3653,7 @@ await createNotification({
                             {/* الاسم */}
 
                             <td
-                              className={
-                                tdClass
-                              }
+                              className={`${tdClass} ${printColClass("name")}`}
                             >
                               <span
                                 style={{
@@ -3041,9 +3670,7 @@ await createNotification({
                             {/* الوحدة */}
 
                             <td
-                              className={
-                                tdClass
-                              }
+                              className={`${tdClass} ${printColClass("unit")}`}
                             >
                               <span
                                 style={{
@@ -3060,7 +3687,7 @@ await createNotification({
                                  {/* الكارنيه */}
 
                             <td
-                              className={`${tdClass} text-center`}
+                              className={`${tdClass} text-center ${printColClass("kariza")}`}
                             >
                               <DocumentDropdown
                                 value={
@@ -3086,7 +3713,7 @@ await createNotification({
                             {/* الرخصة */}
 
                             <td
-                              className={`${tdClass} text-center`}
+                              className={`${tdClass} text-center ${printColClass("license")}`}
                             >
                               <DocumentDropdown
                                 value={
@@ -3110,10 +3737,10 @@ await createNotification({
                               />
                             </td>
 
-                            {/* محو الأمية */}
+                                 {/* محو الأمية */}
 
                             <td
-                              className={`${tdClass} text-center`}
+                              className={`${tdClass} text-center ${printColClass("literacy")}`}
                             >
                               <DocumentDropdown
                                 value={
@@ -3126,7 +3753,7 @@ await createNotification({
                                 disabled={
                                   !soldier.requiresLiteracy ||
                                   !hasPermission(
-                                    "reserve_batches:update_documents"
+                                    "reserve_batches:update_literacy"
                                   )
                                 }
                                 onChange={(
@@ -3141,12 +3768,95 @@ await createNotification({
                               />
                             </td>
 
+                            {/* مراجعة النموذج (1س) */}
+
+                            <td
+                              className={`${tdClass} text-center ${printColClass("model1s")}`}
+                            >
+                              <DocumentDropdown<Model1sReviewState>
+                                value={
+                                  soldier.model1sReview
+                                }
+                                options={
+                                  MODEL1S_OPTIONS
+                                }
+                                colors={
+                                  MODEL1S_COLORS
+                                }
+                                backgrounds={
+                                  MODEL1S_BACKGROUNDS
+                                }
+                                disabled={
+                                  !hasPermission(
+                                    "reserve_batches:update_model1s_review"
+                                  )
+                                }
+                                onChange={(
+                                  value
+                                ) =>
+                                  toggleSoldierField(
+                                    soldier.id,
+                                    "model1sReview",
+                                    value
+                                  )
+                                }
+                              />
+                            </td>
+
+                            {/* ملاحظات النموذج (1س) */}
+
+                            <td
+                              className={`${tdClass} ${printColClass("model1sNotes")}`}
+                            >
+                              {soldier.model1sReview ===
+                              "به ملاحظات" ? (
+                                <input
+                                  type="text"
+                                  value={
+                                    soldier.model1sNotes
+                                  }
+                                  disabled={
+                                    !hasPermission(
+                                      "reserve_batches:update_model1s_notes"
+                                    )
+                                  }
+                                  onChange={(
+                                    e
+                                  ) =>
+                                    updateSoldierModel1sNotes(
+                                      soldier.id,
+                                      e.target
+                                        .value
+                                    )
+                                  }
+                                  placeholder="اكتب الملاحظات هنا"
+                                  className="w-full min-w-[160px] h-[34px] px-2 rounded-[6px] border border-[#e2e7f0] outline-none text-right disabled:bg-[#f1f3f6] disabled:cursor-not-allowed disabled:opacity-65"
+                                  style={{
+                                    ...F,
+                                    fontSize: 12,
+                                    color:
+                                      "#2d3648",
+                                  }}
+                                  dir="rtl"
+                                />
+                              ) : (
+                                <span
+                                  style={{
+                                    ...F,
+                                    fontSize: 12,
+                                    color:
+                                      "#a1aebe",
+                                  }}
+                                >
+                                  -
+                                </span>
+                              )}
+                            </td>
+
                             {/* حالة الفرد */}
 
                             <td
-                              className={
-                                tdClass
-                              }
+                              className={`${tdClass} ${printColClass("status")}`}
                             >
                               <span
                                 className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full"
@@ -3213,7 +3923,6 @@ await createNotification({
       {/* =====================================================
           TRANSFER POPUP
           ===================================================== */}
-
       {showTransferDialog && (
         <TransferDialog
           batches={batches}
@@ -3229,6 +3938,22 @@ await createNotification({
             confirmTransfer
           }
           saving={saving}
+        />
+      )}
+
+      {/* =====================================================
+          PRINT COLUMNS POPUP
+          ===================================================== */}
+
+      {showPrintDialog && (
+        <PrintColumnsDialog
+          columns={PRINT_COLUMNS}
+          selectedColumns={selectedPrintColumns}
+          onToggleColumn={togglePrintColumn}
+          onSelectAll={selectAllPrintColumns}
+          onClearAll={clearAllPrintColumns}
+          onCancel={() => setShowPrintDialog(false)}
+          onConfirm={confirmPrint}
         />
       )}
     </div>

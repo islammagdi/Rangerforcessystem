@@ -1,16 +1,22 @@
 import React, { useState } from "react";
-import svgPaths from "../../imports/تسجيلالدخول/svg-9l9hko8aij";
 
-// ─── Icon components ──────────────────────────────────────────────────────────
+// ─── Icons ────────────────────────────────────────────────────────────────────
 
 function UserIcon() {
   return (
-    <svg fill="none" viewBox="0 0 18 20" width={18} height={20}>
+    <svg
+      fill="none"
+      viewBox="0 0 24 24"
+      width={20}
+      height={20}
+      stroke="currentColor"
+      strokeWidth={1.7}
+      aria-hidden="true"
+    >
       <path
-        clipRule="evenodd"
-        d={svgPaths.p15ee0d00}
-        fill="currentColor"
-        fillRule="evenodd"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"
       />
     </svg>
   );
@@ -18,12 +24,40 @@ function UserIcon() {
 
 function LockIcon() {
   return (
-    <svg fill="none" viewBox="0 0 18 20" width={18} height={20}>
+    <svg
+      fill="none"
+      viewBox="0 0 24 24"
+      width={20}
+      height={20}
+      stroke="currentColor"
+      strokeWidth={1.7}
+      aria-hidden="true"
+    >
       <path
-        clipRule="evenodd"
-        d={svgPaths.p14ef5b00}
-        fill="currentColor"
-        fillRule="evenodd"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+      />
+    </svg>
+  );
+}
+
+function AlertIcon() {
+  return (
+    <svg
+      fill="none"
+      viewBox="0 0 24 24"
+      width={16}
+      height={16}
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
       />
     </svg>
   );
@@ -34,10 +68,11 @@ function EyeIcon({ open }: { open: boolean }) {
     <svg
       fill="none"
       viewBox="0 0 24 24"
-      width={18}
-      height={18}
+      width={20}
+      height={20}
       stroke="currentColor"
-      strokeWidth={1.8}
+      strokeWidth={1.7}
+      aria-hidden="true"
     >
       <path
         strokeLinecap="round"
@@ -54,10 +89,11 @@ function EyeIcon({ open }: { open: boolean }) {
     <svg
       fill="none"
       viewBox="0 0 24 24"
-      width={18}
-      height={18}
+      width={20}
+      height={20}
       stroke="currentColor"
-      strokeWidth={1.8}
+      strokeWidth={1.7}
+      aria-hidden="true"
     >
       <path
         strokeLinecap="round"
@@ -68,15 +104,7 @@ function EyeIcon({ open }: { open: boolean }) {
   );
 }
 
-// ─── Divider ───────────────────────────────────────────────────────────────────
-
-function VerticalDivider() {
-  return (
-    <div className="w-px h-[22px] bg-[#2d3648]/30 shrink-0" />
-  );
-}
-
-// ─── LoginInput ────────────────────────────────────────────────────────────────
+// ─── LoginInput ───────────────────────────────────────────────────────────────
 
 interface LoginInputProps {
   id: string;
@@ -87,13 +115,16 @@ interface LoginInputProps {
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   icon: "user" | "lock";
   autoComplete?: string;
+  autoFocus?: boolean;
   disabled?: boolean;
   error?: string;
+  /** نص مساعد صغير يظهر أسفل الحقل (يختفي عند وجود خطأ) */
+  hint?: string;
 }
 
 /**
- * Reusable labelled input with an icon on the trailing side (RTL-aware).
- * Supports text and password types; password fields include a show/hide toggle.
+ * حقل إدخال بعنوان علوي وأيقونة على جهة البداية (يمين في RTL).
+ * حقول كلمة المرور فيها زر إظهار/إخفاء على الجهة المقابلة.
  */
 export function LoginInput({
   id,
@@ -104,45 +135,62 @@ export function LoginInput({
   onChange,
   icon,
   autoComplete,
+  autoFocus,
   disabled = false,
   error,
+  hint,
 }: LoginInputProps) {
   const [showPassword, setShowPassword] = useState(false);
 
-  const resolvedType =
-    type === "password"
-      ? showPassword
-        ? "text"
-        : "password"
-      : type;
+  const isPassword = type === "password";
+  const resolvedType = isPassword
+    ? showPassword
+      ? "text"
+      : "password"
+    : type;
+
+  const describedBy = error
+    ? `${id}-error`
+    : hint
+      ? `${id}-hint`
+      : undefined;
 
   return (
-    <div className="w-full flex flex-col gap-1.5">
+    <div
+      className="w-full flex flex-col gap-2"
+      style={{ fontFamily: "'Almarai', sans-serif" }}
+    >
       {/* Label */}
       <label
         htmlFor={id}
-        className="block text-[#2d3648] text-right px-1"
-        style={{
-          fontFamily: "'Almarai', sans-serif",
-          fontWeight: 700,
-          fontSize: "14px",
-        }}
+        className="text-right text-[14px] font-bold text-[#1c2b20]"
       >
         {label}
       </label>
 
-      {/* Input wrapper */}
+      {/* Field */}
       <div
         className={[
-          "relative flex flex-row-reverse items-center w-full rounded-[8px] bg-[#f5f5f5]",
-          "border transition-all duration-150",
+          "group relative w-full rounded-xl border bg-[#f6f8f6]",
+          "transition-[border-color,box-shadow,background-color] duration-150",
           error
-            ? "border-red-400 ring-2 ring-red-200"
-            : "border-[#e2e7f0] focus-within:border-[#769D7B] focus-within:ring-2 focus-within:ring-[#769D7B]/20",
+            ? "border-red-400 bg-red-50/40 focus-within:ring-4 focus-within:ring-red-500/10"
+            : "border-[#dbe3dc] hover:border-[#b9c7bb] focus-within:border-[#067647] focus-within:bg-white focus-within:ring-4 focus-within:ring-[#067647]/10",
           disabled ? "opacity-60 cursor-not-allowed" : "",
         ].join(" ")}
       >
-        {/* Actual input — full width, RTL text */}
+        {/* Leading icon (right side in RTL) */}
+        <span
+          className={[
+            "pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 transition-colors",
+            error
+              ? "text-red-400"
+              : "text-[#8a9a8d] group-focus-within:text-[#067647]",
+          ].join(" ")}
+        >
+          {icon === "user" ? <UserIcon /> : <LockIcon />}
+        </span>
+
         <input
           id={id}
           type={resolvedType}
@@ -150,56 +198,56 @@ export function LoginInput({
           onChange={onChange}
           placeholder={placeholder}
           autoComplete={autoComplete}
+          autoFocus={autoFocus}
           disabled={disabled}
           dir="rtl"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy}
           className={[
-            "flex-1 min-w-0 bg-transparent outline-none px-3 py-3 pr-10 text-right",
-            "text-[#2d3648] placeholder-[#9aa5b8] text-right",
+            "block h-12 w-full min-w-0 rounded-xl bg-transparent outline-none",
+            "pr-11 text-right text-[16px] sm:text-[15px] text-[#1c2b20] placeholder:text-[#9aa8a0]",
+            isPassword ? "pl-12" : "pl-4",
           ].join(" ")}
-          style={{
-            fontFamily: "'Almarai', sans-serif",
-            fontSize: "14px",
-          }}
+          style={{ fontFamily: "'Almarai', sans-serif" }}
         />
 
-        {/* Password toggle (only for password fields) */}
-        {type === "password" && (
+        {/* Show / hide password */}
+        {isPassword && (
           <button
             type="button"
             onClick={() => setShowPassword((p) => !p)}
             disabled={disabled}
-            className="absolute left-2 top-1/2 -translate-y-1/2 text-[#9aa5b8] hover:text-[#2d3648] transition-colors focus:outline-none"
+            className="absolute left-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-[#8a9a8d] transition-colors hover:bg-[#e9efe9] hover:text-[#1c2b20] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#067647]/40"
             aria-label={
-              showPassword
-                ? "إخفاء كلمة المرور"
-                : "إظهار كلمة المرور"
+              showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"
             }
+            aria-pressed={showPassword}
           >
             <EyeIcon open={showPassword} />
           </button>
         )}
-
-        {/* Divider */}
-        <VerticalDivider />
-
-        {/* Icon */}
-        <span className="px-3 text-[#2d3648] flex items-center shrink-0">
-          {icon === "user" ? <UserIcon /> : <LockIcon />}
-        </span>
       </div>
 
-      {/* Error message */}
-      {error && (
+      {/* Error / hint */}
+      {error ? (
         <p
-          className="text-red-500 text-right px-1"
-          style={{
-            fontFamily: "'Almarai', sans-serif",
-            fontSize: "12px",
-          }}
+          id={`${id}-error`}
+          role="alert"
+          className="flex items-start gap-1.5 text-right text-[13px] leading-5 text-red-600"
         >
-          {error}
+          <span className="mt-0.5">
+            <AlertIcon />
+          </span>
+          <span>{error}</span>
         </p>
-      )}
+      ) : hint ? (
+        <p
+          id={`${id}-hint`}
+          className="text-right text-[12px] leading-5 text-[#6b7b70]"
+        >
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 }

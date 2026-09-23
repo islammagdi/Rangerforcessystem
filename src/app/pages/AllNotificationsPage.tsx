@@ -87,7 +87,6 @@ export function AllNotificationsPage() {
     const { data, error } = await query;
 
     if (error) {
-      console.error("loadFirstPage error:", error);
       setLoading(false);
       return;
     }
@@ -125,11 +124,9 @@ export function AllNotificationsPage() {
     const { data, error } = await query;
 
     if (error) {
-      console.error("loadMore error:", error);
       setLoadingMore(false);
       return;
     }
-
     setNotifications((prev) => [...prev, ...(data ?? [])]);
     setHasMore((data ?? []).length === PAGE_SIZE);
     setLoadingMore(false);
@@ -150,10 +147,6 @@ export function AllNotificationsPage() {
       notification_id: notificationId,
       user_id: user.id,
     });
-
-    if (error) {
-      console.error("markAsRead error:", error);
-    }
   }
 
   return (

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2, Printer, X, ChevronLeft, GripVertical } from "lucide-react";
+import { Plus, Trash2, Printer, X, ChevronLeft } from "lucide-react";
 
 import { supabase } from "../../../lib/supabase";
 import { logActivity } from "../../../lib/logActivity";
@@ -120,19 +120,19 @@ function CreateReportModal({
           details: `تم إنشاء قالب يومية جديد للكشف "${sheet.name}"`,
         });
       } catch (auditError) {
-        console.error("Audit log error:", auditError);
+   
       }
 
       try {
         await logReportCreated(sheet.id, userName, name.trim());
       } catch (logErr) {
-        console.error("Log report created error:", logErr);
+     
       }
 
       onCreated();
       onClose();
     } catch (err: any) {
-      console.error("Create report error:", err);
+    
       setError(err?.message || "حدث خطأ أثناء إنشاء اليومية");
     } finally {
       setSaving(false);
@@ -549,43 +549,31 @@ function PrintReportModal({
   const [checked, setChecked] = useState<Set<string>>(new Set(columnIds));
   const [error, setError] = useState("");
 
-  const dragIndexRef = useState<{ current: number | null }>({
-    current: null,
-  })[0];
-
   function toggleChecked(id: string) {
     setChecked((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
 
-  function handleDragStart(index: number) {
-    dragIndexRef.current = index;
-  }
-
-  function handleDragOver(e: React.DragEvent) {
-    e.preventDefault();
-  }
-
-  function handleDrop(targetIndex: number) {
-    const sourceIndex = dragIndexRef.current;
-
-    if (sourceIndex === null || sourceIndex === targetIndex) return;
-
+  function moveUp(index: number) {
+    if (index === 0) return;
     setOrder((prev) => {
       const next = [...prev];
-      const [moved] = next.splice(sourceIndex, 1);
-      next.splice(targetIndex, 0, moved);
+      [next[index - 1], next[index]] = [next[index], next[index - 1]];
       return next;
     });
+  }
 
-    dragIndexRef.current = null;
+  function moveDown(index: number) {
+    setOrder((prev) => {
+      if (index === prev.length - 1) return prev;
+      const next = [...prev];
+      [next[index], next[index + 1]] = [next[index + 1], next[index]];
+      return next;
+    });
   }
 
   function handleConfirm() {
@@ -615,31 +603,21 @@ function PrintReportModal({
             اختر أعمدة الطباعة وترتيبها
           </h2>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-[#aaa] hover:text-[#555]"
-          >
+          <button type="button" onClick={onClose} className="text-[#aaa] hover:text-[#555]">
             <X size={20} />
           </button>
         </div>
 
         <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-4">
           <p style={{ ...F, fontSize: 12, color: "#a1aebe" }}>
-            اسحب العناصر لترتيبها (أول عمود = الصفوف، الباقي = الأعمدة)، وألغِ
+            استخدم الأسهم لترتيب الأعمدة (أول عمود = الصفوف، الباقي = الأعمدة)، وألغِ
             تحديد أي عمود مش عايزه يظهر في الطباعة.
           </p>
 
           {error && (
             <div
               className="rounded-[8px] px-4 py-2"
-              style={{
-                background: "#fef2f2",
-                border: "1px solid #fecaca",
-                color: "#991b1b",
-                ...F,
-                fontSize: 13,
-              }}
+              style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", ...F, fontSize: 13 }}
             >
               {error}
             </div>
@@ -652,15 +630,9 @@ function PrintReportModal({
               return (
                 <div
                   key={id}
-                  draggable
-                  onDragStart={() => handleDragStart(index)}
-                  onDragOver={handleDragOver}
-                  onDrop={() => handleDrop(index)}
-                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-[8px] border border-[#e2e7f0] bg-white cursor-move"
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-[8px] border border-[#e2e7f0] bg-white"
                   style={{ opacity: checked.has(id) ? 1 : 0.5 }}
                 >
-                  <GripVertical size={16} className="text-[#a1aebe] shrink-0" />
-
                   <input
                     type="checkbox"
                     checked={checked.has(id)}
@@ -668,23 +640,38 @@ function PrintReportModal({
                     className="w-4 h-4 accent-[#00b867] shrink-0"
                   />
 
-                  <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
+                  <span style={{ ...F, fontSize: 14, color: "#2d3648" }} className="flex-1">
                     {index + 1}. {col?.name}
                   </span>
 
                   {index === 0 && checked.has(id) && (
                     <span
-                      className="mr-auto px-2 py-0.5 rounded-full"
-                      style={{
-                        ...F,
-                        fontSize: 10,
-                        background: "#DCF4DF",
-                        color: "#00522e",
-                      }}
+                      className="px-2 py-0.5 rounded-full"
+                      style={{ ...F, fontSize: 10, background: "#DCF4DF", color: "#00522e" }}
                     >
                       صفوف
                     </span>
                   )}
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => moveUp(index)}
+                      disabled={index === 0}
+                      className="w-7 h-7 rounded-[6px] flex items-center justify-center disabled:opacity-30 hover:bg-[#f5f6fb]"
+                    >
+                      <ChevronLeft size={14} className="rotate-90" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => moveDown(index)}
+                      disabled={index === order.length - 1}
+                      className="w-7 h-7 rounded-[6px] flex items-center justify-center disabled:opacity-30 hover:bg-[#f5f6fb]"
+                    >
+                      <ChevronLeft size={14} className="-rotate-90" />
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -696,12 +683,7 @@ function PrintReportModal({
             type="button"
             onClick={handleConfirm}
             className="px-6 h-11 rounded-[8px]"
-            style={{
-              background: "linear-gradient(to bottom,#00b867,#00522e)",
-              ...F,
-              fontSize: 14,
-              color: "#fff",
-            }}
+            style={{ background: "linear-gradient(to bottom,#00b867,#00522e)", ...F, fontSize: 14, color: "#fff" }}
           >
             طباعة
           </button>
@@ -763,7 +745,7 @@ export function SheetReportsTab({
       const data = await fetchSheetReports(sheet.id);
       setReports(data);
     } catch (err) {
-      console.error("Load reports error:", err);
+
     } finally {
       setLoading(false);
     }
@@ -775,7 +757,7 @@ export function SheetReportsTab({
       setSelectedReportColumnIds(reportColumns.map((rc) => rc.column_id));
       setSelectedReport(report);
     } catch (err) {
-      console.error("Load report columns error:", err);
+
       alert("حدث خطأ أثناء تحميل اليومية");
     }
   }
@@ -813,10 +795,10 @@ export function SheetReportsTab({
 
         await logReportDeleted(sheet.id, userName, report.name);
       } catch (logErr) {
-        console.error("Log report deleted error:", logErr);
+
       }
     } catch (err: any) {
-      console.error("Delete report error:", err);
+
       alert(err?.message || "حدث خطأ أثناء حذف اليومية");
     } finally {
       setDeletingId(null);

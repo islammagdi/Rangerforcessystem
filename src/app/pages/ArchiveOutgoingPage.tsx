@@ -40,6 +40,8 @@ export function ArchiveOutgoingPage() {
   const [dateFromFilter, setDateFromFilter] = useState("");
   const [dateToFilter, setDateToFilter] = useState("");
   const [officeFilter, setOfficeFilter] = useState("");
+  const [faxSummaryFilter, setFaxSummaryFilter] = useState("");
+  const [destinationEntityFilter, setDestinationEntityFilter] = useState("");
 
   // قائمة السنوات المتاحة في الفلتر (آخر 6 سنوات بما فيها الحالية)
   const yearOptions = useMemo(() => {
@@ -67,6 +69,8 @@ export function ArchiveOutgoingPage() {
     dateFromFilter,
     dateToFilter,
     officeFilter,
+    faxSummaryFilter,
+    destinationEntityFilter,
   ]);
 
   async function loadOffices() {
@@ -74,7 +78,7 @@ export function ArchiveOutgoingPage() {
       const data = await fetchMailOffices();
       setOffices(data);
     } catch (err: any) {
-      console.error("Load offices error:", err);
+
     }
   }
 
@@ -89,11 +93,13 @@ export function ArchiveOutgoingPage() {
         dateFrom: dateFromFilter || undefined,
         dateTo: dateToFilter || undefined,
         officeId: officeFilter || undefined,
+        faxSummary: faxSummaryFilter || undefined,
+        destinationEntity: destinationEntityFilter || undefined,
       });
 
       setMails(data);
     } catch (err: any) {
-      console.error("Load outgoing mails error:", err);
+
       setError(
         err?.message || "حدث خطأ أثناء تحميل بيانات الفاكسات الصادرة"
       );
@@ -107,8 +113,9 @@ export function ArchiveOutgoingPage() {
     setDateFromFilter("");
     setDateToFilter("");
     setOfficeFilter("");
+    setFaxSummaryFilter("");
+    setDestinationEntityFilter("");
   }
-
   const thClass =
     "px-5 py-3 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]";
   const tdClass = "px-5 py-3 text-right border-b border-[#e2e7f0]";
@@ -163,7 +170,8 @@ export function ArchiveOutgoingPage() {
           الفلاتر
       ================================================= */}
 
-      <section className="bg-white rounded-[20px] border border-[#eff0f6] p-5">
+          <section className="bg-white rounded-[20px] border border-[#eff0f6] p-5">
+        {/* الصف الأول */}
         <div className="flex flex-wrap items-end gap-3 w-full">
           {/* رقم الفاكس */}
 
@@ -243,7 +251,7 @@ export function ArchiveOutgoingPage() {
             </div>
           </div>
 
-                    {/* السنة */}
+          {/* السنة */}
 
           <div className="flex flex-col gap-1.5 flex-1 min-w-[140px]">
             <label style={{ ...F, fontSize: 13, color: "#717d96" }}>
@@ -265,7 +273,10 @@ export function ArchiveOutgoingPage() {
               ))}
             </select>
           </div>
+        </div>
 
+        {/* الصف الثاني */}
+        <div className="flex flex-wrap items-end gap-3 w-full mt-3">
           {/* المكتب */}
 
           <div className="flex flex-col gap-1.5 flex-1 min-w-[180px]">
@@ -289,6 +300,54 @@ export function ArchiveOutgoingPage() {
             </select>
           </div>
 
+          {/* ملخص الفاكس */}
+
+          <div className="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+            <label style={{ ...F, fontSize: 13, color: "#717d96" }}>
+              ملخص الفاكس
+            </label>
+
+            <div
+              className="flex items-center gap-2 bg-white border border-[#e2e7f0] rounded-[8px] px-3 h-[44px]"
+              dir="rtl"
+            >
+              <input
+                type="text"
+                value={faxSummaryFilter}
+                onChange={(e) => setFaxSummaryFilter(e.target.value)}
+                placeholder="ابحث في ملخص الفاكس"
+                className="flex-1 bg-transparent outline-none text-right"
+                style={{ ...F, fontSize: 14, color: "#2d3648" }}
+              />
+
+              <Search size={16} className="text-[#a1aebe]" />
+            </div>
+          </div>
+
+          {/* الجهة الصادر لها */}
+
+          <div className="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+            <label style={{ ...F, fontSize: 13, color: "#717d96" }}>
+              الجهة الصادر لها
+            </label>
+
+            <div
+              className="flex items-center gap-2 bg-white border border-[#e2e7f0] rounded-[8px] px-3 h-[44px]"
+              dir="rtl"
+            >
+              <input
+                type="text"
+                value={destinationEntityFilter}
+                onChange={(e) => setDestinationEntityFilter(e.target.value)}
+                placeholder="ابحث باسم الجهة"
+                className="flex-1 bg-transparent outline-none text-right"
+                style={{ ...F, fontSize: 14, color: "#2d3648" }}
+              />
+
+              <Search size={16} className="text-[#a1aebe]" />
+            </div>
+          </div>
+
           {/* إعادة تعيين */}
 
           <div className="flex items-center gap-2">
@@ -303,7 +362,6 @@ export function ArchiveOutgoingPage() {
           </div>
         </div>
       </section>
-
       {/* =================================================
           الجدول
       ================================================= */}
@@ -340,6 +398,12 @@ export function ArchiveOutgoingPage() {
                   <th className={thClass}>
                     <span style={{ ...F, fontSize: 13, color: "#717d96" }}>
                       مكتب الإصدار
+                    </span>
+                  </th>
+
+                  <th className={thClass}>
+                    <span style={{ ...F, fontSize: 13, color: "#717d96" }}>
+                      الجهة الصادر لها
                     </span>
                   </th>
 
@@ -385,9 +449,31 @@ export function ArchiveOutgoingPage() {
                       </span>
                     </td>
 
-                                       <td className={tdClass}>
+                    <td className={tdClass}>
                       <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
                         {mail.mail_offices?.name ?? "-"}
+                      </span>
+                    </td>
+
+                    <td className={tdClass}>
+                      <span
+                        style={{
+                          ...F,
+                          fontSize: 13,
+                          color: "#4a5468",
+                          maxWidth: 200,
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {mail.mail_outgoing_destinations &&
+                        mail.mail_outgoing_destinations.length > 0
+                          ? mail.mail_outgoing_destinations
+                              .map((d) => d.destination_entity)
+                              .join("، ")
+                          : "-"}
                       </span>
                     </td>
 

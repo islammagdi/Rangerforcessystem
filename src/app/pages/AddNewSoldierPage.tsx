@@ -1,4 +1,5 @@
 import {
+  JSX,
   useCallback,
   useEffect,
   useMemo,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { supabase } from "../../lib/supabase";
+import { useUnsavedChanges } from "../../lib/unsavedChanges";
 
 // ============================================================
 // Types
@@ -57,6 +59,22 @@ interface PersonnelCategory {
   code: string | null;
   is_active: boolean;
 }
+interface Job {
+  id: string;
+  name: string;
+}
+
+interface Administration {
+  id: string;
+  name: string;
+  code: string | null;
+}
+
+interface EducationLevel {
+  id: string;
+  name: string;
+  code: string | null;
+}
 
 interface Option {
   value: string;
@@ -78,6 +96,7 @@ interface GroupPersonnelRow {
   service_status_name: string;
   discharge_date: string | null;
   attachment_unit_name: string;
+    job_name: string;
   row_number: number;
 }
 
@@ -91,14 +110,13 @@ interface ClassifiedPersonnelRow extends GroupPersonnelRow {
   primary_unit_id: string | null;
   service_status_id: string | null;
   attachment_unit_id: string | null;
+    job_id: string | null;
 }
 
 // ============================================================
 // Excel
 // ============================================================
 
-const EXCEL_TEMPLATE_URL =
-  "https://qgsqlqlkdppxljyjujsq.supabase.co/storage/v1/object/sign/files/Data.xlsx?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9lZTY4MzBjYi1hMmVmLTQyN2EtOWRiZi1hNWZmZmY0MjFjY2QiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJmaWxlcy9EYXRhLnhsc3giLCJzY29wZSI6ImRvd25sb2FkIiwiaWF0IjoxNzg2MzUxMTc3LCJleHAiOjQ5Mzk5NTExNzd9.QDqzqpx0y-gWmeTrpbPNpUhz6MrB8xUY_b3tf4TOfcE";
 
 const REQUIRED_EXCEL_COLUMNS = [
   "الرقم العسكري",
@@ -346,37 +364,12 @@ function CategoryToggle({
   onChange: (value: SoldierCategory) => void;
 }) {
   return (
-    <div className="flex items-stretch rounded-[12px] overflow-hidden border border-[#eff0f6]">
-      <button
-        type="button"
-        onClick={() => onChange("مجند")}
-        className={[
-          "flex items-center gap-4 px-3 py-3 w-[155px] justify-end",
-          value === "مجند"
-            ? "bg-gradient-to-b from-[#00b867] to-[#00522e]"
-            : "bg-white hover:bg-gray-50",
-        ].join(" ")}
-      >
-        <span
-          style={{
-            ...F,
-            fontSize: 18,
-            color: value === "مجند" ? "white" : "#2d3648",
-            flex: 1,
-            textAlign: "right",
-          }}
-        >
-          مجند
-        </span>
-
-        <SoldierIcon white={value === "مجند"} />
-      </button>
-
+    <div className="flex items-stretch rounded-[8px] overflow-hidden border border-[#e2e7f0] h-[54px] w-full">
       <button
         type="button"
         onClick={() => onChange("متطوع")}
         className={[
-          "flex items-center gap-4 px-3 py-3 w-[155px] justify-end",
+          "flex items-center justify-center flex-1",
           value === "متطوع"
             ? "bg-gradient-to-b from-[#00b867] to-[#00522e]"
             : "bg-white hover:bg-gray-50",
@@ -385,16 +378,33 @@ function CategoryToggle({
         <span
           style={{
             ...F,
-            fontSize: 18,
-            color: value === "متطوع" ? "white" : "#2d3648",
-            flex: 1,
-            textAlign: "right",
+            fontSize: 16,
+            color: value === "متطوع" ? "white" : "#4a5468",
           }}
         >
           متطوع
         </span>
+      </button>
 
-        <StarIcon white={value === "متطوع"} />
+      <button
+        type="button"
+        onClick={() => onChange("مجند")}
+        className={[
+          "flex items-center justify-center flex-1",
+          value === "مجند"
+            ? "bg-gradient-to-b from-[#00b867] to-[#00522e]"
+            : "bg-white hover:bg-gray-50",
+        ].join(" ")}
+      >
+        <span
+          style={{
+            ...F,
+            fontSize: 16,
+            color: value === "مجند" ? "white" : "#4a5468",
+          }}
+        >
+          مجند
+        </span>
       </button>
     </div>
   );
@@ -638,6 +648,7 @@ function FormInput({
   error,
   maxLength,
   inputMode = "text",
+  disabled = false,
 }: {
   placeholder: string;
   value: string;
@@ -645,6 +656,7 @@ function FormInput({
   error?: string;
   maxLength?: number;
   inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  disabled?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1 w-full">
@@ -653,12 +665,16 @@ function FormInput({
         value={value}
         maxLength={maxLength}
         inputMode={inputMode}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         dir="rtl"
         className={[
           "w-full h-[54px] bg-white border rounded-[8px] px-3",
           "text-right outline-none focus:border-[#344736]",
+          disabled
+            ? "bg-[#f3f4f6] cursor-not-allowed opacity-70"
+            : "",
           error
             ? "border-[#ef4444]"
             : "border-[#e2e7f0]",
@@ -825,6 +841,7 @@ function GroupUploadSection({
   loading,
   uploadedFile,
   setUploadedFile,
+  templateUrl,
 }: {
   onSubmit: () => void;
   loading: boolean;
@@ -832,7 +849,8 @@ function GroupUploadSection({
   setUploadedFile: React.Dispatch<
     React.SetStateAction<UploadedFile | null>
   >;
-}) {
+  templateUrl: string | null;
+}): JSX.Element {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [dragOver, setDragOver] = useState(false);
@@ -924,11 +942,20 @@ function GroupUploadSection({
           </div>
 
           <a
-            href={EXCEL_TEMPLATE_URL}
+           
+            href={templateUrl ?? "#"}
             download="Data.xlsx"
-            target="_blank"
+            target={templateUrl ? "_blank" : undefined}
             rel="noopener noreferrer"
-            className="flex items-center gap-1.5 shrink-0 group"
+            onClick={(e) => {
+              if (!templateUrl) {
+                e.preventDefault();
+              }
+            }}
+            className={[
+              "flex items-center gap-1.5 shrink-0 group",
+              !templateUrl ? "opacity-50 cursor-not-allowed" : "",
+            ].join(" ")}
           >
             <Download size={18} style={{ color: "#00b867" }} />
 
@@ -1121,7 +1148,7 @@ export function AddNewSoldierPage() {
     useState<RegistrationMethod>("فرد واحد");
 
   const [category, setCategory] =
-    useState<SoldierCategory>("مجند");
+    useState<SoldierCategory>("متطوع");
 
   const [milId, setMilId] = useState("");
   const [rank, setRank] = useState("");
@@ -1130,7 +1157,7 @@ export function AddNewSoldierPage() {
   const [unit, setUnit] = useState("");
   const [status, setStatus] = useState("");
   const [attachment, setAttachment] = useState("");
-
+  const [jobId, setJobId] = useState("");
   // ----------------------------------------------------------
   // Group upload
   // ----------------------------------------------------------
@@ -1140,6 +1167,7 @@ export function AddNewSoldierPage() {
 
   const [groupLoading, setGroupLoading] = useState(false);
 
+  const [templateUrl, setTemplateUrl] = useState<string | null>(null);
   // ----------------------------------------------------------
   // Database state
   // ----------------------------------------------------------
@@ -1151,12 +1179,73 @@ export function AddNewSoldierPage() {
     useState<PersonnelCategory[]>([]);
   const [reserveBatches, setReserveBatches] =
     useState<ReserveBatch[]>([]);
-
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [administrations, setAdministrations] =
+    useState<Administration[]>([]);
+  const [educationLevels, setEducationLevels] =
+    useState<EducationLevel[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const [errors, setErrors] =
     useState<Record<string, string>>({});
+
+  // ─────────────────────────────────────────────────────────
+  // تتبّع التعديلات غير المحفوظة
+  // ─────────────────────────────────────────────────────────
+
+  const { setDirty } = useUnsavedChanges();
+
+  // نسخة القيم الافتراضية للفورم الفردي (قبل أي إدخال من المستخدم)،
+  // بتتحدد لما تحميل بيانات القوائم يخلص لأن قيمة "الموقف الخدمي"
+  // ممكن تتحدد تلقائيًا (attachedStatus) بعد التحميل
+  const initialSnapshotRef = useRef<string>("");
+
+  const isDirty = useMemo(() => {
+    if (!initialSnapshotRef.current) return false;
+
+    const currentIndividual = JSON.stringify({
+      method,
+      category,
+      milId,
+      rank,
+      name,
+      unit,
+      status,
+      attachment,
+      jobId,
+      dischargeBatchId,
+    });
+
+    const individualChanged =
+      currentIndividual !== initialSnapshotRef.current;
+
+    // في وضع "مجموعة أفراد"، مجرد رفع ملف Excel لسه معروضش
+    // للمراجعة يُعتبر تعديل غير محفوظ برضو
+    return individualChanged || uploadedGroupFile !== null;
+  }, [
+    method,
+    category,
+    milId,
+    rank,
+    name,
+    unit,
+    status,
+    attachment,
+    jobId,
+    dischargeBatchId,
+    uploadedGroupFile,
+  ]);
+
+  useEffect(() => {
+    setDirty(isDirty);
+  }, [isDirty, setDirty]);
+
+  // لو المستخدم غادر الصفحة من غير ما يكمل الفورم بشكل طبيعي
+  useEffect(() => {
+    return () => setDirty(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ==========================================================
   // Load database data
@@ -1176,6 +1265,9 @@ export function AddNewSoldierPage() {
         statusesResult,
         categoriesResult,
         reserveBatchesResult,
+        jobsResult,
+        administrationsResult,
+        educationLevelsResult,
       ] = await Promise.all([
         supabase
           .from("ranks")
@@ -1208,6 +1300,20 @@ export function AddNewSoldierPage() {
           .select("id,name,batch_date,is_active")
           .eq("is_active", true)
           .order("batch_date", { ascending: true }),
+                  supabase
+          .from("jobs")
+          .select("id,name")
+          .order("name", { ascending: true }),
+
+        supabase
+          .from("external_administrations")
+          .select("id,name,code")
+          .order("name", { ascending: true }),
+
+        supabase
+          .from("education_levels")
+          .select("id,name,code")
+          .order("name", { ascending: true }),
       ]);
 
       if (ranksResult.error) {
@@ -1235,23 +1341,51 @@ export function AddNewSoldierPage() {
       setStatuses(statusesResult.data ?? []);
       setCategories(categoriesResult.data ?? []);
       setReserveBatches(reserveBatchesResult.data ?? []);
+      // الوظائف اختيارية: لو فشل تحميلها منوقفش الصفحة
+      setJobs(jobsResult.error ? [] : jobsResult.data ?? []);
 
-      const attachedStatus = (
-        statusesResult.data ?? []
-      ).find(
-        (s) =>
-          s.code?.toUpperCase() === "ATTACHED" ||
-          s.name === "ملحق علي القوة"
-      );
+      // نولّد رابط موقّع جديد لملف القيد الموحّد كل مرة، عشان
+      // نضمن إننا بنجيب أحدث نسخة من الملف ومفيش مشكلة كاش أو
+      // انتهاء صلاحية توكن قديم مكتوب في الكود
+      const { data: signedData, error: signedError } =
+        await supabase.storage
+          .from("files")
+          .createSignedUrl("Data.xlsx", 60 * 60);
 
-      if (attachedStatus) {
-        setStatus(attachedStatus.id);
+      if (!signedError && signedData?.signedUrl) {
+        setTemplateUrl(signedData.signedUrl);
       }
-    } catch (error) {
-      console.error(
-        "Error loading form data:",
-        error
+
+      // الإدارة والمستوى التعليمي بيتستنتجوا تلقائيًا من الرقم
+      // العسكري، فلو فشل تحميل الجدولين منوقفش الصفحة برضو
+      setAdministrations(
+        administrationsResult.error
+          ? []
+          : administrationsResult.data ?? []
       );
+      setEducationLevels(
+        educationLevelsResult.error
+          ? []
+          : educationLevelsResult.data ?? []
+      );
+
+      // ✅ نلتقط الـ snapshot الأولي هنا مباشرة (مش من الـ state)،
+      // وكل الحقول بقيمها الافتراضية الفارغة — الموقف الخدمي مبقاش
+      // بيتحدد تلقائيًا، فهيفضل فاضي ويظهر الـ placeholder "اختر الموقف"
+      initialSnapshotRef.current = JSON.stringify({
+        method: "فرد واحد",
+        category: "مجند",
+        milId: "",
+        rank: "",
+        name: "",
+        unit: "",
+        status: "",
+        attachment: "",
+        jobId: "",
+        dischargeBatchId: "",
+      });
+    } catch (error) {
+
 
       alert(
         "حدث خطأ أثناء تحميل البيانات من قاعدة البيانات"
@@ -1352,7 +1486,12 @@ export function AddNewSoldierPage() {
       label: s.name,
     }));
   }, [statuses]);
-
+  const jobOptions = useMemo(() => {
+    return jobs.map((j) => ({
+      value: j.id,
+      label: j.name,
+    }));
+  }, [jobs]);
   const selectedStatus = statuses.find(
     (s) => s.id === status
   );
@@ -1557,7 +1696,53 @@ export function AddNewSoldierPage() {
 
     return map;
   }, [categories]);
+  const jobLookup = useMemo(() => {
+    const map = new Map<string, Job>();
 
+    jobs.forEach((j) => {
+      map.set(normalizeExcelHeader(j.name), j);
+    });
+
+    return map;
+  }, [jobs]);
+
+  // ==========================================================
+  // استخراج الإدارة والمستوى التعليمي من الرقم العسكري
+  //
+  // مثال: 2024427700265
+  //                ^^ -> كود الإدارة (الخانة 7-8)
+  //               ^  -> كود المستوى التعليمي (الخانة 6)
+  // ==========================================================
+
+  const educationCodeFromMilId = useMemo(() => {
+    return milId.length >= 6 ? milId[5] : "";
+  }, [milId]);
+
+  const administrationCodeFromMilId = useMemo(() => {
+    return milId.length >= 8
+      ? milId.substring(6, 8)
+      : "";
+  }, [milId]);
+
+  const matchedAdministration = useMemo(() => {
+    if (!administrationCodeFromMilId) {
+      return undefined;
+    }
+
+    return administrations.find(
+      (a) => a.code === administrationCodeFromMilId
+    );
+  }, [administrations, administrationCodeFromMilId]);
+
+  const matchedEducationLevel = useMemo(() => {
+    if (!educationCodeFromMilId) {
+      return undefined;
+    }
+
+    return educationLevels.find(
+      (e) => e.code === educationCodeFromMilId
+    );
+  }, [educationLevels, educationCodeFromMilId]);
   // ==========================================================
   // Classify Excel row
   // ==========================================================
@@ -1577,9 +1762,12 @@ export function AddNewSoldierPage() {
       if (!row.rank_name) {
         errors.push("الدرجة مفقودة");
       }
-
       if (!row.full_name) {
         errors.push("الاسم مفقود");
+      } else if (
+        row.full_name.trim().split(/\s+/).filter(Boolean).length < 4
+      ) {
+        errors.push("الاسم يجب أن يكون رباعيًا (4 أجزاء على الأقل)");
       }
 
       if (!row.personnel_category_name) {
@@ -1638,7 +1826,16 @@ export function AddNewSoldierPage() {
               )
             )
           : undefined;
+      // الوظيفة اختيارية: لو مكتوبة لازم تتطابق مع جدول الوظائف
+      const matchedJob = row.job_name
+        ? jobLookup.get(normalizeExcelHeader(row.job_name))
+        : undefined;
 
+      if (row.job_name && !matchedJob) {
+        errors.push(
+          `الوظيفة "${row.job_name}" غير موجودة في قاعدة البيانات`
+        );
+      }
       const matchedAttachmentUnit =
         row.attachment_unit_name
           ? unitLookup.get(
@@ -1757,13 +1954,7 @@ export function AddNewSoldierPage() {
               b.batch_date ===
               row.discharge_date
           );
-    console.log("DEBUG ROW:", {
-          military_number: row.military_number,
-          discharge_date: row.discharge_date,
-          matchedStatus_name: matchedStatus?.name,
-          matchedStatus_id: matchedStatus?.id,
-          matchedBatch: matchedBatch,
-        });
+
         if (!matchedBatch) {
           errors.push(
             `تاريخ التسريح "${row.discharge_date}" لا يطابق أي دفعة رديف مسجلة في قاعدة البيانات`
@@ -1835,6 +2026,8 @@ export function AddNewSoldierPage() {
           matchedStatus?.id ?? null,
         attachment_unit_id:
           matchedAttachmentUnit?.id ?? null,
+                  job_id: matchedJob?.id ?? null,
+        job_name: matchedJob ? matchedJob.name : row.job_name,
       };
     },
    [
@@ -1842,6 +2035,7 @@ export function AddNewSoldierPage() {
       categoryLookup,
       unitLookup,
       statusLookup,
+            jobLookup,
       reserveBatches,
     ]
   );
@@ -1914,8 +2108,13 @@ if (!militaryNumber) {
   e.milId = "الرقم العسكري يجب أن يتكون من 13 رقم بالضبط";
 }
 
-    if (!name.trim()) {
+      const trimmedName = name.trim();
+    const nameParts = trimmedName.split(/\s+/).filter(Boolean);
+
+    if (!trimmedName) {
       e.name = "الاسم مطلوب";
+    } else if (nameParts.length < 4) {
+      e.name = "الاسم يجب أن يكون رباعيًا (4 أجزاء على الأقل)";
     }
 
     if (!rank) {
@@ -1995,7 +2194,6 @@ if (!militaryNumber) {
     try {
       setSaving(true);
       setErrors({});
-
       const payload = {
         military_number: milId.trim(),
         full_name: name.trim(),
@@ -2013,6 +2211,11 @@ if (!militaryNumber) {
             ? null
             : selectedDischargeBatch?.batch_date ??
               null,
+        job_id: jobId || null,
+        administration_id:
+          matchedAdministration?.id ?? null,
+        education_level_id:
+          matchedEducationLevel?.id ?? null,
         is_active: true,
       };
 
@@ -2028,6 +2231,11 @@ if (!militaryNumber) {
         units.find(
           (u) => u.id === attachment
         );
+      const selectedJob = jobs.find((j) => j.id === jobId);
+
+      // ✅ البيانات هتنتقل لصفحة المراجعة، فمن وجهة نظر الصفحة دي
+      // بقت "مسلّمة" ومفيش داعي نحذّر لو غادر منها بعد كده
+      setDirty(false);
 
       navigate(
         "/dashboard/add-soldier/review",
@@ -2051,14 +2259,21 @@ if (!militaryNumber) {
                 ? selectedAttachmentUnit?.name ??
                   ""
                 : "",
+                            job_id: jobId || null,
+            job_name: selectedJob?.name ?? "",
+            administration_id:
+              payload.administration_id,
+            administration_name:
+              matchedAdministration?.name ?? "",
+            education_level_id:
+              payload.education_level_id,
+            education_level_name:
+              matchedEducationLevel?.name ?? "",
           },
         }
       );
     } catch (error) {
-      console.error(
-        "Submit error:",
-        error
-      );
+
 
       alert(
         "حدث خطأ أثناء تجهيز البيانات"
@@ -2258,7 +2473,9 @@ if (!militaryNumber) {
               "جهه الالحاق"
             )
           );
-
+        const jobName = normalizeExcelValue(
+          getValue(row, "الوظيفة")
+        );
         const isEmptyRow =
           !militaryNumber &&
           !rankName &&
@@ -2267,7 +2484,8 @@ if (!militaryNumber) {
           !primaryUnitName &&
           !serviceStatusName &&
           !dischargeDate &&
-          !attachmentUnitName;
+          !attachmentUnitName &&
+          !jobName;
 
         if (isEmptyRow) {
           continue;
@@ -2288,6 +2506,7 @@ if (!militaryNumber) {
             dischargeDate,
           attachment_unit_name:
             attachmentUnitName,
+                      job_name: jobName,
           row_number: index + 2,
         });
       }
@@ -2408,6 +2627,9 @@ if (!militaryNumber) {
           ).length,
       };
 
+      // ✅ نفس المنطق: البيانات هتنتقل لصفحة مراجعة الكشف
+      setDirty(false);
+
       navigate(
         "/dashboard/add-soldier/group-review",
         {
@@ -2426,10 +2648,7 @@ if (!militaryNumber) {
         }
       );
     } catch (error) {
-      console.error(
-        "Excel parsing error:",
-        error
-      );
+
 
       alert(
         "حدث خطأ أثناء قراءة ملف Excel. تأكد أن الملف بصيغة xls أو xlsx وأنه مطابق للنموذج."
@@ -2570,87 +2789,82 @@ if (!militaryNumber) {
                 </span>
               </div>
 
-              <div className="flex flex-col gap-3 items-start">
-                <SubHeader>
-                  فئة الفرد
-                </SubHeader>
-
-                <CategoryToggle
-                  value={category}
-                  onChange={
-                    handleCategoryChange
-                  }
-                />
-
-                {errors.category && (
-                  <p
-                    style={{
-                      ...F,
-                      fontSize: 13,
-                      color: "#ef4444",
-                    }}
-                  >
-                    {errors.category}
-                  </p>
-                )}
-              </div>
+               {/* ================= Section 1: البيانات التعريفية ================= */}
 
               <SubHeader>
                 البيانات التعريفية
               </SubHeader>
 
               <div className="flex flex-col sm:flex-row gap-4">
-                <FieldGroup label="الرقم العسكري">
-                  <FormInput
-  placeholder="ادخل الرقم العسكري"
-  value={milId}
-  maxLength={13}
-  inputMode="numeric"
-  onChange={(v) => {
-    // السماح بالأرقام فقط
-    const numericValue = v.replace(/\D/g, "");
+                <FieldGroup label="فئة الفرد">
+                  <CategoryToggle
+                    value={category}
+                    onChange={handleCategoryChange}
+                  />
 
-    setMilId(numericValue);
-
-    setErrors((prev) => ({
-      ...prev,
-      milId:
-        numericValue.length === 0
-          ? ""
-          : numericValue.length === 13
-            ? ""
-            : "الرقم العسكري يجب أن يتكون من 13 رقم بالضبط",
-    }));
-  }}
-  error={errors.milId}
-/>
+                  {errors.category && (
+                    <p
+                      style={{
+                        ...F,
+                        fontSize: 13,
+                        color: "#ef4444",
+                      }}
+                    >
+                      {errors.category}
+                    </p>
+                  )}
                 </FieldGroup>
 
+                <FieldGroup label="الرقم العسكري">
+                  <FormInput
+                    placeholder="ادخل الرقم العسكري"
+                    value={milId}
+                    maxLength={13}
+                    inputMode="numeric"
+                    onChange={(v) => {
+                      // السماح بالأرقام فقط
+                      const numericValue = v.replace(/\D/g, "");
+
+                      setMilId(numericValue);
+
+                      setErrors((prev) => ({
+                        ...prev,
+                        milId:
+                          numericValue.length === 0
+                            ? ""
+                            : numericValue.length === 13
+                              ? ""
+                              : "الرقم العسكري يجب أن يتكون من 13 رقم بالضبط",
+                      }));
+                    }}
+                    error={errors.milId}
+                  />
+                </FieldGroup>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-4">
                 <FieldGroup label="الدرجة">
                   <FormDropdown
                     placeholder={
                       category === "مجند"
                         ? "اختر الدرجه"
-                        : "اختيار الدرجة"
+                        : "اختر الدرجه"
                     }
                     options={rankOptions}
                     value={rank}
                     onChange={(v) => {
                       setRank(v);
 
-                      setErrors(
-                        (prev) => ({
-                          ...prev,
-                          rank: "",
-                        })
-                      );
+                      setErrors((prev) => ({
+                        ...prev,
+                        rank: "",
+                      }));
                     }}
                     error={errors.rank}
                   />
 
                   {category === "مجند" &&
-                    rankOptions.length ===
-                      0 && (
+                    rankOptions.length === 0 && (
                       <p
                         style={{
                           ...F,
@@ -2670,47 +2884,143 @@ if (!militaryNumber) {
                     onChange={(v) => {
                       setName(v);
 
-                      setErrors(
-                        (prev) => ({
-                          ...prev,
-                          name: "",
-                        })
-                      );
+                      setErrors((prev) => ({
+                        ...prev,
+                        name: "",
+                      }));
                     }}
                     error={errors.name}
                   />
                 </FieldGroup>
               </div>
 
-              {category === "مجند" && (
-                <div className="flex flex-col sm:flex-row gap-4">
+              {/* ================= Section 2: بيانات الوحدة والإلحاق ================= */}
+
+              <SubHeader>
+                بيانات الوحدة والإلحاق
+              </SubHeader>
+
+              <div className="flex flex-col sm:flex-row gap-4">
+                {/* الوحدة الأساسية - قابلة للبحث */}
+
+                <FieldGroup label="الوحدة الأساسية">
+                  <SearchableDropdown
+                    placeholder="اكتب جزء من الوحدة..."
+                    options={mainUnitOptions}
+                    value={unit}
+                    onChange={(v) => {
+                      setUnit(v);
+
+                      setErrors((prev) => ({
+                        ...prev,
+                        unit: "",
+                      }));
+                    }}
+                    error={errors.unit}
+                  />
+                </FieldGroup>
+
+                <FieldGroup label="الموقف الخدمي">
+                  <FormDropdown
+                    placeholder="اختر الموقف"
+                    options={statusOptions}
+                    value={status}
+                    onChange={handleStatusChange}
+                    error={errors.status}
+                  />
+                </FieldGroup>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-4">
+                {/* جهة الإلحاق - قابلة للبحث */}
+
+                <FieldGroup label="جهة الإلحاق">
+                  <SearchableDropdown
+                    placeholder={
+                      isAttachmentEnabled
+                        ? "اكتب جزء من جهة الإلحاق..."
+                        : "غير متاح"
+                    }
+                    options={attachmentUnitOptions}
+                    value={isAttachmentEnabled ? attachment : ""}
+                    disabled={!isAttachmentEnabled}
+                    onChange={(v) => {
+                      setAttachment(v);
+
+                      setErrors((prev) => ({
+                        ...prev,
+                        attachment: "",
+                      }));
+                    }}
+                    error={
+                      isAttachmentEnabled
+                        ? errors.attachment
+                        : undefined
+                    }
+                  />
+                </FieldGroup>
+
+                <FieldGroup label="الوظيفة (اختياري)">
+                  <FormDropdown
+                    placeholder="بدون وظيفة"
+                    options={jobOptions}
+                    value={jobId}
+                    onChange={setJobId}
+                  />
+                </FieldGroup>
+              </div>
+
+              {/* ================= Section 3: بيانات إضافية ================= */}
+
+              <SubHeader>
+                بيانات إضافية
+              </SubHeader>
+
+              <div className="flex flex-col sm:flex-row gap-4">
+                <FieldGroup label="الإدارة / السلاح">
+                  <FormInput
+                    placeholder="تُحدَّد تلقائيًا من الرقم العسكري"
+                    value={matchedAdministration?.name ?? ""}
+                    onChange={() => {}}
+                    disabled
+                  />
+
+                  {administrationCodeFromMilId &&
+                    !matchedAdministration && (
+                      <p
+                        style={{
+                          ...F,
+                          fontSize: 13,
+                          color: "#ef4444",
+                        }}
+                      >
+                        لا توجد إدارة مطابقة للكود "
+                        {administrationCodeFromMilId}"
+                      </p>
+                    )}
+                </FieldGroup>
+
+                {category === "مجند" ? (
                   <FieldGroup
-                    label="دفعة الرديف (تاريخ التسريح)"
+                    label="تاريخ التسريح (دفعة الرديف)"
                     labelColor="#415844"
                   >
                     <FormDropdown
                       placeholder="اختر دفعة الرديف"
-                      options={
-                        filteredReserveBatchOptions
-                      }
+                      options={filteredReserveBatchOptions}
                       value={dischargeBatchId}
                       onChange={(v) => {
                         setDischargeBatchId(v);
 
-                        setErrors(
-                          (prev) => ({
-                            ...prev,
-                            discharge: "",
-                          })
-                        );
+                        setErrors((prev) => ({
+                          ...prev,
+                          discharge: "",
+                        }));
                       }}
-                      error={
-                        errors.discharge
-                      }
+                      error={errors.discharge}
                     />
 
-                    {filteredReserveBatchOptions.length ===
-                      0 && (
+                    {filteredReserveBatchOptions.length === 0 && (
                       <p
                         style={{
                           ...F,
@@ -2723,97 +3033,37 @@ if (!militaryNumber) {
                       </p>
                     )}
                   </FieldGroup>
-
+                ) : (
                   <div className="flex-1 hidden sm:block" />
-                  <div className="flex-1 hidden sm:block" />
-                </div>
-              )}
-
-              <SubHeader>
-                بيانات الوحدة والموقف
-              </SubHeader>
-
-              <div className="flex flex-col sm:flex-row gap-4">
-                {/* الوحدة الأساسية - أصبحت قابلة للبحث */}
-
-                <FieldGroup label="الوحدة الأساسية">
-                  <SearchableDropdown
-                    placeholder="اكتب جزء من الوحدة..."
-                    options={
-                      mainUnitOptions
-                    }
-                    value={unit}
-                    onChange={(v) => {
-                      setUnit(v);
-
-                      setErrors(
-                        (prev) => ({
-                          ...prev,
-                          unit: "",
-                        })
-                      );
-                    }}
-                    error={errors.unit}
-                  />
-                </FieldGroup>
-
-                <FieldGroup label="موقف الفرد">
-                  <FormDropdown
-                    placeholder="اختر الموقف"
-                    options={
-                      statusOptions
-                    }
-                    value={status}
-                    onChange={
-                      handleStatusChange
-                    }
-                    error={errors.status}
-                  />
-                </FieldGroup>
-
-                {/* جهة الإلحاق - أصبحت قابلة للبحث */}
-
-                <FieldGroup label="جهة الإلحاق">
-                  <SearchableDropdown
-                    placeholder={
-                      isAttachmentEnabled
-                        ? "اكتب جزء من جهة الإلحاق..."
-                        : "غير متاح"
-                    }
-                    options={
-                      attachmentUnitOptions
-                    }
-                    value={
-                      isAttachmentEnabled
-                        ? attachment
-                        : ""
-                    }
-                    disabled={
-                      !isAttachmentEnabled
-                    }
-                    onChange={(v) => {
-                      setAttachment(v);
-
-                      setErrors(
-                        (prev) => ({
-                          ...prev,
-                          attachment: "",
-                        })
-                      );
-                    }}
-                    error={
-                      isAttachmentEnabled
-                        ? errors.attachment
-                        : undefined
-                    }
-                  />
-                </FieldGroup>
+                )}
               </div>
 
-         
+              <div className="flex flex-col sm:flex-row gap-4">
+                <FieldGroup label="المستوى التعليمي">
+                  <FormInput
+                    placeholder="يُحدَّد تلقائيًا من الرقم العسكري"
+                    value={matchedEducationLevel?.name ?? ""}
+                    onChange={() => {}}
+                    disabled
+                  />
 
-            
+                  {educationCodeFromMilId &&
+                    !matchedEducationLevel && (
+                      <p
+                        style={{
+                          ...F,
+                          fontSize: 13,
+                          color: "#ef4444",
+                        }}
+                      >
+                        لا يوجد مستوى تعليمي مطابق للكود "
+                        {educationCodeFromMilId}"
+                      </p>
+                    )}
+                </FieldGroup>
 
+                <div className="flex-1 hidden sm:block" />
+              </div>
               <div className="flex justify-end pt-1">
                 <button
                   type="submit"
@@ -2865,6 +3115,7 @@ if (!militaryNumber) {
           onSubmit={
             handleGroupSubmit
           }
+          templateUrl={templateUrl}
         />
       )}
     </div>

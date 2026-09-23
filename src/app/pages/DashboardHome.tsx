@@ -7,7 +7,7 @@ import { DonutChart } from "../components/dashboard/DonutChart";
 import { UnitBarChart } from "../components/dashboard/UnitBarChart";
 import { useDashboardStats } from "../../hooks/useDashboardStats";
 import { useNavigate } from "react-router";
-
+import { CircleCheckBig, CircleX } from "lucide-react";
 import {
   RankIcon,
   SoldiersIcon,
@@ -16,10 +16,6 @@ import {
   IdCardIcon,
   PersonCheckIcon,
 } from "../components/dashboard/DashboardIcons";
-
-import { usePermissions } from "../../lib/usePermissions"; // عدّل المسار حسب مكان الصفحة
-
-
 // ============================================================
 // عنوان القسم
 // ============================================================
@@ -36,7 +32,7 @@ function SectionTitle({
         color: "#2d3648",
         fontFamily: "'Almarai', sans-serif",
         fontWeight: 700,
-        fontSize: "24px",
+        fontSize: "clamp(18px, 3vw, 24px)",
         lineHeight: 1.5,
       }}
     >
@@ -107,6 +103,7 @@ export function DashboardHome() {
 
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [loadingUser, setLoadingUser] = useState(true);
 
   const { alerts, loading: loadingAlerts } = useSystemAlerts();
@@ -138,11 +135,20 @@ export function DashboardHome() {
 
   const [loadingDocStats, setLoadingDocStats] = useState(true);
 
+  const [reviewStats, setReviewStats] = useState({
+    reviewed: 0,
+    notReviewed: 0,
+    total: 0,
+  });
+
+  const [loadingReviewStats, setLoadingReviewStats] = useState(true);
+
   useEffect(() => {
     loadCurrentUser();
     loadPersonnelStats();
     loadReserveBatchData();
     loadDocumentsStats();
+    loadReviewStats();
   }, []);
 
   const loadCurrentUser = async () => {
@@ -153,12 +159,12 @@ export function DashboardHome() {
       } = await supabase.auth.getUser();
 
       if (authError) {
-        console.error("خطأ في Auth:", authError);
+   
         return;
       }
 
       if (!user) {
-        console.log("لا يوجد مستخدم مسجل الدخول");
+
         return;
       }
 
@@ -180,15 +186,28 @@ export function DashboardHome() {
         `)
         .eq("id", user.id)
         .single();
-
       if (error) {
-        console.error("خطأ في جلب بيانات المستخدم:", error);
+        console.error("خطأ في تحميل بيانات المستخدم:", error);
         return;
       }
 
       setCurrentUser(data);
+
+      const { data: userRole, error: roleError } = await supabase
+        .from("user_roles")
+        .select("role:roles(name)")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (roleError) {
+        console.error("خطأ في تحميل دور المستخدم:", roleError);
+      } else {
+        setCurrentUserRole(
+          (userRole?.role as unknown as { name: string } | null)?.name ?? null
+        );
+      }
     } catch (error) {
-      console.error("خطأ غير متوقع:", error);
+
     } finally {
       setLoadingUser(false);
     }
@@ -204,7 +223,7 @@ export function DashboardHome() {
         .in("code", ["VOLUNTEER", "CONSCRIPT"]);
 
       if (categoriesError) {
-        console.error("خطأ في جلب تصنيفات الأفراد:", categoriesError);
+    
         return;
       }
 
@@ -212,7 +231,7 @@ export function DashboardHome() {
       const conscriptCategory = categories?.find((item) => item.code === "CONSCRIPT");
 
       if (!volunteerCategory || !conscriptCategory) {
-        console.error("لم يتم العثور على VOLUNTEER / CONSCRIPT");
+       
         return;
       }
 
@@ -222,14 +241,14 @@ export function DashboardHome() {
         .eq("code", "ATTACHED");
 
       if (statusesError) {
-        console.error("خطأ في جلب حالات الخدمة:", statusesError);
+       
         return;
       }
 
       const attachedStatus = statuses?.find((item) => item.code === "ATTACHED");
 
       if (!attachedStatus) {
-        console.error("لم يتم العثور على ATTACHED");
+      
         return;
       }
 
@@ -244,7 +263,7 @@ export function DashboardHome() {
         .ilike("primary_unit.unit_type", "MAIN");
 
       if (volunteersError) {
-        console.error("خطأ في حساب المتطوعين:", volunteersError);
+     
       }
 
       const { count: conscriptsCount, error: conscriptsError } = await supabase
@@ -258,7 +277,7 @@ export function DashboardHome() {
         .ilike("primary_unit.unit_type", "MAIN");
 
       if (conscriptsError) {
-        console.error("خطأ في حساب المجندين:", conscriptsError);
+      
       }
 
       const { count: outsideVolunteersCount, error: outsideVolunteersError } = await supabase
@@ -273,7 +292,7 @@ export function DashboardHome() {
         .ilike("primary_unit.unit_type", "MAIN");
 
       if (outsideVolunteersError) {
-        console.error("خطأ في حساب خوارج المتطوعين:", outsideVolunteersError);
+       
       }
 
       const { count: outsideConscriptsCount, error: outsideConscriptsError } = await supabase
@@ -288,7 +307,7 @@ export function DashboardHome() {
         .ilike("primary_unit.unit_type", "MAIN");
 
       if (outsideConscriptsError) {
-        console.error("خطأ في حساب خوارج المجندين:", outsideConscriptsError);
+      
       }
 
       const volunteers = volunteersCount ?? 0;
@@ -308,7 +327,7 @@ export function DashboardHome() {
         totalOutside,
       });
     } catch (error) {
-      console.error("خطأ غير متوقع أثناء حساب الإحصائيات:", error);
+    
     } finally {
       setLoadingStats(false);
     }
@@ -341,7 +360,7 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
     .maybeSingle();
 
   if (upcomingError) {
-    console.error("خطأ في جلب دفعة الرديف القادمة:", upcomingError);
+  
   }
 
   if (upcoming) {
@@ -359,7 +378,7 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
     .maybeSingle();
 
   if (latestPastError) {
-    console.error("خطأ في جلب آخر دفعة رديف سابقة:", latestPastError);
+   
   }
 
   return latestPast ?? null;
@@ -386,7 +405,7 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
         .single();
 
       if (categoryError) {
-        console.error("خطأ في جلب فئة المجندين:", categoryError);
+       
         setNextBatchCount(0);
         return;
       }
@@ -399,14 +418,14 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
         .eq("discharge_date", batch.batch_date);
 
       if (personnelError) {
-        console.error("خطأ في حساب مستحقي دفعة الرديف:", personnelError);
+    
         setNextBatchCount(0);
         return;
       }
 
       setNextBatchCount(count ?? 0);
     } catch (error) {
-      console.error("خطأ غير متوقع في بيانات دفعة الرديف:", error);
+     
       setNextBatchCount(0);
     } finally {
       setLoadingReserveBatch(false);
@@ -436,7 +455,6 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
         .single();
 
       if (categoryError || !conscriptCategory) {
-        console.error("خطأ في جلب فئة المجندين (مستندات):", categoryError);
         setDocStats({
           karizaDelivered: 0,
           karizaTotal: 0,
@@ -454,7 +472,7 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
         .eq("discharge_date", batch.batch_date);
 
       if (personnelError) {
-        console.error("خطأ في جلب أفراد الدفعة القادمة:", personnelError);
+      
         setDocStats({
           karizaDelivered: 0,
           karizaTotal: 0,
@@ -493,7 +511,7 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
         .in("personnel_id", personnelIds);
 
       if (documentsError) {
-        console.error("خطأ في جلب حالات المستندات:", documentsError);
+      
         setDocStats({
           karizaDelivered: 0,
           karizaTotal,
@@ -523,7 +541,7 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
         licenseTotal,
       });
     } catch (error) {
-      console.error("خطأ غير متوقع أثناء حساب مستندات الدفعة:", error);
+     
       setDocStats({
         karizaDelivered: 0,
         karizaTotal: 0,
@@ -532,6 +550,99 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
       });
     } finally {
       setLoadingDocStats(false);
+    }
+  }
+
+  async function loadReviewStats() {
+    try {
+      setLoadingReviewStats(true);
+
+      const batch = await getNextReserveBatch();
+
+      if (!batch) {
+        setReviewStats({
+          reviewed: 0,
+          notReviewed: 0,
+          total: 0,
+        });
+        return;
+      }
+
+      const { data: conscriptCategory, error: categoryError } = await supabase
+        .from("personnel_categories")
+        .select("id")
+        .eq("code", "CONSCRIPT")
+        .single();
+
+      if (categoryError || !conscriptCategory) {
+        setReviewStats({
+          reviewed: 0,
+          notReviewed: 0,
+          total: 0,
+        });
+        return;
+      }
+
+      // الحصول على جميع الأفراد المستحقين للتسريح في الدفعة
+      const { data: personnel, error: personnelError } = await supabase
+        .from("personnel")
+        .select("id")
+        .eq("personnel_category_id", conscriptCategory.id)
+        .eq("is_active", true)
+        .eq("discharge_date", batch.batch_date);
+
+      if (personnelError || !personnel) {
+        setReviewStats({
+          reviewed: 0,
+          notReviewed: 0,
+          total: 0,
+        });
+        return;
+      }
+
+      const total = personnel.length;
+      const personnelIds = personnel.map((p) => p.id);
+
+      if (personnelIds.length === 0) {
+        setReviewStats({
+          reviewed: 0,
+          notReviewed: 0,
+          total: 0,
+        });
+        return;
+      }
+
+      // ✅ الحصول على عدد الأفراد اللي "تمت مراجعة" نموذج (1س) بتاعهم
+      // في نفس دفعة الرديف الحالية
+      const { count: reviewedCount, error: reviewedError } = await supabase
+        .from("reserve_batch_documents")
+        .select("id", { count: "exact", head: true })
+        .eq("reserve_batch_id", batch.id)
+        .eq("document_type", "MODEL_1S")
+        .eq("status", "REVIEWED")
+        .in("personnel_id", personnelIds);
+
+      if (reviewedError) {
+        console.error("خطأ في تحميل إحصائيات المراجعة:", reviewedError);
+      }
+
+      const reviewed = reviewedCount ?? 0;
+      const notReviewed = total - reviewed;
+
+      setReviewStats({
+        reviewed,
+        notReviewed,
+        total,
+      });
+    } catch (error) {
+      console.error("خطأ غير متوقع في تحميل إحصائيات المراجعة:", error);
+      setReviewStats({
+        reviewed: 0,
+        notReviewed: 0,
+        total: 0,
+      });
+    } finally {
+      setLoadingReviewStats(false);
     }
   }
 
@@ -561,15 +672,20 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
       ? Math.round((docStats.licenseDelivered / docStats.licenseTotal) * 100)
       : 0;
 
+  const reviewPercentage =
+    reviewStats.total > 0
+      ? Math.round((reviewStats.reviewed / reviewStats.total) * 100)
+      : 0;
+
   return (
     <>
       {!loadingUser && currentUser && (
         <div
-          className="w-full bg-white rounded-2xl p-5 shadow-sm border border-gray-100"
+          className="w-full bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-gray-100"
           dir="rtl"
         >
           <p
-            className="text-gray-800 text-lg mb-1"
+            className="text-gray-800 text-base sm:text-lg mb-1"
             style={{ fontFamily: "'Almarai', sans-serif" }}
           >
             المستخدم الحالي
@@ -577,7 +693,7 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
 
           <div className="w-full h-px bg-[#eff0f6] my-2" />
 
-          <div className="flex flex-wrap gap-8 items-center">
+          <div className="flex flex-wrap gap-4 sm:gap-8 items-center">
             {currentUser.personnel?.military_number && (
               <div>
                 <p
@@ -614,7 +730,7 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
               </p>
             </div>
 
-            <div>
+                       <div>
               <p
                 className="text-gray-500 text-sm mb-1"
                 style={{ fontFamily: "'Almarai', sans-serif" }}
@@ -629,6 +745,22 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
                 {currentUser.personnel?.full_name ||
                   currentUser.full_name ||
                   "غير محدد"}
+              </p>
+            </div>
+
+            <div>
+              <p
+                className="text-gray-500 text-sm mb-1"
+                style={{ fontFamily: "'Almarai', sans-serif" }}
+              >
+                الدور
+              </p>
+
+              <p
+                className="font-bold text-[#344736]"
+                style={{ fontFamily: "'Almarai', sans-serif" }}
+              >
+                {currentUserRole || "غير محدد"}
               </p>
             </div>
           </div>
@@ -700,7 +832,7 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
                       state: { batchDate: alert.batchDate },
                     });
                   }}
-                  className="w-full rounded-[12px] px-5 py-4 flex items-center gap-3 text-right hover:opacity-80 transition-opacity"
+                  className="w-full rounded-[12px] px-4 sm:px-5 py-3 sm:py-4 flex flex-wrap items-center gap-2 sm:gap-3 text-right hover:opacity-80 transition-opacity"
                   style={sharedStyle}
                 >
                   {content}
@@ -711,7 +843,7 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
             return (
               <div
                 key={idx}
-                className="w-full rounded-[12px] px-5 py-4 flex items-center gap-3"
+                className="w-full rounded-[12px] px-4 sm:px-5 py-3 sm:py-4 flex flex-wrap items-center gap-2 sm:gap-3"
                 style={sharedStyle}
               >
                 {content}
@@ -731,7 +863,7 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
         </div>
       ) : (
         <>
-          <div className="flex gap-4 flex-wrap">
+          <div className="flex gap-3 sm:gap-4 flex-wrap">
             <StatCard
               icon={<RankIcon />}
               value={formatNumber(stats.volunteers)}
@@ -751,7 +883,7 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
             />
           </div>
 
-          <div className="flex gap-4 flex-wrap">
+          <div className="flex gap-3 sm:gap-4 flex-wrap">
             <StatCard
               icon={<RankIcon />}
               value={formatNumber(stats.outsideVolunteers)}
@@ -802,7 +934,7 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
         <SectionTitle>موقف دفعة الرديف</SectionTitle>
       </div>
 
-      <div className="flex gap-4 flex-wrap">
+      <div className="flex gap-3 sm:gap-4 flex-wrap">
         <StatCard
           icon={<CalendarIcon />}
           value={loadingReserveBatch ? "..." : formatArabicDate(nextBatchDate)}
@@ -815,15 +947,43 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
           label="عدد المستحقين للتسريح"
         />
       </div>
-
-      <div className="flex gap-4 flex-wrap pb-6">
+      <div className="flex gap-3 sm:gap-4 flex-wrap">
         <ProgressCard
+          icon={<CircleCheckBig color="#22c55e" size={24} />}
+          value={
+            loadingReviewStats ? (
+              "..."
+            ) : (
+              <DeliveredOfTotalLabel
+                delivered={formatNumber(reviewStats.reviewed)}
+                total={formatNumber(reviewStats.total)}
+                deliveredFontSize={20}
+                totalFontSize={16}
+              />
+            )
+          }
+          label="عدد الأفراد المراجعين"
+          percentage={loadingReviewStats ? 0 : reviewPercentage}
+          percentLabel={loadingReviewStats ? "0%" : `${reviewPercentage}%`}
+        />
+
+        <StatCard
+          icon={<CircleX color="#e37032" size={24} />}
+          value={loadingReviewStats ? "..." : formatNumber(reviewStats.notReviewed)}
+          label="عدد الأفراد غير المراجعين"
+          valueColor="#e37032"
+        />
+      </div>
+      <div className="flex gap-3 sm:gap-4 flex-wrap pb-6 items-align-start">
+        <ProgressCard
+        
           icon={<PersonCheckIcon />}
           value={
             loadingDocStats ? (
               "..."
             ) : (
               <DeliveredOfTotalLabel
+            
                 delivered={formatNumber(docStats.karizaDelivered)}
                 total={formatNumber(docStats.karizaTotal)}
                 deliveredFontSize={20}
@@ -834,6 +994,7 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
           label="عدد مسلِّمي تحقيق الشخصية"
           percentage={loadingDocStats ? 0 : karizaPercentage}
           percentLabel={loadingDocStats ? "0%" : `${karizaPercentage}%`}
+          
         />
 
         <ProgressCard
@@ -856,14 +1017,15 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
         />
       </div>
 
+
       {openModal === "discharged" && (
         <div
-          className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999]"
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999] px-4"
           onClick={() => setOpenModal(null)}
         >
           <div
             dir="rtl"
-            className="bg-white rounded-xl p-6 w-[420px] max-w-[95vw] max-h-[80vh] flex flex-col"
+            className="bg-white rounded-xl p-5 sm:p-6 w-full max-w-[420px] max-h-[80vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <h2
@@ -926,12 +1088,12 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
 
       {openModal === "letters" && (
         <div
-          className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999]"
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999] px-4"
           onClick={() => setOpenModal(null)}
         >
           <div
             dir="rtl"
-            className="bg-white rounded-xl p-6 w-[420px] max-w-[95vw] max-h-[80vh] flex flex-col"
+            className="bg-white rounded-xl p-5 sm:p-6 w-full max-w-[420px] max-h-[80vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <h2

@@ -123,8 +123,6 @@ export function ForceChangePasswordModal({
 
       onSuccess();
     } catch (error: any) {
-      console.error("FORCE CHANGE PASSWORD ERROR:", error);
-
       setErrors({
         general:
           error?.message || "حدث خطأ أثناء تغيير كلمة المرور",

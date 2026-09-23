@@ -63,7 +63,13 @@ export function ManageRolesPage() {
   const [newRoleDescription, setNewRoleDescription] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-
+const [showCreatePermissionModal, setShowCreatePermissionModal] = useState(false);
+const [newPermModule, setNewPermModule] = useState("");
+const [newPermModuleLabel, setNewPermModuleLabel] = useState("");
+const [newPermAction, setNewPermAction] = useState("");
+const [newPermActionLabel, setNewPermActionLabel] = useState("");
+const [creatingPermission, setCreatingPermission] = useState(false);
+const [createPermissionError, setCreatePermissionError] = useState<string | null>(null);
   // ------------------------------------------------------------
   // رسائل عامة
   // ------------------------------------------------------------
@@ -115,7 +121,7 @@ export function ManageRolesPage() {
         setSelectedRoleId(rolesRes.data![0].id);
       }
     } catch (error: any) {
-      console.error("خطأ في تحميل بيانات الأدوار:", error);
+   
       setErrorMessage("حدث خطأ أثناء تحميل البيانات. حاول تحديث الصفحة.");
     } finally {
       setLoading(false);
@@ -149,7 +155,7 @@ export function ManageRolesPage() {
       setOriginalPermissionIds(ids);
       setSelectedPermissionIds(new Set(ids));
     } catch (error: any) {
-      console.error("خطأ في تحميل صلاحيات الدور:", error);
+    
       setErrorMessage("حدث خطأ أثناء تحميل صلاحيات الدور.");
     } finally {
       setLoadingRolePerms(false);
@@ -271,7 +277,7 @@ export function ManageRolesPage() {
       setOriginalPermissionIds(new Set(selectedPermissionIds));
       setSuccessMessage("تم حفظ الصلاحيات بنجاح.");
     } catch (error: any) {
-      console.error("خطأ في حفظ الصلاحيات:", error);
+      
       setErrorMessage("حدث خطأ أثناء الحفظ. تأكد إن عندك صلاحية مدير النظام.");
     } finally {
       setSaving(false);
@@ -325,13 +331,86 @@ export function ManageRolesPage() {
       setNewRoleName("");
       setNewRoleDescription("");
     } catch (error: any) {
-      console.error("خطأ في إنشاء الدور:", error);
+   
       setCreateError("حدث خطأ أثناء إنشاء الدور. حاول مرة أخرى.");
     } finally {
       setCreating(false);
     }
   }
+async function handleCreatePermission() {
+  const module = newPermModule.trim();
+  const moduleLabel = newPermModuleLabel.trim();
+  const action = newPermAction.trim();
+  const actionLabel = newPermActionLabel.trim();
 
+  if (!module || !moduleLabel || !action || !actionLabel) {
+    setCreatePermissionError("من فضلك املأ كل الحقول.");
+    return;
+  }
+
+  // module و action بيتكتبوا بالإنجليزي بدون مسافات لأنهم بيبنوا الـ "code" تلقائيًا
+  const slugPattern = /^[a-z0-9_]+$/;
+  if (!slugPattern.test(module) || !slugPattern.test(action)) {
+    setCreatePermissionError(
+      "الـ module والـ action لازم يكونوا حروف إنجليزية صغيرة وأرقام و underscore بس (مثال: social_record / view)."
+    );
+    return;
+  }
+
+  const alreadyExists = permissions.some(
+    (p) => p.module === module && p.action === action
+  );
+  if (alreadyExists) {
+    setCreatePermissionError("يوجد صلاحية بنفس الـ module والـ action بالفعل.");
+    return;
+  }
+
+  setCreatingPermission(true);
+  setCreatePermissionError(null);
+
+  try {
+    const { data, error } = await supabase
+      .from("permissions")
+      .insert({
+        module,
+        module_label: moduleLabel,
+        action,
+        action_label: actionLabel,
+      })
+      .select("id, module, module_label, action, action_label, code")
+      .single();
+
+    if (error) {
+      // 23505 = unique_violation (نفس الـ module+action أو نفس الـ code موجود بالفعل)
+      if (error.code === "23505") {
+        setCreatePermissionError("يوجد صلاحية بنفس الـ module والـ action بالفعل.");
+      } else {
+        throw error;
+      }
+      return;
+    }
+
+    setPermissions((prev) =>
+      [...prev, data as PermissionRow].sort((a, b) =>
+        a.module === b.module
+          ? a.action.localeCompare(b.action)
+          : a.module.localeCompare(b.module)
+      )
+    );
+
+    setShowCreatePermissionModal(false);
+    setNewPermModule("");
+    setNewPermModuleLabel("");
+    setNewPermAction("");
+    setNewPermActionLabel("");
+    setSuccessMessage("تم إنشاء الصلاحية بنجاح. حدد الأدوار اللي هتاخدها واحفظ.");
+  } catch (error: any) {
+
+    setCreatePermissionError("حدث خطأ أثناء إنشاء الصلاحية. حاول مرة أخرى.");
+  } finally {
+    setCreatingPermission(false);
+  }
+}
   // ============================================================
   // حذف دور
   // ============================================================
@@ -379,7 +458,7 @@ export function ManageRolesPage() {
 
       setSuccessMessage("تم حذف الدور بنجاح.");
     } catch (error: any) {
-      console.error("خطأ في حذف الدور:", error);
+
       setErrorMessage("حدث خطأ أثناء حذف الدور.");
     }
   }
@@ -433,7 +512,7 @@ export function ManageRolesPage() {
             العمود الأيمن: قائمة الأدوار
         ============================================ */}
 
-        <div className="w-full lg:w-[300px] shrink-0 bg-white rounded-2xl border border-[#eff0f6] shadow-sm p-4 flex flex-col gap-3">
+       <div className="w-full lg:w-[300px] shrink-0 bg-white rounded-2xl border border-[#eff0f6]  p-4 flex flex-col gap-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-32px)] lg:overflow-y-auto">
           <div className="flex items-center justify-between">
             <p style={{ fontSize: 16, fontWeight: 700, color: "#2d3648" }}>الأدوار</p>
 
@@ -497,7 +576,7 @@ export function ManageRolesPage() {
             العمود الأيسر: تفاصيل الدور + مصفوفة الصلاحيات
         ============================================ */}
 
-        <div className="flex-1 min-w-0 w-full bg-white rounded-2xl border border-[#eff0f6] shadow-sm p-5 flex flex-col gap-5">
+        <div className="flex-1 min-w-0 w-full bg-white rounded-2xl border border-[#eff0f6] p-5 flex flex-col gap-5">
           {!selectedRole ? (
             <p style={{ color: "#717d96", fontSize: 14 }}>اختر دورًا من القائمة.</p>
           ) : (
@@ -540,10 +619,29 @@ export function ManageRolesPage() {
                 )}
               </div>
 
-              <div className="w-full h-px bg-[#eff0f6]" />
+<div className="w-full h-px bg-[#eff0f6]" />
 
-              {/* مصفوفة الصلاحيات */}
-              {loadingRolePerms ? (
+<div className="flex items-center justify-between">
+  <p style={{ fontSize: 14, fontWeight: 700, color: "#2d3648" }}>
+    الصلاحيات المتاحة
+  </p>
+
+  <button
+    type="button"
+    onClick={() => {
+      setShowCreatePermissionModal(true);
+      setCreatePermissionError(null);
+    }}
+    className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-[#DCF4DF] text-[#00522E] hover:opacity-80 transition-opacity"
+    style={{ fontSize: 13, fontWeight: 700 }}
+  >
+    <Plus size={14} />
+    صلاحية جديدة
+  </button>
+</div>
+
+{/* مصفوفة الصلاحيات */}
+{loadingRolePerms ? (
                 <div className="flex items-center justify-center py-10">
                   <Loader2 size={20} className="animate-spin text-[#717d96]" />
                 </div>
@@ -564,9 +662,14 @@ export function ManageRolesPage() {
                         className="rounded-xl border border-[#eff0f6] p-4 flex flex-col gap-3"
                       >
                         <div className="flex items-center justify-between">
-                          <p style={{ fontSize: 14, fontWeight: 700, color: "#2d3648" }}>
-                            {group.module_label}
-                          </p>
+                            <div className="flex flex-col gap-0.5">
+    <p style={{ fontSize: 14, fontWeight: 700, color: "#2d3648" }}>
+      {group.module_label}
+    </p>
+    <p dir="ltr" style={{ fontSize: 11, color: "#a0aec0", fontFamily: "monospace" }}>
+      module: {group.module}
+    </p>
+  </div>
 
                           <label className="flex items-center gap-2 cursor-pointer">
                             <span style={{ fontSize: 12, color: "#717d96" }}>
@@ -751,6 +854,125 @@ export function ManageRolesPage() {
           </div>
         </div>
       )}
+      {showCreatePermissionModal && (
+  <div
+    className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999]"
+    onClick={() => !creatingPermission && setShowCreatePermissionModal(false)}
+  >
+    <div
+      className="bg-white rounded-xl p-6 w-[460px] max-w-[95vw]"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16, color: "#2d3648" }}>
+        إنشاء صلاحية جديدة
+      </h2>
+
+      <div className="flex flex-col gap-3">
+        <div>
+          <label style={{ fontSize: 13, color: "#717d96", display: "block", marginBottom: 4 }}>
+            معرّف القسم (module) بالإنجليزي *
+          </label>
+          <input
+            type="text"
+            value={newPermModule}
+            onChange={(e) => setNewPermModule(e.target.value)}
+            placeholder="مثال: social_record"
+            dir="ltr"
+            className="w-full px-3 py-2 rounded-lg border border-[#eff0f6] focus:outline-none focus:border-[#00B867]"
+            style={{ fontSize: 14 }}
+            autoFocus
+          />
+          <p style={{ fontSize: 11, color: "#a0aec0", marginTop: 2 }}>
+            حروف إنجليزية صغيرة وأرقام و _ بس، من غير مسافات.
+          </p>
+        </div>
+
+        <div>
+          <label style={{ fontSize: 13, color: "#717d96", display: "block", marginBottom: 4 }}>
+            اسم القسم بالعربي (هيظهر كعنوان في صفحة الأدوار) *
+          </label>
+          <input
+            type="text"
+            value={newPermModuleLabel}
+            onChange={(e) => setNewPermModuleLabel(e.target.value)}
+            placeholder="مثال: السجل الاجتماعي"
+            className="w-full px-3 py-2 rounded-lg border border-[#eff0f6] focus:outline-none focus:border-[#00B867]"
+            style={{ fontSize: 14 }}
+          />
+        </div>
+
+        <div>
+          <label style={{ fontSize: 13, color: "#717d96", display: "block", marginBottom: 4 }}>
+            معرّف الإجراء (action) بالإنجليزي *
+          </label>
+          <input
+            type="text"
+            value={newPermAction}
+            onChange={(e) => setNewPermAction(e.target.value)}
+            placeholder="مثال: view / create / edit / delete"
+            dir="ltr"
+            className="w-full px-3 py-2 rounded-lg border border-[#eff0f6] focus:outline-none focus:border-[#00B867]"
+            style={{ fontSize: 14 }}
+          />
+        </div>
+
+        <div>
+          <label style={{ fontSize: 13, color: "#717d96", display: "block", marginBottom: 4 }}>
+            اسم الإجراء بالعربي (هيظهر كـ checkbox) *
+          </label>
+          <input
+            type="text"
+            value={newPermActionLabel}
+            onChange={(e) => setNewPermActionLabel(e.target.value)}
+            placeholder="مثال: عرض السجل الاجتماعي"
+            className="w-full px-3 py-2 rounded-lg border border-[#eff0f6] focus:outline-none focus:border-[#00B867]"
+            style={{ fontSize: 14 }}
+          />
+        </div>
+
+        {newPermModule.trim() && newPermAction.trim() && (
+          <p style={{ fontSize: 12, color: "#717d96" }}>
+            الكود اللي هيتولد تلقائيًا:{" "}
+            <span dir="ltr" style={{ fontWeight: 700, color: "#00522E" }}>
+              {newPermModule.trim()}:{newPermAction.trim()}
+            </span>
+          </p>
+        )}
+
+        {createPermissionError && (
+          <p style={{ fontSize: 13, color: "#991b1b" }}>{createPermissionError}</p>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 mt-5">
+        <button
+          type="button"
+          onClick={handleCreatePermission}
+          disabled={creatingPermission}
+          className="flex-1 py-2 rounded-lg bg-[#00B867] text-white hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+          style={{ fontSize: 14, fontWeight: 700 }}
+        >
+          {creatingPermission && <Loader2 size={14} className="animate-spin" />}
+          إنشاء
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShowCreatePermissionModal(false)}
+          disabled={creatingPermission}
+          className="flex-1 py-2 rounded-lg border border-[#eff0f6] hover:bg-[#f5f6fb] transition-colors disabled:opacity-50"
+          style={{ fontSize: 14, fontWeight: 700, color: "#717d96" }}
+        >
+          إلغاء
+        </button>
+      </div>
+
+      <p style={{ fontSize: 12, color: "#a0aec0", marginTop: 10 }}>
+        بعد الإنشاء، هتقدر تحدد الأدوار اللي تاخد الصلاحية دي من قائمة الصلاحيات في نفس الصفحة.
+      </p>
+    </div>
+  </div>
+)}
     </div>
   );
 }

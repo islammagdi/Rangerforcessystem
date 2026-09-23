@@ -44,6 +44,13 @@ import { ManageEducationLevelsPage } from "./pages/ManageEducationLevelsPage";
 import { ManageExternalAdministrationsPage } from "./pages/ManageExternalAdministrationsPage";
 import { SheetsPage } from "./pages/SheetsPage";
 import { SheetDetailPage } from "./pages/SheetDetailPage";
+import { LetterTypesManagementPage  } from "./pages/LetterTypesManagementPage";
+import { LetterTypeFormPage } from "./pages/LetterTypeFormPage";
+import { SocialRecordPage } from "./pages/SocialRecordPage";
+import { MartyrsRecordPage } from "./pages/MartyrsRecordPage";
+import { IncidentsRecordPage } from "./pages/IncidentsRecordPage";
+import { JobsManagementPage } from "./pages/JobsManagementPage";
+import { UnitsTreePage } from "./pages/UnitsTreePage"; // عدّل المسار حسب مكانك
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -100,6 +107,14 @@ export const router = createBrowserRouter([
        { path: "sheets", Component: SheetsPage },
        { path: "sheets/:id", Component: SheetDetailPage },
               { path: "manage-education-levels", Component: ManageEducationLevelsPage,},
+              { path: "manage-letter-types", Component: LetterTypesManagementPage,},
+              { path: "manage-letter-types/new", Component: LetterTypeFormPage },
+{ path: "manage-letter-types/:id", Component: LetterTypeFormPage },
+{ path: "social-record", Component: SocialRecordPage },
+{ path: "martyrs-record", Component: MartyrsRecordPage },
+{ path: "incidents-record", Component: IncidentsRecordPage },
+{ path: "manage-jobs", Component: JobsManagementPage }, // ✅ جديد
+{ path: "units-tree", Component: UnitsTreePage }, // ✅ جديد
     ],
   },
 ]);

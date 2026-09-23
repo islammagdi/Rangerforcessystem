@@ -23,7 +23,14 @@ type ReportType =
   | "all-outsiders"
   | "attached-outside-unit"
   | "unit-outsiders"
-  | "attached-to-unit";
+  | "attached-to-unit"
+  | "unit-administrations"
+  | "all-units-administrations"
+    | "unit-administrations-names" // ✅ جديد
+      | "all-units-jobs"   // ✅ جديد
+  | "unit-jobs"        // ✅ جديد
+  | "unit-jobs-names"; // ✅ جديد
+  
 
 interface ReportCard {
   id: ReportType;
@@ -74,6 +81,16 @@ interface Personnel {
     unit_type: string | null;
   } | null;
 
+  administration: {
+    id: string;
+    name: string;
+    code: string | null;
+  } | null;
+  // ✅ جديد
+  job: {
+    id: string;
+    name: string;
+  } | null;
   discharge_date: string | null;
   is_active: boolean | null;
 }
@@ -85,6 +102,7 @@ interface ReportConfig {
   excludeBatch: boolean;
   dischargeDate: string;
   reportType?: ReportType;
+  administrationIds: string[]; // فاضية = كل الإدارات
 }
 
 // ============================================================
@@ -117,6 +135,38 @@ const REPORT_TYPES: ReportCard[] = [
     title: "كشف الأفراد الملحقين على وحدة",
     desc: "كشف الأفراد الملحقين من خارج الوحدة المحددة",
   },
+  {
+    id: "unit-administrations",
+    title: "يومية عددية لإدارات وحدة",
+    desc: "بيان عددي بالإدارات داخل الوحدة المحددة",
+  },
+  {
+    id: "all-units-administrations",
+    title: "يومية عددية لإدارات جميع الوحدات",
+    desc: "بيان عددي بالإدارات على مستوى جميع الوحدات",
+  },
+    // ✅ جديد
+  {
+    id: "unit-administrations-names",
+    title: "كشف أسماء إدارات وحدة",
+    desc: "كشف بأسماء أفراد كل إدارة داخل الوحدة المحددة",
+  },
+    {
+    id: "all-units-jobs",
+    title: "يومية عددية لوظائف جميع الوحدات",
+    desc: "بيان عددي بالوظائف على مستوى جميع الوحدات",
+  },
+  {
+    id: "unit-jobs",
+    title: "يومية عددية لوظائف وحدة",
+    desc: "بيان عددي بالوظائف داخل الوحدة المحددة",
+  },
+  {
+    id: "unit-jobs-names",
+    title: "كشف أسماء وظائف وحدة",
+    desc: "كشف بأسماء أفراد كل وظيفة داخل الوحدة المحددة",
+  },
+  
 ];
 const RANK_ORDER = [
   "مساعد اول",
@@ -187,7 +237,27 @@ const ALL_OUTSIDERS_UNIT_ORDER = [
 // بقت بتُحسب بغض النظر عن حالة الخدمة (قوة الوحدة/ملحق) — الملحق برضه
 // جزء من قوة وحدته الأصلية.
 // ============================================================
+function compareByCategoryAndRank(a: Personnel, b: Personnel) {
+  // المتطوعون (ضباط صف) أولًا
+  const categoryA = isNco(a) ? 0 : 1;
+  const categoryB = isNco(b) ? 0 : 1;
 
+  if (categoryA !== categoryB) {
+    return categoryA - categoryB;
+  }
+
+  const rankA = RANK_ORDER.indexOf(a.rank?.name?.trim() ?? "");
+  const rankB = RANK_ORDER.indexOf(b.rank?.name?.trim() ?? "");
+
+  // الدرجة غير الموجودة في القائمة تروح للآخر
+  if (rankA !== rankB) {
+    if (rankA === -1) return 1;
+    if (rankB === -1) return -1;
+    return rankA - rankB;
+  }
+
+  return a.full_name.localeCompare(b.full_name, "ar");
+}
 function isSoldier(person: Personnel) {
   return person.category?.code === "CONSCRIPT";
 }
@@ -233,7 +303,37 @@ function formatNow() {
     minute: "2-digit",
   });
 }
+// ============================================================
+// الوظائف
+//
+// بنحوّل "الوظيفة" لمكان "الإدارة" في نسخة من الأفراد، عشان نعيد
+// استخدام يوميات الإدارات (نفس التجميع والجداول). الفرد اللي مالوش
+// وظيفة بيدخل مجموعة "بدون وظيفة" وبتيجي آخر حاجة، والباقي أبجديًا.
+// ============================================================
+const NO_JOB_ID = "__no_job__";
+const NO_JOB_NAME = "بدون وظيفة";
 
+function projectJobsAsGroups(people: Personnel[]): Personnel[] {
+  const projected = people.map((person) => ({
+    ...person,
+    administration: {
+      id: person.job?.id ?? NO_JOB_ID,
+      name: person.job?.name ?? NO_JOB_NAME,
+      code: null,
+    },
+  }));
+
+  return projected.sort((a, b) => {
+    if (a.administration.id === b.administration.id) return 0;
+    if (a.administration.id === NO_JOB_ID) return 1;
+    if (b.administration.id === NO_JOB_ID) return -1;
+
+    return a.administration.name.localeCompare(
+      b.administration.name,
+      "ar"
+    );
+  });
+}
 // ============================================================
 // Stepper
 // ============================================================
@@ -606,7 +706,7 @@ function Step2({
 
         setBatchOptions(options);
       } catch (err) {
-        console.error("Load reserve batches error:", err);
+
       } finally {
         setLoadingBatches(false);
       }
@@ -614,7 +714,46 @@ function Step2({
 
     void loadBatches();
   }, []);
+  // ✅ الإدارات — لاختيار إدارات محددة في يومية "إدارات وحدة"
+  const [administrationOptions, setAdministrationOptions] = useState<
+    { id: string; name: string }[]
+  >([]);
 
+  const [loadingAdministrations, setLoadingAdministrations] =
+    useState(true);
+
+  const [administrationMode, setAdministrationMode] = useState<
+    "all" | "specific"
+  >("all");
+
+  const [selectedAdministrationIds, setSelectedAdministrationIds] =
+    useState<string[]>([]);
+
+  const [showAdminModal, setShowAdminModal] = useState(false);
+
+  useEffect(() => {
+    async function loadAdministrations() {
+      try {
+        setLoadingAdministrations(true);
+
+        const { data, error } = await supabase
+          .from("external_administrations")
+          .select("id, name")
+          .eq("is_active", true)
+          .order("name", { ascending: true });
+
+        if (error) throw error;
+
+        setAdministrationOptions(data ?? []);
+      } catch (err) {
+
+      } finally {
+        setLoadingAdministrations(false);
+      }
+    }
+
+    void loadAdministrations();
+  }, []);
   const selectedUnit = units.find(
     (u) => u.id === unitId
   );
@@ -636,19 +775,51 @@ function Step2({
   const shouldShowAllUnits =
     reportTitle === "كشف الأفراد الملحقين على وحدة";
 
+  const isSingleUnitAdministrationsReport =
+    reportTitle === "يومية عددية لإدارات وحدة";
+
+  const isAllUnitsAdministrationsReport =
+    reportTitle === "يومية عددية لإدارات جميع الوحدات";
+
+  // ✅ جديد: السطرين دول
+  const isUnitAdministrationsNamesReport =
+    reportTitle === "كشف أسماء إدارات وحدة";
+
+  const showAdministrationsSelector =
+    isSingleUnitAdministrationsReport ||
+    isAllUnitsAdministrationsReport ||
+    isUnitAdministrationsNamesReport; // ✅ جديد: أضفت السطر ده
+
   // ==========================================================
   // اليوميات التي لا تحتاج اختيار وحدة على الإطلاق
   // (يومية عددية بخوارج الوحدات: بتعرض كل الوحدات الرئيسية مرة واحدة)
   // ==========================================================
 
-  const hideUnitDropdown =
-    reportTitle === "يومية عددية بخوارج الوحدات";
+  const isAllUnitsJobsReport =
+    reportTitle === "يومية عددية لوظائف جميع الوحدات";
 
-  const availableUnits = shouldShowAllUnits
-    ? units
-    : units.filter(
-        (unit) => unit.unit_type === "MAIN"
-      );
+  const hideUnitDropdown =
+    reportTitle === "يومية عددية بخوارج الوحدات" ||
+    isAllUnitsAdministrationsReport ||
+    isAllUnitsJobsReport;
+
+  const availableUnits = (
+    shouldShowAllUnits
+      ? units
+      : units.filter(
+          (unit) => unit.unit_type === "MAIN"
+        )
+  ).slice().sort((a, b) => {
+    const indexA = ALL_OUTSIDERS_UNIT_ORDER.indexOf(a.name.trim());
+    const indexB = ALL_OUTSIDERS_UNIT_ORDER.indexOf(b.name.trim());
+
+    // الوحدات غير الموجودة في القائمة تُرحّل لآخر الترتيب
+    if (indexA === -1 && indexB === -1) return 0;
+    if (indexA === -1) return 1;
+    if (indexB === -1) return -1;
+
+    return indexA - indexB;
+  });
 
   const unitOptions = availableUnits.map(
     (u) => ({
@@ -712,6 +883,12 @@ function Step2({
       category,
       excludeBatch,
       dischargeDate,
+
+      administrationIds:
+        showAdministrationsSelector &&
+        administrationMode === "specific"
+          ? selectedAdministrationIds
+          : [],
     });
   }
 
@@ -819,7 +996,57 @@ function Step2({
           ))}
         </div>
       </div>
+      {/* ======================================================
+          اختيار الإدارات — يظهر فقط في يومية إدارات الوحدة
+         ====================================================== */}
 
+      {showAdministrationsSelector && (
+        <div className="flex flex-col gap-2">
+          <label
+            style={{
+              ...F,
+              fontSize: 15,
+              color: "#2d3648",
+              fontWeight: 700,
+            }}
+          >
+            الإدارات المعروضة
+          </label>
+
+          <button
+            type="button"
+            onClick={() => setShowAdminModal(true)}
+            className="w-full h-[54px] border border-[#e2e7f0] rounded-[8px] flex items-center justify-between px-3 bg-white hover:border-[#a0aec0]"
+            dir="rtl"
+          >
+            <span
+              style={{
+                ...F,
+                fontSize: 13,
+                color: "#00b867",
+                fontWeight: 700,
+              }}
+            >
+              تعديل
+            </span>
+
+            <span
+              style={{
+                ...F,
+                fontSize: 16,
+                color: "#2d3648",
+              }}
+            >
+              {administrationMode === "all"
+                ? "كل الإدارات"
+                : selectedAdministrationIds.length ===
+                  0
+                ? "لم يتم اختيار أي إدارة"
+                : `${selectedAdministrationIds.length} إدارة مختارة`}
+            </span>
+          </button>
+        </div>
+      )}
       {/* ======================================================
           Exclude Batch
          ====================================================== */}
@@ -900,6 +1127,197 @@ function Step2({
           معاينة اليومية
         </span>
       </button>
+
+      {/* ======================================================
+          بوب اب اختيار الإدارات
+         ====================================================== */}
+
+      {showAdminModal && (
+        <div
+          className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 px-4"
+          dir="rtl"
+          onClick={() => setShowAdminModal(false)}
+        >
+          <div
+            className="bg-white rounded-[16px] w-full max-w-md max-h-[80vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 border-b border-[#eff0f6] flex flex-col gap-4">
+              <p
+                style={{
+                  ...F,
+                  fontSize: 16,
+                  fontWeight: 700,
+                  color: "#2d3648",
+                }}
+              >
+                اختيار الإدارات
+              </p>
+
+              <div
+                className="flex items-center rounded-[8px] border border-[#e2e7f0] overflow-hidden h-[44px]"
+                dir="rtl"
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAdministrationMode("all")
+                  }
+                  className="flex-1 h-full flex items-center justify-center transition-all"
+                  style={{
+                    ...F,
+                    fontSize: 14,
+                    color:
+                      administrationMode === "all"
+                        ? "#fff"
+                        : "#2d3648",
+                    background:
+                      administrationMode === "all"
+                        ? "linear-gradient(to bottom, #00b867, #00522e)"
+                        : "#fff",
+                    borderLeft:
+                      "1px solid #e2e7f0",
+                  }}
+                >
+                  كل الإدارات
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAdministrationMode(
+                      "specific"
+                    )
+                  }
+                  className="flex-1 h-full flex items-center justify-center transition-all"
+                  style={{
+                    ...F,
+                    fontSize: 14,
+                    color:
+                      administrationMode ===
+                      "specific"
+                        ? "#fff"
+                        : "#2d3648",
+                    background:
+                      administrationMode ===
+                      "specific"
+                        ? "linear-gradient(to bottom, #00b867, #00522e)"
+                        : "#fff",
+                  }}
+                >
+                  إدارات محددة
+                </button>
+              </div>
+            </div>
+
+            {administrationMode === "specific" && (
+              <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-1">
+                {loadingAdministrations ? (
+                  <p
+                    style={{
+                      ...F,
+                      fontSize: 14,
+                      color: "#717d96",
+                      textAlign: "center",
+                    }}
+                  >
+                    جاري التحميل...
+                  </p>
+                ) : administrationOptions.length ===
+                  0 ? (
+                  <p
+                    style={{
+                      ...F,
+                      fontSize: 14,
+                      color: "#717d96",
+                      textAlign: "center",
+                    }}
+                  >
+                    لا توجد إدارات
+                  </p>
+                ) : (
+                  administrationOptions.map(
+                    (admin) => {
+                      const checked =
+                        selectedAdministrationIds.includes(
+                          admin.id
+                        );
+
+                      return (
+                        <label
+                          key={admin.id}
+                          className="flex items-center gap-2 px-2 py-2 rounded-[6px] hover:bg-[#f5f6fb] cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              if (
+                                e.target.checked
+                              ) {
+                                setSelectedAdministrationIds(
+                                  (prev) => [
+                                    ...prev,
+                                    admin.id,
+                                  ]
+                                );
+                              } else {
+                                setSelectedAdministrationIds(
+                                  (prev) =>
+                                    prev.filter(
+                                      (id) =>
+                                        id !==
+                                        admin.id
+                                    )
+                                );
+                              }
+                            }}
+                            className="w-4 h-4 accent-[#00b867]"
+                          />
+
+                          <span
+                            style={{
+                              ...F,
+                              fontSize: 14,
+                              color: "#2d3648",
+                            }}
+                          >
+                            {admin.name}
+                          </span>
+                        </label>
+                      );
+                    }
+                  )
+                )}
+              </div>
+            )}
+
+            <div className="p-4 border-t border-[#eff0f6]">
+              <button
+                type="button"
+                onClick={() =>
+                  setShowAdminModal(false)
+                }
+                className="w-full h-[46px] rounded-[8px] flex items-center justify-center"
+                style={{
+                  background:
+                    "linear-gradient(to bottom, #00b867, #00522e)",
+                }}
+              >
+                <span
+                  style={{
+                    ...F,
+                    fontSize: 15,
+                    color: "#fff",
+                  }}
+                >
+                  تم
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1235,91 +1653,48 @@ function AllUnitsOutsidersReport({
   people: Personnel[];
   config: ReportConfig;
 }) {
+  const showSoldier = config.category !== "ضباط صف";
+  const showNco = config.category !== "جنود";
+  const groupColSpan = (showSoldier ? 1 : 0) + (showNco ? 1 : 0);
+
   const rows = units
-  .filter((unit) => unit.unit_type === "MAIN")
- .sort((a, b) => {
-  const indexA =
-    ALL_OUTSIDERS_UNIT_ORDER.indexOf(a.name.trim());
-
-  const indexB =
-    ALL_OUTSIDERS_UNIT_ORDER.indexOf(b.name.trim());
-
-  if (indexA === -1) return 1;
-  if (indexB === -1) return -1;
-
-  return indexA - indexB;
-})
-  .map((unit) => {
-      // ✅ قوة كل وحدة = نفس مبدأ UnitForceReport بالظبط (كل الأفراد
-      // اللي وحدتهم الأساسية هي دي، بغض النظر عن حالتهم)
+    .filter((unit) => unit.unit_type === "MAIN")
+    .sort((a, b) => {
+      const indexA = ALL_OUTSIDERS_UNIT_ORDER.indexOf(a.name.trim());
+      const indexB = ALL_OUTSIDERS_UNIT_ORDER.indexOf(b.name.trim());
+      if (indexA === -1) return 1;
+      if (indexB === -1) return -1;
+      return indexA - indexB;
+    })
+    .map((unit) => {
       const unitPeople = people.filter(
         (person) => person.primary_unit?.id === unit.id
       );
-
-      const soldierForce =
-        unitPeople.filter(isSoldier);
-
-      const ncoForce =
-        unitPeople.filter(isNco);
-
+      const soldierForce = unitPeople.filter(isSoldier);
+      const ncoForce = unitPeople.filter(isNco);
       const outsiders = unitPeople.filter(isOutsider);
-
-      const soldierOutsiders =
-        outsiders.filter(isSoldier);
-
-      const ncoOutsiders =
-        outsiders.filter(isNco);
+      const soldierOutsiders = outsiders.filter(isSoldier);
+      const ncoOutsiders = outsiders.filter(isNco);
 
       return {
         unit,
-
-        soldierForce:
-          soldierForce.length,
-
-        ncoForce:
-          ncoForce.length,
-
-        soldierOutside:
-          soldierOutsiders.length,
-
-        ncoOutside:
-          ncoOutsiders.length,
-
-        soldierRemaining:
-          soldierForce.length -
-          soldierOutsiders.length,
-
-        ncoRemaining:
-          ncoForce.length -
-          ncoOutsiders.length,
+        soldierForce: soldierForce.length,
+        ncoForce: ncoForce.length,
+        soldierOutside: soldierOutsiders.length,
+        ncoOutside: ncoOutsiders.length,
+        soldierRemaining: soldierForce.length - soldierOutsiders.length,
+        ncoRemaining: ncoForce.length - ncoOutsiders.length,
       };
     });
 
   const totals = rows.reduce(
     (acc, row) => ({
-      soldierForce:
-        acc.soldierForce +
-        row.soldierForce,
-
-      ncoForce:
-        acc.ncoForce +
-        row.ncoForce,
-
-      soldierOutside:
-        acc.soldierOutside +
-        row.soldierOutside,
-
-      ncoOutside:
-        acc.ncoOutside +
-        row.ncoOutside,
-
-      soldierRemaining:
-        acc.soldierRemaining +
-        row.soldierRemaining,
-
-      ncoRemaining:
-        acc.ncoRemaining +
-        row.ncoRemaining,
+      soldierForce: acc.soldierForce + row.soldierForce,
+      ncoForce: acc.ncoForce + row.ncoForce,
+      soldierOutside: acc.soldierOutside + row.soldierOutside,
+      ncoOutside: acc.ncoOutside + row.ncoOutside,
+      soldierRemaining: acc.soldierRemaining + row.soldierRemaining,
+      ncoRemaining: acc.ncoRemaining + row.ncoRemaining,
     }),
     {
       soldierForce: 0,
@@ -1336,201 +1711,63 @@ function AllUnitsOutsidersReport({
       <table className="w-full min-w-[1100px] border-collapse">
         <thead>
           <tr>
-            <th
-              rowSpan={2}
-              className={`${TH_CLASS} text-center`}
-            >
-              <TableText bold>
-                الوحدة
-              </TableText>
+            <th rowSpan={2} className={`${TH_CLASS} text-center`}>
+              <TableText bold>الوحدة</TableText>
             </th>
-
-            <th
-              colSpan={2}
-              className={`${TH_CLASS} text-center`}
-            >
-              <TableText bold>
-                القوة
-              </TableText>
+            <th colSpan={groupColSpan} className={`${TH_CLASS} text-center`}>
+              <TableText bold>القوة</TableText>
             </th>
-
-            <th
-              colSpan={2}
-              className={`${TH_CLASS} text-center`}
-            >
-              <TableText bold>
-                الخوارج
-              </TableText>
+            <th colSpan={groupColSpan} className={`${TH_CLASS} text-center`}>
+              <TableText bold>الخوارج</TableText>
             </th>
-
-            <th
-              colSpan={2}
-              className={`${TH_CLASS} text-center`}
-            >
-              <TableText bold>
-                المتبقي
-              </TableText>
+            <th colSpan={groupColSpan} className={`${TH_CLASS} text-center`}>
+              <TableText bold>المتبقي</TableText>
             </th>
           </tr>
 
           <tr>
-            <th className={`${TH_CLASS} text-center`}>
-              <TableText>
-                جنود
-              </TableText>
-            </th>
-
-            <th className={`${TH_CLASS} text-center`}>
-              <TableText>
-                ضباط صف
-              </TableText>
-            </th>
-
-            <th className={`${TH_CLASS} text-center`}>
-              <TableText>
-                جنود
-              </TableText>
-            </th>
-
-            <th className={`${TH_CLASS} text-center`}>
-              <TableText>
-                ضباط صف
-              </TableText>
-            </th>
-
-            <th className={`${TH_CLASS} text-center`}>
-              <TableText>
-                جنود
-              </TableText>
-            </th>
-
-            <th className={`${TH_CLASS} text-center`}>
-              <TableText>
-                ضباط صف
-              </TableText>
-            </th>
+            {showSoldier && (
+              <th className={`${TH_CLASS} text-center`}><TableText>جنود</TableText></th>
+            )}
+            {showNco && (
+              <th className={`${TH_CLASS} text-center`}><TableText>ضباط صف</TableText></th>
+            )}
+            {showSoldier && (
+              <th className={`${TH_CLASS} text-center`}><TableText>جنود</TableText></th>
+            )}
+            {showNco && (
+              <th className={`${TH_CLASS} text-center`}><TableText>ضباط صف</TableText></th>
+            )}
+            {showSoldier && (
+              <th className={`${TH_CLASS} text-center`}><TableText>جنود</TableText></th>
+            )}
+            {showNco && (
+              <th className={`${TH_CLASS} text-center`}><TableText>ضباط صف</TableText></th>
+            )}
           </tr>
         </thead>
 
         <tbody>
           {rows.map((row) => (
             <tr key={row.unit.id}>
-              <td className={TH_CLASS}>
-                <TableText>
-                  {row.unit.name}
-                </TableText>
-              </td>
-
-              <td className={TD_CLASS}>
-                <TableText>
-                  {config.category ===
-                  "ضباط صف"
-                    ? 0
-                    : row.soldierForce}
-                </TableText>
-              </td>
-
-              <td className={TD_CLASS}>
-                <TableText>
-                  {config.category ===
-                  "جنود"
-                    ? 0
-                    : row.ncoForce}
-                </TableText>
-              </td>
-
-              <td className={TD_CLASS}>
-                <TableText>
-                  {config.category ===
-                  "ضباط صف"
-                    ? 0
-                    : row.soldierOutside}
-                </TableText>
-              </td>
-
-              <td className={TD_CLASS}>
-                <TableText>
-                  {config.category ===
-                  "جنود"
-                    ? 0
-                    : row.ncoOutside}
-                </TableText>
-              </td>
-
-              <td className={TD_CLASS}>
-                <TableText>
-                  {config.category ===
-                  "ضباط صف"
-                    ? 0
-                    : row.soldierRemaining}
-                </TableText>
-              </td>
-
-              <td className={TD_CLASS}>
-                <TableText>
-                  {config.category ===
-                  "جنود"
-                    ? 0
-                    : row.ncoRemaining}
-                </TableText>
-              </td>
+              <td className={TH_CLASS}><TableText>{row.unit.name}</TableText></td>
+              {showSoldier && <td className={TD_CLASS}><TableText>{row.soldierForce}</TableText></td>}
+              {showNco && <td className={TD_CLASS}><TableText>{row.ncoForce}</TableText></td>}
+              {showSoldier && <td className={TD_CLASS}><TableText>{row.soldierOutside}</TableText></td>}
+              {showNco && <td className={TD_CLASS}><TableText>{row.ncoOutside}</TableText></td>}
+              {showSoldier && <td className={TD_CLASS}><TableText>{row.soldierRemaining}</TableText></td>}
+              {showNco && <td className={TD_CLASS}><TableText>{row.ncoRemaining}</TableText></td>}
             </tr>
           ))}
 
           <tr className="bg-[#f7f9fc]">
-            <td className={TH_CLASS}>
-              <TableText bold>
-                إجمالي
-              </TableText>
-            </td>
-
-            <td className={TD_CLASS}>
-              <TableText bold>
-                {config.category === "ضباط صف"
-                  ? 0
-                  : totals.soldierForce}
-              </TableText>
-            </td>
-
-            <td className={TD_CLASS}>
-              <TableText bold>
-                {config.category === "جنود"
-                  ? 0
-                  : totals.ncoForce}
-              </TableText>
-            </td>
-
-            <td className={TD_CLASS}>
-              <TableText bold>
-                {config.category === "ضباط صف"
-                  ? 0
-                  : totals.soldierOutside}
-              </TableText>
-            </td>
-
-            <td className={TD_CLASS}>
-              <TableText bold>
-                {config.category === "جنود"
-                  ? 0
-                  : totals.ncoOutside}
-              </TableText>
-            </td>
-
-            <td className={TD_CLASS}>
-              <TableText bold>
-                {config.category === "ضباط صف"
-                  ? 0
-                  : totals.soldierRemaining}
-              </TableText>
-            </td>
-
-            <td className={TD_CLASS}>
-              <TableText bold>
-                {config.category === "جنود"
-                  ? 0
-                  : totals.ncoRemaining}
-              </TableText>
-            </td>
+            <td className={TH_CLASS}><TableText bold>إجمالي</TableText></td>
+            {showSoldier && <td className={TD_CLASS}><TableText bold>{totals.soldierForce}</TableText></td>}
+            {showNco && <td className={TD_CLASS}><TableText bold>{totals.ncoForce}</TableText></td>}
+            {showSoldier && <td className={TD_CLASS}><TableText bold>{totals.soldierOutside}</TableText></td>}
+            {showNco && <td className={TD_CLASS}><TableText bold>{totals.ncoOutside}</TableText></td>}
+            {showSoldier && <td className={TD_CLASS}><TableText bold>{totals.soldierRemaining}</TableText></td>}
+            {showNco && <td className={TD_CLASS}><TableText bold>{totals.ncoRemaining}</TableText></td>}
           </tr>
         </tbody>
       </table>
@@ -1730,7 +1967,8 @@ function UnitOutsidersReport({
         config.category
       )
   );
-
+const showSoldier = config.category !== "ضباط صف";
+const showNco = config.category !== "جنود";
   const grouped = new Map<
     string,
     {
@@ -2059,124 +2297,53 @@ function UnitOutsidersReport({
 
                 <tbody>
                   {/* صف ضباط صف */}
-                  <tr>
-                    <td
-                      className={
-                        TH_CLASS
-                      }
-                      style={{
-                        width: 22,
-                        padding: 2,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <div
-                          style={{
-                            writingMode: "vertical-rl",
-                            transform: "rotate(180deg)",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          <TableText bold>
-                           ر.ع
-                          </TableText>
-                        </div>
-                      </div>
-                    </td>
+{/* صف ضباط صف */}
+{showNco && (
+  <tr>
+    <td className={TH_CLASS} style={{ width: 22, padding: 2 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", whiteSpace: "nowrap" }}>
+          <TableText bold>ر.ع</TableText>
+        </div>
+      </div>
+    </td>
 
-                    {tableColumns.map(
-                      (col) => (
-                        <td
-                          key={
-                            col.unit.id
-                          }
-                          className={`${TD_CLASS} text-center`}
-                        >
-                          <TableText>
-                            {
-                              col.ncoValue
-                            }
-                          </TableText>
-                        </td>
-                      )
-                    )}
+    {tableColumns.map((col) => (
+      <td key={col.unit.id} className={`${TD_CLASS} text-center`}>
+        <TableText>{col.ncoValue}</TableText>
+      </td>
+    ))}
 
-                    <td
-                      className={`${TD_CLASS} text-center`}
-                    >
-                      <TableText bold>
-                        {
-                          ncoRowTotal
-                        }
-                      </TableText>
-                    </td>
-                  </tr>
+    <td className={`${TD_CLASS} text-center`}>
+      <TableText bold>{ncoRowTotal}</TableText>
+    </td>
+  </tr>
+)}
 
-                  {/* صف مجند */}
-                  <tr>
-                    <td
-                      className={
-                        TH_CLASS
-                      }
-                      style={{
-                        width: 22,
-                        padding: 2,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <div
-                          style={{
-                            writingMode: "vertical-rl",
-                            transform: "rotate(180deg)",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          <TableText bold>
-                            مجند
-                          </TableText>
-                        </div>
-                      </div>
-                    </td>
+{/* صف مجند */}
+{showSoldier && (
+  <tr>
+    <td className={TH_CLASS} style={{ width: 22, padding: 2 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", whiteSpace: "nowrap" }}>
+          <TableText bold>مجند</TableText>
+        </div>
+      </div>
+    </td>
 
-                    {tableColumns.map(
-                      (col) => (
-                        <td
-                          key={
-                            col.unit.id
-                          }
-                          className={`${TD_CLASS} text-center`}
-                        >
-                          <TableText>
-                            {
-                              col.soldierValue
-                            }
-                          </TableText>
-                        </td>
-                      )
-                    )}
+    {tableColumns.map((col) => (
+      <td key={col.unit.id} className={`${TD_CLASS} text-center`}>
+        <TableText>{col.soldierValue}</TableText>
+      </td>
+    ))}
 
-                    <td
-                      className={`${TD_CLASS} text-center`}
-                    >
-                      <TableText bold>
-                        {
-                          soldierRowTotal
-                        }
-                      </TableText>
-                    </td>
-                  </tr>
+    <td className={`${TD_CLASS} text-center`}>
+      <TableText bold>{soldierRowTotal}</TableText>
+    </td>
+  </tr>
+)}
+
+ 
 
                   {/* صف اجمالي */}
                   <tr className="bg-[#f7f9fc]">
@@ -2244,20 +2411,600 @@ function UnitOutsidersReport({
           // العرض الأفقي (الجديد)
           // اسم الوحدة | خوارج مجندين | خوارج ضباط صف | الاجمالي
           // ====================================================
+<table className="w-full min-w-[560px] border-collapse">
+  <thead>
+    <tr>
+      <th className={`${TH_CLASS} text-center`}><TableText bold>اسم الوحدة</TableText></th>
+      {showSoldier && <th className={`${TH_CLASS} text-center`}><TableText bold>خوارج مجندين</TableText></th>}
+      {showNco && <th className={`${TH_CLASS} text-center`}><TableText bold>خوارج ضباط صف</TableText></th>}
+      <th className={`${TH_CLASS} text-center`}><TableText bold>الاجمالي</TableText></th>
+    </tr>
+  </thead>
+
+  <tbody>
+    {tableColumns.length === 0 ? (
+      <EmptyRow colSpan={2 + (showSoldier ? 1 : 0) + (showNco ? 1 : 0)} />
+    ) : (
+      tableColumns.map((col) => (
+        <tr key={col.unit.id}>
+          <td className={TH_CLASS}><TableText>{col.unit.name}</TableText></td>
+          {showSoldier && <td className={TD_CLASS}><TableText>{col.soldierValue}</TableText></td>}
+          {showNco && <td className={TD_CLASS}><TableText>{col.ncoValue}</TableText></td>}
+          <td className={TD_CLASS}><TableText bold>{col.soldierValue + col.ncoValue}</TableText></td>
+        </tr>
+      ))
+    )}
+
+    {tableColumns.length > 0 && (
+      <tr className="bg-[#f7f9fc]">
+        <td className={TH_CLASS}><TableText bold>الاجمالي</TableText></td>
+        {showSoldier && <td className={TD_CLASS}><TableText bold>{soldierRowTotal}</TableText></td>}
+        {showNco && <td className={TD_CLASS}><TableText bold>{ncoRowTotal}</TableText></td>}
+        <td className={TD_CLASS}><TableText bold>{grandTotal}</TableText></td>
+      </tr>
+    )}
+  </tbody>
+</table>
+        )}
+      </div>
+    </ReportTableWrapper>
+  );
+}
+// ============================================================
+// Report 6
+// يومية عددية لإدارات وحدة
+//
+// نفس شكل UnitOutsidersReport بالظبط (عرض رأسي / أفقي)، لكن
+// التجميع هنا حسب "الإدارة" (external_administrations عن طريق
+// personnel.administration_id) بدل "وحدة الإلحاق".
+//
+// شرط دخول الفرد للحساب: وحدته الأساسية = الوحدة المختارة فقط،
+// بغض النظر عن حالته الخدمية أو مكان إلحاقه.
+// ============================================================
+function UnitAdministrationsReport({
+  people,
+  config,
+  groupLabel = "الإدارة",
+  groupLabelPlural = "الإدارات",
+}: {
+  people: Personnel[];
+  config: ReportConfig;
+  groupLabel?: string;
+  groupLabelPlural?: string;
+}) {
+  const [viewMode, setViewMode] =
+    useState<"vertical" | "horizontal">(
+      "vertical"
+    );
+
+  const showSoldier =
+    config.category !== "ضباط صف";
+
+  const showNco =
+    config.category !== "جنود";
+
+  const unitPeople = people.filter(
+    (person) =>
+      person.primary_unit?.id ===
+        config.unitId &&
+      matchesCategory(
+        person,
+        config.category
+      )
+  );
+
+  const grouped = new Map<
+    string,
+    {
+      administration: {
+        id: string;
+        name: string;
+      };
+      soldiers: number;
+      nco: number;
+    }
+  >();
+
+  unitPeople.forEach((person) => {
+    const admin = person.administration;
+
+    if (!admin?.id) {
+      return;
+    }
+
+    const existing =
+      grouped.get(admin.id);
+
+    if (existing) {
+      if (isSoldier(person)) {
+        existing.soldiers += 1;
+      }
+
+      if (isNco(person)) {
+        existing.nco += 1;
+      }
+
+      return;
+    }
+
+    grouped.set(admin.id, {
+      administration: {
+        id: admin.id,
+        name: admin.name,
+      },
+
+      soldiers: isSoldier(person)
+        ? 1
+        : 0,
+
+      nco: isNco(person)
+        ? 1
+        : 0,
+    });
+  });
+
+  // ✅ فلترة حسب الإدارات المختارة من البوب اب (فاضية = كل الإدارات)
+  const filteredByAdmin =
+    config.administrationIds &&
+    config.administrationIds.length > 0
+      ? Array.from(grouped.values()).filter(
+          (col) =>
+            config.administrationIds.includes(
+              col.administration.id
+            )
+        )
+      : Array.from(grouped.values());
+
+  // ✅ ترتيب: صاعقة دايمًا أول إدارة، والباقي بنفس الترتيب الأصلي
+  const columns = filteredByAdmin.sort(
+    (a, b) => {
+      const aPriority =
+        a.administration.name === "صاعقة"
+          ? 0
+          : 1;
+
+      const bPriority =
+        b.administration.name === "صاعقة"
+          ? 0
+          : 1;
+
+      return aPriority - bPriority;
+    }
+  );
+
+  const ncoRowTotal = columns.reduce(
+    (sum, col) => sum + col.nco,
+    0
+  );
+
+  const soldierRowTotal = columns.reduce(
+    (sum, col) => sum + col.soldiers,
+    0
+  );
+
+  const grandTotal =
+    ncoRowTotal + soldierRowTotal;
+
+  return (
+    <ReportTableWrapper>
+      <div
+        className="flex items-center gap-2 justify-start px-5 pt-4 pb-2 no-print"
+        dir="rtl"
+      >
+        <span
+          style={{
+            ...F,
+            fontSize: 13,
+            color: "#717d96",
+          }}
+        >
+          طريقة العرض:
+        </span>
+
+        <div
+          className="flex items-center rounded-[8px] border border-[#e2e7f0] overflow-hidden h-[38px]"
+          dir="rtl"
+        >
+          <button
+            type="button"
+            onClick={() => setViewMode("vertical")}
+            className="h-full px-4 flex items-center justify-center transition-all"
+            style={{
+              ...F,
+              fontSize: 13,
+              color:
+                viewMode === "vertical"
+                  ? "#fff"
+                  : "#2d3648",
+              background:
+                viewMode === "vertical"
+                  ? "linear-gradient(to bottom, #00b867, #00522e)"
+                  : "#fff",
+              borderLeft: "1px solid #e2e7f0",
+            }}
+          >
+            عرض رأسي
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMode("horizontal")}
+            className="h-full px-4 flex items-center justify-center transition-all"
+            style={{
+              ...F,
+              fontSize: 13,
+              color:
+                viewMode === "horizontal"
+                  ? "#fff"
+                  : "#2d3648",
+              background:
+                viewMode === "horizontal"
+                  ? "linear-gradient(to bottom, #00b867, #00522e)"
+                  : "#fff",
+            }}
+          >
+            عرض أفقي
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto px-5 pb-5">
+        {viewMode === "vertical" ? (
+          <div className="flex flex-col gap-4">
+            {columns.length === 0 ? (
+              <table className="w-full min-w-[300px] border-collapse">
+                <thead>
+                  <tr>
+                    <th
+                      className={`${TH_CLASS} text-center`}
+                    >
+                      <TableText bold>
+                        {groupLabelPlural}
+                      </TableText>
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  <EmptyRow colSpan={1} />
+                </tbody>
+              </table>
+            ) : (
+              <table
+                className="w-full border-collapse"
+                style={{
+                  tableLayout: "fixed",
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th
+                      colSpan={
+                        columns.length + 2
+                      }
+                      className={`${TH_CLASS} text-center`}
+                    >
+                      <TableText bold>
+                        {groupLabelPlural}
+                      </TableText>
+                    </th>
+                  </tr>
+
+                  <tr>
+                    <th
+                      className={`${TH_CLASS} text-center`}
+                      style={{
+                        width: 22,
+                        height: 130,
+                        padding: 2,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: "100%",
+                        }}
+                      >
+                        <div
+                          style={{
+                            writingMode: "vertical-rl",
+                            transform: "rotate(180deg)",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          <TableText bold>
+                            البيان
+                          </TableText>
+                        </div>
+                      </div>
+                    </th>
+
+                    {columns.map(
+                      (col) => (
+                        <th
+                          key={
+                            col.administration.id
+                          }
+                          className={`${TH_CLASS} text-center`}
+                          style={{
+                            width: 22,
+                            height: 130,
+                            padding: 2,
+                            backgroundColor: "#ffffff",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display:
+                                "flex",
+                              alignItems:
+                                "center",
+                              justifyContent:
+                                "center",
+                              height:
+                                "100%",
+                            }}
+                          >
+                            <div
+                              style={{
+                                writingMode:
+                                  "vertical-rl",
+                                transform:
+                                  "rotate(180deg)",
+                                whiteSpace:
+                                  "nowrap",
+                              }}
+                            >
+                              <TableText bold>
+                                {
+                                  col
+                                    .administration
+                                    .name
+                                }
+                              </TableText>
+                            </div>
+                          </div>
+                        </th>
+                      )
+                    )}
+
+                    <th
+                      className={`${TH_CLASS} text-center`}
+                      style={{
+                        width: 22,
+                        height: 130,
+                        padding: 2,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: "100%",
+                        }}
+                      >
+                        <div
+                          style={{
+                            writingMode: "vertical-rl",
+                            transform: "rotate(180deg)",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          <TableText bold>
+                            الاجمالي
+                          </TableText>
+                        </div>
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {/* صف ر.ع — يظهر فقط لو الفئة مش "جنود" */}
+                  {showNco && (
+                    <tr>
+                      <td
+                        className={
+                          TH_CLASS
+                        }
+                        style={{
+                          width: 22,
+                          padding: 2,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <div
+                            style={{
+                              writingMode: "vertical-rl",
+                              transform: "rotate(180deg)",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            <TableText bold>
+                             ر.ع
+                            </TableText>
+                          </div>
+                        </div>
+                      </td>
+
+                      {columns.map(
+                        (col) => (
+                          <td
+                            key={
+                              col.administration.id
+                            }
+                            className={`${TD_CLASS} text-center`}
+                          >
+                            <TableText>
+                              {
+                                col.nco
+                              }
+                            </TableText>
+                          </td>
+                        )
+                      )}
+
+                      <td
+                        className={`${TD_CLASS} text-center`}
+                      >
+                        <TableText bold>
+                          {
+                            ncoRowTotal
+                          }
+                        </TableText>
+                      </td>
+                    </tr>
+                  )}
+
+                  {/* صف مجند — يظهر فقط لو الفئة مش "ضباط صف" */}
+                  {showSoldier && (
+                    <tr>
+                      <td
+                        className={
+                          TH_CLASS
+                        }
+                        style={{
+                          width: 22,
+                          padding: 2,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <div
+                            style={{
+                              writingMode: "vertical-rl",
+                              transform: "rotate(180deg)",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            <TableText bold>
+                              مجند
+                            </TableText>
+                          </div>
+                        </div>
+                      </td>
+
+                      {columns.map(
+                        (col) => (
+                          <td
+                            key={
+                              col.administration.id
+                            }
+                            className={`${TD_CLASS} text-center`}
+                          >
+                            <TableText>
+                              {
+                                col.soldiers
+                              }
+                            </TableText>
+                          </td>
+                        )
+                      )}
+
+                      <td
+                        className={`${TD_CLASS} text-center`}
+                      >
+                        <TableText bold>
+                          {
+                            soldierRowTotal
+                          }
+                        </TableText>
+                      </td>
+                    </tr>
+                  )}
+
+                  <tr className="bg-[#f7f9fc]">
+                    <td
+                      className={
+                        TH_CLASS
+                      }
+                      style={{
+                        width: 22,
+                        padding: 2,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <div
+                          style={{
+                            writingMode: "vertical-rl",
+                            transform: "rotate(180deg)",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          <TableText bold>
+                            اجمالي
+                          </TableText>
+                        </div>
+                      </div>
+                    </td>
+
+                    {columns.map(
+                      (col) => (
+                        <td
+                          key={
+                            col.administration.id
+                          }
+                          className={`${TD_CLASS} text-center`}
+                        >
+                          <TableText bold>
+                            {col.nco +
+                              col.soldiers}
+                          </TableText>
+                        </td>
+                      )
+                    )}
+
+                    <td
+                      className={`${TD_CLASS} text-center`}
+                    >
+                      <TableText bold>
+                        {grandTotal}
+                      </TableText>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
+          </div>
+        ) : (
           <table className="w-full min-w-[560px] border-collapse">
             <thead>
               <tr>
                 <th className={`${TH_CLASS} text-center`}>
-                  <TableText bold>اسم الوحدة</TableText>
+                  <TableText bold>{`اسم ${groupLabel}`}</TableText>
                 </th>
 
-                <th className={`${TH_CLASS} text-center`}>
-                  <TableText bold>خوارج مجندين</TableText>
-                </th>
+                {showSoldier && (
+                  <th className={`${TH_CLASS} text-center`}>
+                    <TableText bold>عدد مجندين</TableText>
+                  </th>
+                )}
 
-                <th className={`${TH_CLASS} text-center`}>
-                  <TableText bold>خوارج ضباط صف</TableText>
-                </th>
+                {showNco && (
+                  <th className={`${TH_CLASS} text-center`}>
+                    <TableText bold>عدد ضباط صف</TableText>
+                  </th>
+                )}
 
                 <th className={`${TH_CLASS} text-center`}>
                   <TableText bold>الاجمالي</TableText>
@@ -2266,40 +3013,50 @@ function UnitOutsidersReport({
             </thead>
 
             <tbody>
-              {tableColumns.length === 0 ? (
-                <EmptyRow colSpan={4} />
+              {columns.length === 0 ? (
+                <EmptyRow
+                  colSpan={
+                    2 +
+                    (showSoldier ? 1 : 0) +
+                    (showNco ? 1 : 0)
+                  }
+                />
               ) : (
-                tableColumns.map((col) => (
-                  <tr key={col.unit.id}>
+                columns.map((col) => (
+                  <tr key={col.administration.id}>
                     <td className={TH_CLASS}>
                       <TableText>
-                        {col.unit.name}
+                        {col.administration.name}
                       </TableText>
                     </td>
 
-                    <td className={TD_CLASS}>
-                      <TableText>
-                        {col.soldierValue}
-                      </TableText>
-                    </td>
+                    {showSoldier && (
+                      <td className={TD_CLASS}>
+                        <TableText>
+                          {col.soldiers}
+                        </TableText>
+                      </td>
+                    )}
 
-                    <td className={TD_CLASS}>
-                      <TableText>
-                        {col.ncoValue}
-                      </TableText>
-                    </td>
+                    {showNco && (
+                      <td className={TD_CLASS}>
+                        <TableText>
+                          {col.nco}
+                        </TableText>
+                      </td>
+                    )}
 
                     <td className={TD_CLASS}>
                       <TableText bold>
-                        {col.soldierValue +
-                          col.ncoValue}
+                        {col.soldiers +
+                          col.nco}
                       </TableText>
                     </td>
                   </tr>
                 ))
               )}
 
-              {tableColumns.length > 0 && (
+              {columns.length > 0 && (
                 <tr className="bg-[#f7f9fc]">
                   <td className={TH_CLASS}>
                     <TableText bold>
@@ -2307,17 +3064,21 @@ function UnitOutsidersReport({
                     </TableText>
                   </td>
 
-                  <td className={TD_CLASS}>
-                    <TableText bold>
-                      {soldierRowTotal}
-                    </TableText>
-                  </td>
+                  {showSoldier && (
+                    <td className={TD_CLASS}>
+                      <TableText bold>
+                        {soldierRowTotal}
+                      </TableText>
+                    </td>
+                  )}
 
-                  <td className={TD_CLASS}>
-                    <TableText bold>
-                      {ncoRowTotal}
-                    </TableText>
-                  </td>
+                  {showNco && (
+                    <td className={TD_CLASS}>
+                      <TableText bold>
+                        {ncoRowTotal}
+                      </TableText>
+                    </td>
+                  )}
 
                   <td className={TD_CLASS}>
                     <TableText bold>
@@ -2329,6 +3090,774 @@ function UnitOutsidersReport({
             </tbody>
           </table>
         )}
+      </div>
+    </ReportTableWrapper>
+  );
+}
+// ============================================================
+// Report 8
+// كشف أسماء إدارات وحدة
+//
+// نفس منطق UnitAdministrationsReport (وحدة أساسية = الوحدة
+// المختارة + فلتر الفئة + الإدارات المختارة + صاعقة أولًا)،
+// لكن بدل الأعداد بنعرض جدول أسماء لكل إدارة.
+// ============================================================
+function UnitAdministrationsNamesReport({
+  people,
+  config,
+  groupLabel = "الإدارة",
+}: {
+  people: Personnel[];
+  config: ReportConfig;
+  groupLabel?: string;
+}) {
+  // ✅ عمود تاريخ التسريح يختفي لو الفئة "ضباط صف" فقط
+  const showDischarge = config.category !== "ضباط صف";
+
+  const unitPeople = people.filter(
+    (person) =>
+      person.primary_unit?.id === config.unitId &&
+      matchesCategory(person, config.category)
+  );
+
+  const grouped = new Map<
+    string,
+    {
+      administration: { id: string; name: string };
+      persons: Personnel[];
+    }
+  >();
+
+  unitPeople.forEach((person) => {
+    const admin = person.administration;
+
+    if (!admin?.id) return;
+
+    const existing = grouped.get(admin.id);
+
+    if (existing) {
+      existing.persons.push(person);
+      return;
+    }
+
+    grouped.set(admin.id, {
+      administration: {
+        id: admin.id,
+        name: admin.name,
+      },
+      persons: [person],
+    });
+  });
+
+  const selectedIds = config.administrationIds ?? [];
+
+  const sections = Array.from(grouped.values())
+    // فلترة الإدارات المختارة (فاضية = كل الإدارات)
+    .filter(
+      (sec) =>
+        selectedIds.length === 0 ||
+        selectedIds.includes(sec.administration.id)
+    )
+    // صاعقة دايمًا أول إدارة
+    .sort((a, b) => {
+      const aPriority =
+        a.administration.name === "صاعقة" ? 0 : 1;
+      const bPriority =
+        b.administration.name === "صاعقة" ? 0 : 1;
+
+      return aPriority - bPriority;
+    })
+    .map((sec) => ({
+      ...sec,
+      persons: [...sec.persons].sort(
+        compareByCategoryAndRank
+      ),
+    }));
+
+  // ✅ نفرد كل الأفراد في قائمة واحدة، وأول فرد في كل إدارة
+  // هو اللي بيرسم خلية الإدارة المدمجة (rowSpan)
+  const rows = sections.flatMap((sec) =>
+    sec.persons.map((person, i) => ({
+      person,
+      administration: sec.administration,
+      isFirstInGroup: i === 0,
+      groupSize: sec.persons.length,
+    }))
+  );
+
+  const totalCols = showDischarge ? 7 : 6;
+
+  if (rows.length === 0) {
+    return (
+      <ReportTableWrapper>
+        <table className="w-full border-collapse">
+          <tbody>
+            <EmptyRow colSpan={1} />
+          </tbody>
+        </table>
+      </ReportTableWrapper>
+    );
+  }
+const headers = [
+    "م",
+    groupLabel,
+    "الرقم العسكري",
+    "الدرجة",
+    "الاسم",
+    ...(showDischarge ? ["تاريخ التسريح"] : []),
+    "ملاحظات",
+  ];
+
+  return (
+    <ReportTableWrapper>
+      <style>
+        {`
+          @media print {
+            .admin-names-table thead {
+              display: table-header-group;
+            }
+            .admin-names-table tr {
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
+          }
+        `}
+      </style>
+
+      <div className="overflow-x-auto">
+        <table className="admin-names-table w-full min-w-[800px] border-collapse">
+          <thead>
+            <tr>
+              {headers.map((h) => (
+                <th
+                  key={h}
+                  className={`${TH_CLASS} text-center`}
+                >
+                  <TableText bold>{h}</TableText>
+                </th>
+              ))}
+            </tr>
+          </thead>
+
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={row.person.id}>
+                <td className={TD_CLASS}>
+                  <TableText>{index + 1}</TableText>
+                </td>
+
+                {/* ✅ خلية الإدارة: بتظهر مرة واحدة ومدمجة على كل أفراد الإدارة */}
+                {row.isFirstInGroup && (
+                  <td
+                    rowSpan={row.groupSize}
+                    className={TD_CLASS}
+                    style={{ verticalAlign: "middle" }}
+                  >
+                    <TableText bold>
+                      {row.administration.name}
+                    </TableText>
+                  </td>
+                )}
+
+                <td className={TD_CLASS}>
+                  <TableText>
+                    {row.person.military_number}
+                  </TableText>
+                </td>
+
+                <td className={TD_CLASS}>
+                  <TableText>
+                    {row.person.rank?.name ?? "-"}
+                  </TableText>
+                </td>
+
+                <td className={TD_CLASS}>
+                  <TableText>
+                    {row.person.full_name}
+                  </TableText>
+                </td>
+
+                {showDischarge && (
+                  <td className={TD_CLASS}>
+                    <TableText>
+                      {isNco(row.person)
+                        ? "-"
+                        : formatDate(
+                            row.person.discharge_date
+                          )}
+                    </TableText>
+                  </td>
+                )}
+
+                <td className={TD_CLASS}>
+                  <TableText>{""}</TableText>
+                </td>
+              </tr>
+            ))}
+
+            {/* الإجمالي العام */}
+            <tr className="bg-[#f7f9fc]">
+              <td
+                colSpan={totalCols - 1}
+                className={TH_CLASS}
+              >
+                <TableText bold>الإجمالي العام</TableText>
+              </td>
+
+              <td className={TD_CLASS}>
+                <TableText bold>{rows.length}</TableText>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </ReportTableWrapper>
+  );
+}
+// ============================================================
+// يومية عددية لوظائف وحدة
+// وحدة أساسية = الوحدة المختارة، وصف لكل وظيفة (عرض أفقي)
+// ============================================================
+function UnitJobsReport({
+  people,
+  config,
+}: {
+  people: Personnel[];
+  config: ReportConfig;
+}) {
+  const showSoldier = config.category !== "ضباط صف";
+  const showNco = config.category !== "جنود";
+
+  const unitPeople = people.filter(
+    (person) =>
+      person.primary_unit?.id === config.unitId &&
+      matchesCategory(person, config.category)
+  );
+
+  const grouped = new Map<
+    string,
+    { id: string; name: string; soldiers: number; nco: number }
+  >();
+
+  unitPeople.forEach((person) => {
+    const id = person.job?.id ?? NO_JOB_ID;
+    const name = person.job?.name ?? NO_JOB_NAME;
+
+    const entry = grouped.get(id) ?? {
+      id,
+      name,
+      soldiers: 0,
+      nco: 0,
+    };
+
+    if (isSoldier(person)) entry.soldiers += 1;
+    if (isNco(person)) entry.nco += 1;
+
+    grouped.set(id, entry);
+  });
+
+  const rows = Array.from(grouped.values()).sort((a, b) => {
+    if (a.id === NO_JOB_ID) return 1;
+    if (b.id === NO_JOB_ID) return -1;
+
+    return a.name.localeCompare(b.name, "ar");
+  });
+
+  const totalSoldiers = rows.reduce((sum, r) => sum + r.soldiers, 0);
+  const totalNco = rows.reduce((sum, r) => sum + r.nco, 0);
+  const grandTotal = totalSoldiers + totalNco;
+
+  const emptyColSpan = 3 + (showSoldier ? 1 : 0) + (showNco ? 1 : 0);
+
+  return (
+    <ReportTableWrapper>
+      <div className="overflow-x-auto p-5">
+        <table className="w-full min-w-[560px] border-collapse">
+          <thead>
+            <tr>
+              <th className={`${TH_CLASS} text-center`}>
+                <TableText bold>م</TableText>
+              </th>
+
+              <th className={`${TH_CLASS} text-center`}>
+                <TableText bold>اسم الوظيفة</TableText>
+              </th>
+
+              {showSoldier && (
+                <th className={`${TH_CLASS} text-center`}>
+                  <TableText bold>عدد مجندين</TableText>
+                </th>
+              )}
+
+              {showNco && (
+                <th className={`${TH_CLASS} text-center`}>
+                  <TableText bold>عدد ضباط صف</TableText>
+                </th>
+              )}
+
+              <th className={`${TH_CLASS} text-center`}>
+                <TableText bold>الاجمالي</TableText>
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {rows.length === 0 ? (
+              <EmptyRow colSpan={emptyColSpan} />
+            ) : (
+              rows.map((row, index) => (
+                <tr key={row.id}>
+                  <td className={TD_CLASS}>
+                    <TableText>{index + 1}</TableText>
+                  </td>
+
+                  <td className={TD_CLASS}>
+                    <TableText>{row.name}</TableText>
+                  </td>
+
+                  {showSoldier && (
+                    <td className={TD_CLASS}>
+                      <TableText>{row.soldiers}</TableText>
+                    </td>
+                  )}
+
+                  {showNco && (
+                    <td className={TD_CLASS}>
+                      <TableText>{row.nco}</TableText>
+                    </td>
+                  )}
+
+                  <td className={TD_CLASS}>
+                    <TableText bold>{row.soldiers + row.nco}</TableText>
+                  </td>
+                </tr>
+              ))
+            )}
+
+            {rows.length > 0 && (
+              <tr className="bg-[#f7f9fc]">
+                <td colSpan={2} className={TH_CLASS}>
+                  <TableText bold>الاجمالي</TableText>
+                </td>
+
+                {showSoldier && (
+                  <td className={TD_CLASS}>
+                    <TableText bold>{totalSoldiers}</TableText>
+                  </td>
+                )}
+
+                {showNco && (
+                  <td className={TD_CLASS}>
+                    <TableText bold>{totalNco}</TableText>
+                  </td>
+                )}
+
+                <td className={TD_CLASS}>
+                  <TableText bold>{grandTotal}</TableText>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </ReportTableWrapper>
+  );
+}
+// ============================================================
+// Report 7
+// يومية عددية لإدارات جميع الوحدات
+//
+// جدول واحد فقط (مفيش رأسي/أفقي): صف لكل وحدة رئيسية، وعمود
+// مزدوج (مجند / ر.ع) لكل إدارة، بالإضافة لعمود إجمالي مزدوج في
+// النهاية. الطباعة هنا landscape دايمًا.
+//
+// شرط دخول الفرد لحساب أي وحدة: وحدته الأساسية = هذه الوحدة، بغض
+// النظر عن حالته الخدمية أو مكان إلحاقه (نفس مبدأ "قوة الوحدة").
+// ============================================================
+function AllUnitsAdministrationsReport({
+  units,
+  people,
+  config,
+}: {
+  units: Unit[];
+  people: Personnel[];
+  config: ReportConfig;
+}) {
+  const showSoldier =
+    config.category !== "ضباط صف";
+
+  const showNco =
+    config.category !== "جنود";
+
+  // ✅ الوحدات الرئيسية مرتبة حسب التسلسل الهرمي المعتمد
+  const mainUnits = units
+    .filter(
+      (unit) => unit.unit_type === "MAIN"
+    )
+    .sort((a, b) => {
+      const indexA =
+        ALL_OUTSIDERS_UNIT_ORDER.indexOf(
+          a.name.trim()
+        );
+
+      const indexB =
+        ALL_OUTSIDERS_UNIT_ORDER.indexOf(
+          b.name.trim()
+        );
+
+      if (indexA === -1) return 1;
+      if (indexB === -1) return -1;
+
+      return indexA - indexB;
+    });
+
+  // ✅ كل الإدارات الموجودة فعليًا في البيانات
+  const adminMap = new Map<
+    string,
+    { id: string; name: string }
+  >();
+
+  people.forEach((person) => {
+    if (person.administration?.id) {
+      adminMap.set(
+        person.administration.id,
+        {
+          id: person.administration.id,
+          name: person.administration.name,
+        }
+      );
+    }
+  });
+
+  let administrations = Array.from(
+    adminMap.values()
+  );
+
+  // ✅ فلترة حسب الإدارات المختارة من البوب اب (فاضية = كل الإدارات)
+  if (
+    config.administrationIds &&
+    config.administrationIds.length > 0
+  ) {
+    administrations =
+      administrations.filter((admin) =>
+        config.administrationIds.includes(
+          admin.id
+        )
+      );
+  }
+
+  // ✅ ترتيب: صاعقة دايمًا أول إدارة
+  administrations = administrations.sort(
+    (a, b) => {
+      const aPriority =
+        a.name === "صاعقة" ? 0 : 1;
+
+      const bPriority =
+        b.name === "صاعقة" ? 0 : 1;
+
+      return aPriority - bPriority;
+    }
+  );
+
+  const subColsCount =
+    (showSoldier ? 1 : 0) +
+    (showNco ? 1 : 0);
+
+  // ✅ صفوف الجدول: لكل وحدة، لكل إدارة، عدد مجند وعدد ر.ع
+  const rows = mainUnits.map((unit) => {
+    const unitPeople = people.filter(
+      (person) =>
+        person.primary_unit?.id ===
+        unit.id
+    );
+
+    const perAdmin = administrations.map(
+      (admin) => {
+        const adminPeople =
+          unitPeople.filter(
+            (person) =>
+              person.administration
+                ?.id === admin.id
+          );
+
+        return {
+          adminId: admin.id,
+          soldiers:
+            adminPeople.filter(isSoldier)
+              .length,
+          nco: adminPeople.filter(isNco)
+            .length,
+        };
+      }
+    );
+
+    const totalSoldiers = perAdmin.reduce(
+      (sum, a) => sum + a.soldiers,
+      0
+    );
+
+    const totalNco = perAdmin.reduce(
+      (sum, a) => sum + a.nco,
+      0
+    );
+
+    return {
+      unit,
+      perAdmin,
+      totalSoldiers,
+      totalNco,
+    };
+  });
+
+  // ✅ إجمالي عام لكل إدارة عبر كل الوحدات
+  const grandPerAdmin = administrations.map(
+    (admin, idx) => ({
+      adminId: admin.id,
+      soldiers: rows.reduce(
+        (sum, row) =>
+          sum + row.perAdmin[idx].soldiers,
+        0
+      ),
+      nco: rows.reduce(
+        (sum, row) =>
+          sum + row.perAdmin[idx].nco,
+        0
+      ),
+    })
+  );
+
+  const grandTotalSoldiers = rows.reduce(
+    (sum, row) => sum + row.totalSoldiers,
+    0
+  );
+
+  const grandTotalNco = rows.reduce(
+    (sum, row) => sum + row.totalNco,
+    0
+  );
+
+  // ✅ صف رؤوس الأعمدة الفرعية (مجند / ر.ع) — قائمة مسطّحة بدل
+  // Fragments متداخلة، عشان نضمن key فريد لكل عمود.
+  const subHeaderCells: {
+    key: string;
+    label: string;
+  }[] = [];
+
+  administrations.forEach((admin) => {
+    if (showSoldier) {
+      subHeaderCells.push({
+        key: `${admin.id}-s`,
+        label: "مجند",
+      });
+    }
+
+    if (showNco) {
+      subHeaderCells.push({
+        key: `${admin.id}-n`,
+        label: "ر.ع",
+      });
+    }
+  });
+
+  if (showSoldier) {
+    subHeaderCells.push({
+      key: "total-s",
+      label: "مجند",
+    });
+  }
+
+  if (showNco) {
+    subHeaderCells.push({
+      key: "total-n",
+      label: "ر.ع",
+    });
+  }
+
+  function buildRowCells(
+    perAdmin: {
+      adminId: string;
+      soldiers: number;
+      nco: number;
+    }[],
+    totalSoldiers: number,
+    totalNco: number
+  ) {
+    const cells: {
+      key: string;
+      value: number;
+    }[] = [];
+
+    perAdmin.forEach((a) => {
+      if (showSoldier) {
+        cells.push({
+          key: `${a.adminId}-s`,
+          value: a.soldiers,
+        });
+      }
+
+      if (showNco) {
+        cells.push({
+          key: `${a.adminId}-n`,
+          value: a.nco,
+        });
+      }
+    });
+
+    if (showSoldier) {
+      cells.push({
+        key: "total-s",
+        value: totalSoldiers,
+      });
+    }
+
+    if (showNco) {
+      cells.push({
+        key: "total-n",
+        value: totalNco,
+      });
+    }
+
+    return cells;
+  }
+
+  const emptyColSpan =
+    1 +
+    administrations.length *
+      subColsCount +
+    subColsCount;
+
+  return (
+    <ReportTableWrapper>
+      {/* ✅ الطباعة landscape دايمًا لهذا التقرير */}
+      <style>
+        {`
+          @media print {
+            @page {
+              size: landscape;
+            }
+          }
+        `}
+      </style>
+
+      <div className="overflow-x-auto p-5">
+        <table className="w-full border-collapse min-w-[900px]">
+          <thead>
+            <tr>
+              <th
+                rowSpan={2}
+                className={`${TH_CLASS} text-center`}
+              >
+                <TableText bold>
+                  الوحدة
+                </TableText>
+              </th>
+
+              {administrations.map(
+                (admin) => (
+                  <th
+                    key={admin.id}
+                    colSpan={
+                      subColsCount
+                    }
+                    className={`${TH_CLASS} text-center`}
+                  >
+                    <TableText bold>
+                      {admin.name}
+                    </TableText>
+                  </th>
+                )
+              )}
+
+              <th
+                colSpan={subColsCount}
+                className={`${TH_CLASS} text-center`}
+              >
+                <TableText bold>
+                  الاجمالي
+                </TableText>
+              </th>
+            </tr>
+
+            <tr>
+              {subHeaderCells.map(
+                (cell) => (
+                  <th
+                    key={cell.key}
+                    className={`${TH_CLASS} text-center`}
+                  >
+                    <TableText>
+                      {cell.label}
+                    </TableText>
+                  </th>
+                )
+              )}
+            </tr>
+          </thead>
+
+          <tbody>
+            {rows.length === 0 ? (
+              <EmptyRow
+                colSpan={emptyColSpan}
+              />
+            ) : (
+              rows.map((row) => (
+                <tr key={row.unit.id}>
+                  <td className={TH_CLASS}>
+                    <TableText>
+                      {row.unit.name}
+                    </TableText>
+                  </td>
+
+                  {buildRowCells(
+                    row.perAdmin,
+                    row.totalSoldiers,
+                    row.totalNco
+                  ).map((cell) => (
+                    <td
+                      key={cell.key}
+                      className={`${TD_CLASS} text-center`}
+                    >
+                      <TableText
+                        bold={cell.key.startsWith(
+                          "total"
+                        )}
+                      >
+                        {cell.value}
+                      </TableText>
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+
+            {rows.length > 0 && (
+              <tr className="bg-[#f7f9fc]">
+                <td
+                  className={TH_CLASS}
+                >
+                  <TableText bold>
+                    إجمالي
+                  </TableText>
+                </td>
+
+                {buildRowCells(
+                  grandPerAdmin,
+                  grandTotalSoldiers,
+                  grandTotalNco
+                ).map((cell) => (
+                  <td
+                    key={cell.key}
+                    className={`${TD_CLASS} text-center`}
+                  >
+                    <TableText bold>
+                      {cell.value}
+                    </TableText>
+                  </td>
+                ))}
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </ReportTableWrapper>
   );
@@ -2590,12 +4119,63 @@ function Step3({
             config={config}
           />
         );
-
       case "attached-to-unit":
         return (
           <AttachedToUnitReport
             people={people}
             config={config}
+          />
+        );
+
+      case "unit-administrations":
+        return (
+          <UnitAdministrationsReport
+            people={people}
+            config={config}
+          />
+        );
+      case "all-units-administrations":
+        return (
+          <AllUnitsAdministrationsReport
+            units={units}
+            people={people}
+            config={config}
+          />
+        );
+
+      // ✅ جديد
+      case "unit-administrations-names":
+        return (
+          <UnitAdministrationsNamesReport
+            people={people}
+            config={config}
+          />
+        );
+              case "all-units-jobs":
+        return (
+          <AllUnitsAdministrationsReport
+            units={units}
+            people={projectJobsAsGroups(people)}
+            config={config}
+          />
+        );
+
+      case "unit-jobs":
+        return (
+          <UnitAdministrationsReport
+            people={projectJobsAsGroups(people)}
+            config={config}
+            groupLabel="الوظيفة"
+            groupLabelPlural="الوظائف"
+          />
+        );
+
+      case "unit-jobs-names":
+        return (
+          <UnitAdministrationsNamesReport
+            people={projectJobsAsGroups(people)}
+            config={config}
+            groupLabel="الوظيفة"
           />
         );
 
@@ -2766,6 +4346,17 @@ export function DailyReportsPage() {
                 id,
                 name,
                 unit_type
+              ),
+
+              administration:external_administrations(
+                id,
+                name,
+                code
+              ),
+
+              job:jobs!job_id(
+                id,
+                name
               )
             `)
             .eq("is_active", true)
@@ -2774,11 +4365,6 @@ export function DailyReportsPage() {
 
       setPeople(personnelData);
     } catch (err: any) {
-      console.error(
-        "Daily reports loading error:",
-        err
-      );
-
       setError(
         err?.message ||
           "حدث خطأ أثناء تحميل بيانات اليوميات"

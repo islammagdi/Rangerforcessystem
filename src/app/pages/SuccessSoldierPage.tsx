@@ -21,6 +21,7 @@ interface Personnel {
   discharge_date: string | null;
   is_active: boolean;
   updated_at: string | null;
+    job_id: string | null;
 }
 
 interface Rank {
@@ -28,7 +29,10 @@ interface Rank {
   name: string;
   code: string | null;
 }
-
+interface Job {
+  id: string;
+  name: string;
+}
 interface PersonnelCategory {
   id: string;
   name: string;
@@ -559,7 +563,7 @@ export function SuccessSoldierPage() {
 
   const [attachmentUnit, setAttachmentUnit] =
     useState<Unit | null>(null);
-
+  const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] =
     useState(true);
 
@@ -615,7 +619,8 @@ export function SuccessSoldierPage() {
           attachment_unit_id,
           discharge_date,
           is_active,
-          updated_at
+          updated_at,
+          job_id
         `)
         .eq("id", id)
         .single();
@@ -647,6 +652,7 @@ export function SuccessSoldierPage() {
         statusResult,
         primaryUnitResult,
         attachmentUnitResult,
+        jobResult,
       ] = await Promise.all([
         // الدرجة
         supabase
@@ -706,6 +712,14 @@ export function SuccessSoldierPage() {
               data: null,
               error: null,
             }),
+        // الوظيفة
+                personnelData.job_id
+          ? supabase
+              .from("jobs")
+              .select("id, name")
+              .eq("id", personnelData.job_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
       ]);
 
       // ----------------------------------------------------------------------
@@ -732,6 +746,10 @@ export function SuccessSoldierPage() {
         throw attachmentUnitResult.error;
       }
 
+      if (jobResult.error) {
+        throw jobResult.error;
+      }
+
       // ----------------------------------------------------------------------
       // 4. حفظ البيانات
       // ----------------------------------------------------------------------
@@ -755,6 +773,7 @@ export function SuccessSoldierPage() {
       setAttachmentUnit(
         attachmentUnitResult.data ?? null
       );
+            setJob((jobResult.data as Job | null) ?? null);
     } catch (err) {
       console.error(
         "Error loading personnel:",
@@ -822,7 +841,7 @@ export function SuccessSoldierPage() {
           personnel.discharge_date
         )
       : "لا يوجد";
-
+  const isVolunteer = category?.code === "VOLUNTEER";
   // ==========================================================================
   // UI
   // ==========================================================================
@@ -1028,14 +1047,12 @@ export function SuccessSoldierPage() {
               <div className="flex flex-wrap gap-6">
                 <InfoRow
                   label="جهة الإلحاق"
-                  value={
-                    attachmentUnitName
-                  }
+                  value={attachmentUnitName}
                 />
 
                 <InfoRow
-                  label="تاريخ التسريح"
-                  value={dischargeDate}
+                  label="الوظيفة"
+                  value={job?.name ?? "لا يوجد"}
                 />
               </div>
 
@@ -1044,20 +1061,22 @@ export function SuccessSoldierPage() {
               <div className="flex flex-wrap gap-6">
                 <InfoRow
                   label="حالة الفرد"
-                  value={
-                    personnel.is_active
-                      ? "نشط"
-                      : "غير نشط"
-                  }
+                  value={personnel.is_active ? "نشط" : "غير نشط"}
                 />
 
                 <InfoRow
                   label="تاريخ القيد"
-                  value={formatDate(
-                    personnel.created_at
-                  )}
+                  value={formatDate(personnel.created_at)}
                 />
               </div>
+
+              {/* Row 6: تاريخ التسريح، مش بيظهر للمتطوع */}
+
+              {!isVolunteer && (
+                <div className="flex flex-wrap gap-6">
+                  <InfoRow label="تاريخ التسريح" value={dischargeDate} />
+                </div>
+              )}
             </div>
           </div>
 
