@@ -724,7 +724,67 @@ export async function updateUnitHistoryTransferDate(
     throw new Error("لم يتم تحديث السجل، تأكد من الصلاحيات");
   }
 }
+/* =========================================================
+   الترقيات
+========================================================= */
 
+export interface PromotionRow {
+  id: string;
+  social_record_id: string;
+  rank_id: string;
+  rank_name: string | null;
+  promotion_date: string;
+  decision_number: string;
+}
+
+export async function fetchPromotions(socialRecordId: string): Promise<PromotionRow[]> {
+  const { data, error } = await supabase
+    .from("social_record_promotions")
+    .select(
+      `
+      id,
+      social_record_id,
+      rank_id,
+      promotion_date,
+      decision_number,
+      ranks ( name )
+    `
+    )
+    .eq("social_record_id", socialRecordId)
+    .order("promotion_date", { ascending: false });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row: any) => {
+    const rank = Array.isArray(row.ranks) ? row.ranks[0] : row.ranks;
+
+    return {
+      id: row.id,
+      social_record_id: row.social_record_id,
+      rank_id: row.rank_id,
+      rank_name: rank?.name ?? null,
+      promotion_date: row.promotion_date,
+      decision_number: row.decision_number,
+    };
+  });
+}
+
+export async function addPromotion(input: {
+  social_record_id: string;
+  rank_id: string;
+  promotion_date: string;
+  decision_number: string;
+}): Promise<void> {
+  const { error } = await supabase.from("social_record_promotions").insert(input);
+
+  if (error) throw error;
+}
+
+export async function deletePromotion(id: string): Promise<void> {
+  const { error } = await supabase.from("social_record_promotions").delete().eq("id", id);
+
+  if (error) throw error;
+}
 /* =========================================================
    حساب مدة الخدمة (يوم/شهر/سنة) بين تاريخين
 ========================================================= */

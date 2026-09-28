@@ -40,6 +40,10 @@ import {
   type District,
   type SocialRecordInjury,
   type SocialRecordDocument,
+    fetchPromotions,
+  addPromotion,
+  deletePromotion,
+  type PromotionRow,
 } from "../../lib/socialRecords";
 
 const F: React.CSSProperties = {
@@ -127,6 +131,13 @@ export function SocialRecordDetailPage() {
   const [newDocumentName, setNewDocumentName] = useState("");
   const [uploadingDocument, setUploadingDocument] = useState(false);
 
+    const [promotions, setPromotions] = useState<PromotionRow[]>([]);
+
+  const [newPromotionRankId, setNewPromotionRankId] = useState("");
+  const [newPromotionDate, setNewPromotionDate] = useState("");
+  const [newPromotionDecisionNumber, setNewPromotionDecisionNumber] = useState("");
+  const [savingPromotion, setSavingPromotion] = useState(false);
+
   useEffect(() => {
     if (personnelId) loadAll(personnelId);
   }, [personnelId]);
@@ -199,19 +210,22 @@ export function SocialRecordDetailPage() {
       }
 
       if (full.record) {
-        const [history, injuryRows, documentRows] = await Promise.all([
+        const [history, injuryRows, documentRows, promotionRows] = await Promise.all([
           fetchUnitHistory(full.record.id),
           fetchInjuries(full.record.id),
           fetchDocuments(full.record.id),
+          fetchPromotions(full.record.id),
         ]);
 
         setUnitHistory(history);
         setInjuries(injuryRows);
         setDocuments(documentRows);
+        setPromotions(promotionRows);
       } else {
         setUnitHistory([]);
         setInjuries([]);
         setDocuments([]);
+        setPromotions([]);
       }
     } catch (err: any) {
       setError(err?.message || "حدث خطأ أثناء تحميل السجل");
@@ -458,6 +472,60 @@ export function SocialRecordDetailPage() {
       setError(err?.message || "حدث خطأ أثناء الحذف");
     }
   }
+    async function handleAddPromotion() {
+    if (!data?.record) {
+      setError("احفظ البيانات الاجتماعية أولًا قبل إضافة ترقية");
+      return;
+    }
+
+    if (!newPromotionRankId) {
+      setError("اختر الدرجة");
+      return;
+    }
+
+    if (!newPromotionDate) {
+      setError("تاريخ الترقي مطلوب");
+      return;
+    }
+
+    if (!newPromotionDecisionNumber.trim()) {
+      setError("رقم قرار الترقي مطلوب");
+      return;
+    }
+
+    setSavingPromotion(true);
+    setError("");
+
+    try {
+      await addPromotion({
+        social_record_id: data.record.id,
+        rank_id: newPromotionRankId,
+        promotion_date: newPromotionDate,
+        decision_number: newPromotionDecisionNumber.trim(),
+      });
+
+      setNewPromotionRankId("");
+      setNewPromotionDate("");
+      setNewPromotionDecisionNumber("");
+
+      if (personnelId) await loadAll(personnelId);
+    } catch (err: any) {
+      setError(err?.message || "حدث خطأ أثناء إضافة الترقية");
+    } finally {
+      setSavingPromotion(false);
+    }
+  }
+
+  async function handleDeletePromotion(id: string) {
+    if (!window.confirm("هل تريد حذف هذه الترقية؟")) return;
+
+    try {
+      await deletePromotion(id);
+      if (personnelId) await loadAll(personnelId);
+    } catch (err: any) {
+      setError(err?.message || "حدث خطأ أثناء الحذف");
+    }
+  }
 
   function startEditTransfer(row: UnitHistoryRow) {
     setEditingUnitRowId(row.id);
@@ -663,7 +731,18 @@ export function SocialRecordDetailPage() {
           )
           .join("")
       : `<tr><td colspan="6" class="empty-row">لا يوجد سجل وحدات مضاف</td></tr>`;
-
+    const promotionRowsHtml = promotions.length
+      ? promotions
+          .map(
+            (p) => `
+        <tr>
+          <td>${ar(p.promotion_date)}</td>
+          <td>${p.rank_name ?? "-"}</td>
+          <td>${ar(p.decision_number)}</td>
+        </tr>`
+          )
+          .join("")
+      : `<tr><td colspan="3" class="empty-row">لا يوجد ترقيات مسجلة</td></tr>`;
     const injuryRowsHtml = injuries.length
       ? injuries
           .map(
@@ -688,14 +767,16 @@ export function SocialRecordDetailPage() {
               .map(
                 (item) => `
               <div class="attachment-item">
-                ${
-                  item.isImage && item.url
-                    ? `<img src="${item.url}" />`
-                    : `<div class="attachment-placeholder">${
-                        item.isImage ? "تعذر تحميل الصورة" : "ملف غير صورة (لا يُعرض في الطباعة)"
-                      }</div>`
-                }
                 <div class="attachment-caption">${item.name}</div>
+                <div class="attachment-img-box">
+                  ${
+                    item.isImage && item.url
+                      ? `<img src="${item.url}" />`
+                      : `<div class="attachment-placeholder">${
+                          item.isImage ? "تعذر تحميل الصورة" : "ملف غير صورة (لا يُعرض في الطباعة)"
+                        }</div>`
+                  }
+                </div>
               </div>`
               )
               .join("")}
@@ -712,9 +793,10 @@ export function SocialRecordDetailPage() {
           <title>بيان تفصيلي لفرد - ${data.personnel.full_name}</title>
 
           <style>
+          
             @page {
               size: A4;
-              margin: 8mm;
+              margin: 0;
             }
 
             * {
@@ -732,10 +814,18 @@ export function SocialRecordDetailPage() {
             }
 
             .page {
+              padding: 0 16mm;
+            }
+
+            .page-frame {
+              position: fixed;
+              top: 8mm;
+              left: 8mm;
+              right: 8mm;
+              bottom: 8mm;
               border: 2px solid #cbd2e0;
               border-radius: 10px;
-              padding: 18px 24px;
-              min-height: 100%;
+              pointer-events: none;
             }
             .header {
               position: relative;
@@ -848,7 +938,24 @@ export function SocialRecordDetailPage() {
               align-items: flex-start;
               gap: 16px;
             }
+            .section-block {
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
 
+            .section-title {
+              break-after: avoid;
+              page-break-after: avoid;
+            }
+
+            thead {
+              display: table-header-group;
+            }
+
+             table:not(.layout) tr {
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
             .photo-box-inline {
               width: 90px;
               height: 90px;
@@ -863,12 +970,29 @@ export function SocialRecordDetailPage() {
               text-align: center;
             }
 
-            .photo-box-inline img {
+                   .photo-box-inline img {
               width: 100%;
               height: 100%;
               object-fit: cover;
+              object-position: top;
+            }
+            table.layout {
+              width: 100%;
+              border: none;
+              border-collapse: collapse;
             }
 
+            table.layout > thead > tr > td,
+            table.layout > tfoot > tr > td,
+            table.layout > tbody > tr > td {
+              border: none;
+              padding: 0;
+              text-align: right;
+            }
+
+            .spacer {
+              height: 14mm;
+            }
             .attachments-page {
               page-break-before: always;
               break-before: page;
@@ -876,57 +1000,65 @@ export function SocialRecordDetailPage() {
               box-decoration-break: clone;
             }
 
-            .attachments-grid {
-              display: flex;
-              flex-wrap: wrap;
-              justify-content: center;
-              align-items: flex-start;
-              gap: 12px 10px;
+                    .attachments-grid {
+              display: grid;
+              grid-template-columns: repeat(2, 1fr);
+              gap: 14px;
             }
 
             .attachment-item {
-              width: calc(50% - 5px);
               display: flex;
               flex-direction: column;
-              align-items: center;
-              gap: 4px;
+              border: 1px solid #e2e7f0;
+              border-radius: 8px;
+              overflow: hidden;
               break-inside: avoid;
               page-break-inside: avoid;
             }
 
-            .attachment-item img {
-              display: block;
-              width: 100%;
-              height: auto;
-              max-height: 125mm;
-              object-fit: contain;
-              border: 1px solid #e2e7f0;
-              border-radius: 6px;
+            .attachment-caption {
+              order: -1;
+              font-size: 12px;
+              font-weight: 700;
+              text-align: center;
+              background: #f7f9fc;
+              padding: 6px 8px;
+              border-bottom: 1px solid #e2e7f0;
             }
 
-            .attachment-placeholder {
-              width: 100%;
-              height: 40mm;
+            .attachment-img-box {
+              height: 110mm;
               display: flex;
               align-items: center;
               justify-content: center;
-              border: 1px dashed #cbd2e0;
-              border-radius: 6px;
-              color: #a1aebe;
-              font-size: 12px;
-              text-align: center;
+              background: #fff;
+              padding: 6px;
             }
 
-            .attachment-caption {
+            .attachment-img-box img {
+              max-width: 100%;
+              max-height: 100%;
+              object-fit: contain;
+            }
+
+            .attachment-placeholder {
+              color: #a1aebe;
               font-size: 12px;
-              font-weight: 700;
               text-align: center;
             }
           </style>
         </head>
 
         <body>
-          <div class="page">
+          <div class="page-frame"></div>
+
+          <table class="layout">
+            <thead><tr><td><div class="spacer"></div></td></tr></thead>
+            <tfoot><tr><td><div class="spacer"></div></td></tr></tfoot>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="page">
             <div class="header">
                 <div class="header-text">
                   <div class="header-title">قيادة قوات الصـاعقة</div>
@@ -940,50 +1072,73 @@ export function SocialRecordDetailPage() {
               <img src="${logoImg}" class="header-logo" />
             </div>
 
-            <div class="section-title">البيانات الأساسية</div>
-            <div class="basic-info-row">
-              <div class="info-grid" style="flex: 1;">
-                <div class="info-item"><span class="info-label">الرقم العسكري:</span><span class="info-value">${ar(data.personnel.military_number)}</span></div>
-                <div class="info-item"><span class="info-label">الدرجة:</span><span class="info-value">${data.personnel.rank_name ?? "-"}</span></div>
-                <div class="info-item"><span class="info-label">الاسم:</span><span class="info-value">${data.personnel.full_name}</span></div>
-                <div class="info-item"><span class="info-label">الوحدة الحالية:</span><span class="info-value">${data.personnel.unit_name ?? "-"}</span></div>
-                <div class="info-item"><span class="info-label">الوظيفة:</span><span class="info-value">${data.personnel.job_name ?? "-"}</span></div>
-                <div class="info-item"><span class="info-label">المستوى التعليمي:</span><span class="info-value">${data.personnel.education_level_name ?? "-"}</span></div>
-                <div class="info-item"><span class="info-label">الإدارة/السلاح:</span><span class="info-value">${data.personnel.administration_name ?? "-"}</span></div>
-              </div>
-                       <div class="photo-box-inline">
+                <!-- الهيدر: صورة + الدرجة / الاسم + الرقم العسكري -->
+            <div class="basic-info-row" style="align-items:center; margin-top:10px; padding:10px 12px; background:#f7f9fc; border:1px solid #e2e7f0; border-radius:10px;">
+              <div class="photo-box-inline" style="width:80px;height:100px;">
                 ${
                   photoUrl
                     ? `<img src="${photoUrl}" />`
                     : `<span style="font-size:11px;color:#a1aebe;">لا توجد صورة</span>`
                 }
               </div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <div style="font-size:17px;font-weight:700;">${data.personnel.rank_name ?? "-"} / ${data.personnel.full_name}</div>
+                <div style="font-size:13px;">
+                  <span style="color:#717d96;">الرقم العسكري:</span>
+                  <span style="font-weight:700;">${ar(data.personnel.military_number)}</span>
+                </div>
+              </div>
             </div>
 
-            <div class="section-title">البيانات الشخصية والاجتماعية</div>
+            <!-- البيانات الأساسية -->
+            <div class="section-title">البيانات الأساسية</div>
+            <div class="info-grid">
+              <div class="info-item"><span class="info-label">الرقم العسكري:</span><span class="info-value">${ar(data.personnel.military_number)}</span></div>
+              <div class="info-item"><span class="info-label">الدرجة:</span><span class="info-value">${data.personnel.rank_name ?? "-"}</span></div>
+              <div class="info-item"><span class="info-label">الاسم:</span><span class="info-value">${data.personnel.full_name}</span></div>
+              <div class="info-item"><span class="info-label">الوحدة:</span><span class="info-value">${data.personnel.unit_name ?? "-"}</span></div>
+              <div class="info-item"><span class="info-label">الوظيفة:</span><span class="info-value">${data.personnel.job_name ?? "-"}</span></div>
+              <div class="info-item"><span class="info-label">المستوى التعليمي:</span><span class="info-value">${data.personnel.education_level_name ?? "-"}</span></div>
+              <div class="info-item"><span class="info-label">الإدارة/السلاح:</span><span class="info-value">${data.personnel.administration_name ?? "-"}</span></div>
+              <div class="info-item"><span class="info-label">تاريخ الالتحاق بالخدمة:</span><span class="info-value">${ar(serviceJoinDate)}</span></div>
+              <div class="info-item"><span class="info-label">فصيلة الدم:</span><span class="info-value">${bloodType || "-"}</span></div>
+            </div>
+
+            <!-- البيانات الشخصية -->
+            <div class="section-title">البيانات الشخصية</div>
             <div class="info-grid">
               <div class="info-item"><span class="info-label">الرقم القومي:</span><span class="info-value">${ar(nationalId)}</span></div>
-              <div class="info-item"><span class="info-label">رقم الهاتف:</span><span class="info-value">${ar(phoneNumber)}</span></div>
               <div class="info-item"><span class="info-label">تاريخ الميلاد:</span><span class="info-value">${ar(birthDate)}</span></div>
-              <div class="info-item"><span class="info-label">تاريخ الالتحاق بالخدمة:</span><span class="info-value">${ar(serviceJoinDate)}</span></div>
               <div class="info-item"><span class="info-label">الحالة الاجتماعية:</span><span class="info-value">${maritalStatusLabel}</span></div>
               <div class="info-item"><span class="info-label">الديانة:</span><span class="info-value">${religion || "-"}</span></div>
-              <div class="info-item"><span class="info-label">فصيلة الدم:</span><span class="info-value">${bloodType || "-"}</span></div>
-              <div class="info-item"><span class="info-label">محل الميلاد:</span><span class="info-value">${birthGovernorateLabel} - ${birthDistrictLabel}</span></div>
-              <div class="info-item" style="grid-column: span 3;"><span class="info-label">العنوان:</span><span class="info-value">${addressGovernorateLabel} - ${addressDistrictLabel} - ${addressDetail ? ar(addressDetail) : "-"}</span></div>
+              <div class="info-item"><span class="info-label">رقم الهاتف:</span><span class="info-value">${ar(phoneNumber)}</span></div>
+              <div class="info-item"><span class="info-label">محل الميلاد (المحافظة):</span><span class="info-value">${birthGovernorateLabel}</span></div>
+              <div class="info-item"><span class="info-label">محل الميلاد (المركز/القسم):</span><span class="info-value">${birthDistrictLabel}</span></div>
             </div>
 
+            <!-- العنوان -->
+            <div class="section-title">العنوان</div>
+            <div class="info-grid">
+              <div class="info-item"><span class="info-label">المحافظة:</span><span class="info-value">${addressGovernorateLabel}</span></div>
+              <div class="info-item"><span class="info-label">المركز/القسم:</span><span class="info-value">${addressDistrictLabel}</span></div>
+              <div class="info-item"><span class="info-label">تفاصيل العنوان:</span><span class="info-value">${addressDetail ? ar(addressDetail) : "-"}</span></div>
+              <div class="info-item" style="grid-column: span 3;"><span class="info-label">ملاحظات:</span><span class="info-value">${notes ? ar(notes) : "-"}</span></div>
+            </div>
+
+            <!-- جهة الاتصال في حالات الطوارئ -->
             <div class="section-title">جهة الاتصال في حالات الطوارئ</div>
             <div class="info-grid">
-              <div class="info-item"><span class="info-label">الاسم:</span><span class="info-value">${emergencyContactName || "-"}</span></div>
+              <div class="info-item"><span class="info-label">اسم القريب:</span><span class="info-value">${emergencyContactName || "-"}</span></div>
               <div class="info-item"><span class="info-label">صلة القرابة:</span><span class="info-value">${emergencyContactRelation || "-"}</span></div>
               <div class="info-item"><span class="info-label">رقم الهاتف:</span><span class="info-value">${ar(emergencyContactPhone)}</span></div>
             </div>
 
+            <!-- الحالة الصحية + سجل الإصابات -->
             <div class="section-title">الحالة الصحية</div>
             <div class="info-grid">
               <div class="info-item"><span class="info-label">الحالة الصحية العامة:</span><span class="info-value">${healthStatus || "-"}</span></div>
             </div>
+            <div style="font-size:13px;font-weight:700;margin-top:10px;">سجل الإصابات</div>
             <table>
               <thead>
                 <tr>
@@ -996,12 +1151,7 @@ export function SocialRecordDetailPage() {
               <tbody>${injuryRowsHtml}</tbody>
             </table>
 
-            ${
-              notes
-                ? `<div class="section-title">ملاحظات</div><div style="font-size:13px;">${ar(notes)}</div>`
-                : ""
-            }
-
+            <!-- أفراد الأسرة -->
             <div class="section-title">أفراد الأسرة</div>
             <table>
               <thead>
@@ -1016,7 +1166,9 @@ export function SocialRecordDetailPage() {
               <tbody>${familyRowsHtml}</tbody>
             </table>
 
-            <div class="section-title">سجل الوحدات</div>
+            <!-- الوحدات -->
+            <div class="section-block">
+                        <div class="section-title">الوحدات</div>
             <table>
               <thead>
                 <tr>
@@ -1030,10 +1182,32 @@ export function SocialRecordDetailPage() {
               </thead>
               <tbody>${unitRowsHtml}</tbody>
             </table>
+            </div>
 
+                     <div class="section-block">
+                        <!-- سجل الترقي -->
+            <div class="section-title">سجل الترقي</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>تاريخ الترقي</th>
+                  <th>الدرجة</th>
+                  <th>رقم قرار الترقي</th>
+                </tr>
+              </thead>
+              <tbody>${promotionRowsHtml}</tbody>
+            </table>
           </div>
+            </div>
+                  </div>
+                            ${attachmentsHtml}
+                </td>
+              </tr>
+            </tbody>
+          </table>
 
-          ${attachmentsHtml}
+
+
         </body>
       </html>
     `);
@@ -1078,6 +1252,8 @@ export function SocialRecordDetailPage() {
   const inputClass =
     "h-[46px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867] disabled:bg-[#f7f9fc] disabled:text-[#717d96] bg-white";
 
+  const readOnlyClass =
+    "h-[46px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none bg-[#f7f9fc] text-[#717d96] cursor-default";
   return (
     <div className="flex flex-col gap-6 w-full pb-10" dir="rtl">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -1125,8 +1301,7 @@ export function SocialRecordDetailPage() {
           {successMsg}
         </div>
       )}
-
-      {/* الهيدر: صورة + اسم + رقم عسكري + رتبة + وحدة + وظيفة + مؤهل + سلاح */}
+      {/* الهيدر: صورة + الدرجة / الاسم + الرقم العسكري */}
       <section
         className="rounded-[20px] p-6 flex flex-wrap items-center gap-6"
         style={{ background: "linear-gradient(135deg,#f7f9fc,#eff5f0)", border: "1px solid #eff0f6" }}
@@ -1136,8 +1311,8 @@ export function SocialRecordDetailPage() {
             <img
               src={photoUrl}
               alt=""
-              className="w-24 h-24 object-cover rounded-[12px] border-2"
-              style={{ borderColor: "#00b867" }}
+              className="w-30 h-30 object-cover rounded-[12] border-2"
+              style={{ borderColor: "#a1aebe" }}
             />
           ) : (
             <div
@@ -1159,62 +1334,94 @@ export function SocialRecordDetailPage() {
           )}
         </div>
 
-        <div className="flex flex-wrap gap-x-10 gap-y-3 flex-1">
-          <div className="flex flex-col gap-1">
-            <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الرقم العسكري</span>
-            <span style={{ ...F, fontSize: 16, fontWeight: 700, color: "#2d3648" }}>
+        <div className="flex flex-col gap-2">
+          <span style={{ ...F, fontSize: 20, fontWeight: 700, color: "#2d3648" }}>
+            {data.personnel.rank_name ?? "-"} / {data.personnel.full_name}
+          </span>
+
+          <div className="flex items-center gap-2">
+            <span style={{ ...F, fontSize: 13, color: "#717d96" }}>الرقم العسكري:</span>
+            <span style={{ ...F, fontSize: 15, fontWeight: 700, color: "#2d3648" }}>
               {data.personnel.military_number ?? "-"}
-            </span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الدرجة</span>
-            <span style={{ ...F, fontSize: 16, fontWeight: 700, color: "#2d3648" }}>
-              {data.personnel.rank_name ?? "-"}
-            </span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الاسم</span>
-            <span style={{ ...F, fontSize: 16, fontWeight: 700, color: "#2d3648" }}>
-              {data.personnel.full_name}
-            </span>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الوحدة</span>
-            <span style={{ ...F, fontSize: 16, fontWeight: 700, color: "#2d3648" }}>
-              {data.personnel.unit_name ?? "-"}
-            </span>
-          </div>
-
-
-
-          <div className="flex flex-col gap-1">
-            <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الوظيفة</span>
-            <span style={{ ...F, fontSize: 16, fontWeight: 700, color: "#2d3648" }}>
-              {data.personnel.job_name ?? "-"}
-            </span>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <span style={{ ...F, fontSize: 12, color: "#717d96" }}>المستوى التعليمي</span>
-            <span style={{ ...F, fontSize: 16, fontWeight: 700, color: "#2d3648" }}>
-              {data.personnel.education_level_name ?? "-"}
-            </span>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الإدارة/السلاح</span>
-            <span style={{ ...F, fontSize: 16, fontWeight: 700, color: "#2d3648" }}>
-              {data.personnel.administration_name ?? "-"}
             </span>
           </div>
         </div>
       </section>
-
-      {/* البيانات الشخصية والاجتماعية */}
+          {/* البيانات الأساسية */}
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
-          <span style={{ ...F, fontSize: 16, fontWeight: 700, color: "#2d3648" }}>البيانات الشخصية والاجتماعية</span>
+          <span style={{ ...F, fontSize: 16, fontWeight: 700, color: "#2d3648" }}>البيانات الأساسية</span>
+        </div>
+
+        <div className="p-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {(
+            [
+              ["الرقم العسكري", data.personnel.military_number],
+              ["الدرجة", data.personnel.rank_name],
+              ["الاسم", data.personnel.full_name],
+              ["الوحدة", data.personnel.unit_name],
+              ["الوظيفة", data.personnel.job_name],
+              ["المستوى التعليمي", data.personnel.education_level_name],
+              ["الإدارة/السلاح", data.personnel.administration_name],
+            ] as [string, string | null | undefined][]
+          ).map(([label, value]) => (
+            <div key={label} className="flex flex-col gap-1.5">
+              <label style={{ ...F, fontSize: 13, color: "#717d96" }}>{label}</label>
+              <input type="text" value={value ?? "-"} readOnly dir="rtl" className={readOnlyClass} style={F} />
+            </div>
+          ))}
+
+          <div className="flex flex-col gap-1.5">
+            <label style={{ ...F, fontSize: 13, color: "#717d96" }}>تاريخ الالتحاق بالخدمة</label>
+            <input
+              type="date"
+              value={serviceJoinDate}
+              onChange={(e) => setServiceJoinDate(e.target.value)}
+              disabled={!canEdit}
+              className={inputClass}
+              style={F}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label style={{ ...F, fontSize: 13, color: "#717d96" }}>فصيلة الدم</label>
+            <select
+              value={bloodType}
+              onChange={(e) => setBloodType(e.target.value)}
+              disabled={!canEdit}
+              dir="rtl"
+              className={inputClass}
+              style={F}
+            >
+              <option value="">اختر فصيلة الدم</option>
+              {BLOOD_TYPES.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {canEdit && (
+            <div className="sm:col-span-3">
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="h-[44px] px-6 rounded-[8px] disabled:opacity-50"
+                style={{ background: "#DCF4DF", ...F, fontSize: 14, color: "#2d3648" }}
+              >
+                {saving ? "جاري الحفظ..." : "حفظ البيانات"}
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* البيانات الشخصية */}
+      <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
+        <div className="px-6 py-4 border-b border-[#e2e7f0]">
+          <span style={{ ...F, fontSize: 16, fontWeight: 700, color: "#2d3648" }}>البيانات الشخصية</span>
         </div>
 
         <div className="p-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1232,36 +1439,11 @@ export function SocialRecordDetailPage() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label style={{ ...F, fontSize: 13, color: "#717d96" }}>رقم الهاتف</label>
-            <input
-              type="text"
-              value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
-              disabled={!canEdit}
-              dir="rtl"
-              className={inputClass}
-              style={F}
-            />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
             <label style={{ ...F, fontSize: 13, color: "#717d96" }}>تاريخ الميلاد</label>
             <input
               type="date"
               value={birthDate}
               onChange={(e) => setBirthDate(e.target.value)}
-              disabled={!canEdit}
-              className={inputClass}
-              style={F}
-            />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label style={{ ...F, fontSize: 13, color: "#717d96" }}>تاريخ الالتحاق بالخدمة</label>
-            <input
-              type="date"
-              value={serviceJoinDate}
-              onChange={(e) => setServiceJoinDate(e.target.value)}
               disabled={!canEdit}
               className={inputClass}
               style={F}
@@ -1307,25 +1489,18 @@ export function SocialRecordDetailPage() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label style={{ ...F, fontSize: 13, color: "#717d96" }}>فصيلة الدم</label>
-            <select
-              value={bloodType}
-              onChange={(e) => setBloodType(e.target.value)}
+            <label style={{ ...F, fontSize: 13, color: "#717d96" }}>رقم الهاتف</label>
+            <input
+              type="text"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
               disabled={!canEdit}
               dir="rtl"
               className={inputClass}
               style={F}
-            >
-              <option value="">اختر فصيلة الدم</option>
-              {BLOOD_TYPES.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
+            />
           </div>
 
-          {/* محل الميلاد */}
           <div className="flex flex-col gap-1.5">
             <label style={{ ...F, fontSize: 13, color: "#717d96" }}>محل الميلاد (المحافظة)</label>
             <select
@@ -1364,7 +1539,29 @@ export function SocialRecordDetailPage() {
             </select>
           </div>
 
-          {/* العنوان */}
+          {canEdit && (
+            <div className="sm:col-span-3">
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="h-[44px] px-6 rounded-[8px] disabled:opacity-50"
+                style={{ background: "#DCF4DF", ...F, fontSize: 14, color: "#2d3648" }}
+              >
+                {saving ? "جاري الحفظ..." : "حفظ البيانات"}
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* العنوان */}
+      <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
+        <div className="px-6 py-4 border-b border-[#e2e7f0]">
+          <span style={{ ...F, fontSize: 16, fontWeight: 700, color: "#2d3648" }}>العنوان</span>
+        </div>
+
+        <div className="p-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="flex flex-col gap-1.5">
             <label style={{ ...F, fontSize: 13, color: "#717d96" }}>العنوان (المحافظة)</label>
             <select
@@ -1437,7 +1634,7 @@ export function SocialRecordDetailPage() {
                 onClick={handleSave}
                 disabled={saving}
                 className="h-[44px] px-6 rounded-[8px] disabled:opacity-50"
-                style={{ background: "linear-gradient(to bottom,#00b867,#00522e)", ...F, fontSize: 14, color: "#fff" }}
+                style={{ background: "#DCF4DF", ...F, fontSize: 14, color: "#2d3648" }}
               >
                 {saving ? "جاري الحفظ..." : "حفظ البيانات"}
               </button>
@@ -1445,7 +1642,6 @@ export function SocialRecordDetailPage() {
           )}
         </div>
       </section>
-
       {/* جهة الاتصال في حالات الطوارئ */}
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
@@ -1499,7 +1695,7 @@ export function SocialRecordDetailPage() {
                 onClick={handleSave}
                 disabled={saving}
                 className="h-[44px] px-6 rounded-[8px] disabled:opacity-50"
-                style={{ background: "linear-gradient(to bottom,#00b867,#00522e)", ...F, fontSize: 14, color: "#fff" }}
+ style={{ background: "#DCF4DF", ...F, fontSize: 14, color: "#2d3648" }}
               >
                 {saving ? "جاري الحفظ..." : "حفظ البيانات"}
               </button>
@@ -1540,7 +1736,7 @@ export function SocialRecordDetailPage() {
               onClick={handleSave}
               disabled={saving}
               className="h-[44px] px-6 rounded-[8px] disabled:opacity-50 w-fit"
-              style={{ background: "linear-gradient(to bottom,#00b867,#00522e)", ...F, fontSize: 14, color: "#fff" }}
+               style={{ background: "#DCF4DF", ...F, fontSize: 14, color: "#2d3648" }}
             >
               {saving ? "جاري الحفظ..." : "حفظ البيانات"}
             </button>
@@ -1606,7 +1802,7 @@ export function SocialRecordDetailPage() {
                 onClick={handleAddInjury}
                 disabled={savingInjury}
                 className="h-[42px] px-5 rounded-[8px] flex items-center gap-1.5 shrink-0 disabled:opacity-50"
-                style={{ background: "linear-gradient(to bottom,#00b867,#00522e)", ...F, fontSize: 13, color: "#fff" }}
+                 style={{ background: "#DCF4DF", ...F, fontSize: 14, color: "#2d3648" }}
               >
                 <Plus size={14} />
                 إضافة إصابة
@@ -1757,7 +1953,7 @@ export function SocialRecordDetailPage() {
               onClick={handleAddFamilyMember}
               disabled={savingFamily}
               className="h-[42px] px-5 rounded-[8px] flex items-center gap-1.5 shrink-0 disabled:opacity-50"
-              style={{ background: "linear-gradient(to bottom,#00b867,#00522e)", ...F, fontSize: 13, color: "#fff" }}
+               style={{ background: "#DCF4DF", ...F, fontSize: 14, color: "#2d3648" }}
             >
               <Plus size={14} />
               إضافة فرد
@@ -1959,7 +2155,7 @@ export function SocialRecordDetailPage() {
                 onClick={handleAddUnitHistory}
                 disabled={savingUnit}
                 className="h-[42px] px-5 rounded-[8px] flex items-center gap-1.5 shrink-0 disabled:opacity-50"
-                style={{ background: "linear-gradient(to bottom,#00b867,#00522e)", ...F, fontSize: 13, color: "#fff" }}
+                style={{ background: "#DCF4DF", ...F, fontSize: 14, color: "#2d3648" }}
               >
                 <Plus size={14} />
                 إضافة وحدة
@@ -2100,7 +2296,125 @@ export function SocialRecordDetailPage() {
           )}
         </div>
       </section>
+      {/* الترقيات */}
+      <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
+        <div className="px-6 py-4 border-b border-[#e2e7f0]">
+          <span style={{ ...F, fontSize: 16, fontWeight: 700, color: "#2d3648" }}>سجل الترقي</span>
+        </div>
 
+        {canEdit && (
+          <div className="px-6 pt-5 flex flex-wrap items-end gap-2">
+            <div className="flex flex-col gap-1 w-[160px]">
+              <label style={{ ...F, fontSize: 12, color: "#717d96" }}>تاريخ الترقي</label>
+              <input
+                type="date"
+                value={newPromotionDate}
+                onChange={(e) => setNewPromotionDate(e.target.value)}
+                className={inputClass}
+                style={{ ...F, height: 42 }}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1 flex-1 min-w-[180px]">
+              <label style={{ ...F, fontSize: 12, color: "#717d96" }}>الدرجة</label>
+              <select
+                value={newPromotionRankId}
+                onChange={(e) => setNewPromotionRankId(e.target.value)}
+                dir="rtl"
+                className={inputClass}
+                style={{ ...F, height: 42 }}
+              >
+                <option value="">اختر الدرجة</option>
+                {ranks.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1 flex-1 min-w-[180px]">
+              <label style={{ ...F, fontSize: 12, color: "#717d96" }}>رقم قرار الترقي</label>
+              <input
+                type="text"
+                value={newPromotionDecisionNumber}
+                onChange={(e) => setNewPromotionDecisionNumber(e.target.value)}
+                placeholder="رقم القرار"
+                dir="rtl"
+                className={inputClass}
+                style={{ ...F, height: 42 }}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={handleAddPromotion}
+              disabled={savingPromotion}
+              className="h-[42px] px-5 rounded-[8px] flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+              style={{ background: "#DCF4DF", ...F, fontSize: 14, color: "#2d3648" }}
+            >
+              <Plus size={14} />
+              إضافة ترقية
+            </button>
+          </div>
+        )}
+
+        <div className="p-6">
+          {promotions.length === 0 ? (
+            <div className="rounded-[8px] py-4 text-center" style={{ background: "#f7f9fc" }}>
+              <span style={{ ...F, fontSize: 13, color: "#a1aebe" }}>لا يوجد ترقيات مسجلة حاليًا</span>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    <th className="px-4 py-2.5 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]">
+                      <span style={{ ...F, fontSize: 12, color: "#717d96" }}>تاريخ الترقي</span>
+                    </th>
+                    <th className="px-4 py-2.5 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]">
+                      <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الدرجة</span>
+                    </th>
+                    <th className="px-4 py-2.5 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]">
+                      <span style={{ ...F, fontSize: 12, color: "#717d96" }}>رقم قرار الترقي</span>
+                    </th>
+                    {canEdit && <th className="px-4 py-2.5 border-b border-[#e2e7f0] bg-[#f7f9fc]" />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {promotions.map((p) => (
+                    <tr key={p.id} className="hover:bg-[#fafbff]">
+                      <td className="px-4 py-2.5 border-b border-[#eaecf0]">
+                        <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>{p.promotion_date}</span>
+                      </td>
+                      <td className="px-4 py-2.5 border-b border-[#eaecf0]">
+                        <span style={{ ...F, fontSize: 14, fontWeight: 700, color: "#2d3648" }}>
+                          {p.rank_name ?? "-"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 border-b border-[#eaecf0]">
+                        <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>{p.decision_number}</span>
+                      </td>
+                      {canEdit && (
+                        <td className="px-4 py-2.5 border-b border-[#eaecf0]">
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePromotion(p.id)}
+                            className="w-8 h-8 rounded-[6px] flex items-center justify-center"
+                            style={{ background: "#fce8f1" }}
+                          >
+                            <Trash2 size={14} color="#e3282c" />
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
       {/* المستندات المرفقة */}
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
@@ -2124,7 +2438,7 @@ export function SocialRecordDetailPage() {
 
             <label
               className="h-[42px] px-5 rounded-[8px] flex items-center gap-1.5 shrink-0 cursor-pointer"
-              style={{ background: "linear-gradient(to bottom,#00b867,#00522e)", ...F, fontSize: 13, color: "#fff" }}
+               style={{ background: "#DCF4DF", ...F, fontSize: 14, color: "#2d3648" }}
             >
               <Upload size={14} />
               {uploadingDocument ? "جاري الرفع..." : "رفع مستند"}

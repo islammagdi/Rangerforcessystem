@@ -210,13 +210,22 @@ export function SessionManager() {
         "click",
         "mousedown",
         "keydown",
+        "keyup",
+        "input",
+        "change",
+        "focusin",
         "touchstart",
         "scroll",
+        "wheel",
         "mousemove",
+        "pointermove",
       ];
 
       events.forEach((event) => {
-        window.addEventListener(event, handleActivity, { passive: true });
+        window.addEventListener(event, handleActivity, {
+          passive: true,
+          capture: true,
+        });
       });
 
       // مراقبة تغير Session
@@ -249,7 +258,7 @@ export function SessionManager() {
         clearAllTimers();
 
         events.forEach((event) => {
-          window.removeEventListener(event, handleActivity);
+          window.removeEventListener(event, handleActivity, { capture: true });
         });
 
         authListener.subscription.unsubscribe();
