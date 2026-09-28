@@ -75,13 +75,14 @@ export function ReviewSoldierPage() {
   const form =
     (location.state as ReviewFormData | null) ?? null;
 
-  // ─────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────
   // تتبّع التعديلات غير المحفوظة
-  // ─────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────
   // الصفحة دي معندهاش حقول تتعدل، لكن وجود "form" معناه إن فيه
   // بيانات جاهزة للاعتماد لسه محفوظتش في قاعدة البيانات — لو
   // المستخدم غادر من غير اعتماد، هيفقدها ويضطر يملى الفورم تاني
-  const { setDirty } = useUnsavedChanges();
+  const { setDirty, setPerformingSensitiveOperation } =
+    useUnsavedChanges();
 
   useEffect(() => {
     setDirty(Boolean(form));
@@ -89,6 +90,17 @@ export function ReviewSoldierPage() {
     return () => setDirty(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [Boolean(form)]);
+
+  // ─────────────────────────────────────────────────────
+  // تحديد أن هذه عملية حساسة
+  // ─────────────────────────────────────────────────────
+  useEffect(() => {
+    setPerformingSensitiveOperation(true);
+
+    return () => {
+      setPerformingSensitiveOperation(false);
+    };
+  }, [setPerformingSensitiveOperation]);
 
   // ==========================================================
   // اعتماد القيد

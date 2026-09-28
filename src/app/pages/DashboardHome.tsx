@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { useSystemAlerts } from "../../hooks/useSystemAlerts";
 import { StatCard } from "../components/dashboard/StatCard";
@@ -7,7 +7,18 @@ import { DonutChart } from "../components/dashboard/DonutChart";
 import { UnitBarChart } from "../components/dashboard/UnitBarChart";
 import { useDashboardStats } from "../../hooks/useDashboardStats";
 import { useNavigate } from "react-router";
-import { CircleCheckBig, CircleX } from "lucide-react";
+import { CircleCheckBig, CircleX, Inbox, Send, FileText, Users } from "lucide-react";
+import { fetchSocialRecordUnitStats } from "../../lib/socialRecords";
+import {
+  fetchTodayMailAlerts,
+  fetchPendingMailTasks,
+  fetchPendingLetterTasks,
+  fetchTodayLettersCount,
+  type OfficeMailAlert,
+  type PendingMailTask,
+  type PendingMailTaskType,
+  type PendingLetterTask,
+} from "../../lib/mailArchive";
 import {
   RankIcon,
   SoldiersIcon,
@@ -94,7 +105,48 @@ function DeliveredOfTotalLabel({
   );
 }
 
+const TASK_TYPE_META: Record<
+  PendingMailTaskType,
+  { label: string; route: (faxId: string) => string }
+> = {
+  incoming_not_opened: {
+    label: "فاكسات واردة لم يتم فتحها",
+    route: (id) => `/dashboard/archive/incoming/${id}`,
+  },
+  incoming_action_needed: {
+    label: "فاكسات واردة بانتظار الإجراء",
+    route: (id) => `/dashboard/archive/incoming/${id}`,
+  },
+  incoming_branch_decision: {
+    label: "فاكسات بانتظار قرار رئيس الفرع",
+    route: (id) => `/dashboard/archive/incoming/${id}`,
+  },
+  outgoing_receipt_needed: {
+    label: "فاكسات صادرة بانتظار تأكيد الاستلام",
+    route: (id) => `/dashboard/archive/outgoing/${id}`,
+  },
+  outgoing_recipients_needed: {
+    label: "فاكسات صادرة بلا بيانات مستلمين",
+    route: (id) => `/dashboard/archive/outgoing/${id}`,
+  },
+  outgoing_handover_needed: {
+    label: "فاكسات صادرة بانتظار تسليم الأصل",
+    route: (id) => `/dashboard/archive/outgoing/${id}`,
+  },
+};
 
+function isOverdue(referenceDate: string): boolean {
+  const diffMs = Date.now() - new Date(referenceDate).getTime();
+  return diffMs > 3 * 24 * 60 * 60 * 1000;
+}
+
+const MAX_VISIBLE_TASK_BADGES = 10;
+
+const SOCIAL_RECORD_DASHBOARD_ROLE_CODES = [
+  "ADMIN",
+  "BRANCH_HEAD",
+  "custom_1790400490014",
+];
 // ============================================================
 // الصفحة الرئيسية
 // ============================================================
@@ -104,6 +156,15 @@ export function DashboardHome() {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const [currentUserRoleCode, setCurrentUserRoleCode] = useState<string | null>(null);
+
+  const [socialStats, setSocialStats] = useState({
+    total: 0,
+    complete: 0,
+    incomplete: 0,
+    without: 0,
+  });
+  const [loadingSocialStats, setLoadingSocialStats] = useState(true);
   const [loadingUser, setLoadingUser] = useState(true);
 
   const { alerts, loading: loadingAlerts } = useSystemAlerts();
@@ -142,14 +203,58 @@ export function DashboardHome() {
   });
 
   const [loadingReviewStats, setLoadingReviewStats] = useState(true);
+  const [mailAlerts, setMailAlerts] = useState<OfficeMailAlert[]>([]);
+  const [loadingMailAlerts, setLoadingMailAlerts] = useState(true);
+  const [pendingTasks, setPendingTasks] = useState<PendingMailTask[]>([]);
+  const [loadingPendingTasks, setLoadingPendingTasks] = useState(true);
 
+  const [pendingLetters, setPendingLetters] = useState<PendingLetterTask[]>([]);
+  const [loadingPendingLetters, setLoadingPendingLetters] = useState(true);
+
+  const [todayLettersCount, setTodayLettersCount] = useState(0);
+  const [loadingTodayLetters, setLoadingTodayLetters] = useState(true);
   useEffect(() => {
     loadCurrentUser();
     loadPersonnelStats();
     loadReserveBatchData();
     loadDocumentsStats();
     loadReviewStats();
+    loadMailAlerts();
+    loadPendingTasks();
+    loadPendingLetters();
+    loadTodayLettersCount();
   }, []);
+  const canViewSocialRecordStats =
+    currentUserRoleCode !== null &&
+    SOCIAL_RECORD_DASHBOARD_ROLE_CODES.includes(currentUserRoleCode);
+
+  useEffect(() => {
+    if (canViewSocialRecordStats) loadSocialRecordStats();
+  }, [canViewSocialRecordStats]);
+
+  async function loadSocialRecordStats() {
+    try {
+      setLoadingSocialStats(true);
+      const units = await fetchSocialRecordUnitStats();
+
+      setSocialStats(
+        units.reduce(
+          (acc, unit) => {
+            acc.total += unit.total_count;
+            acc.complete += unit.complete_count;
+            acc.incomplete += unit.incomplete_count;
+            acc.without += unit.without_record_count;
+            return acc;
+          },
+          { total: 0, complete: 0, incomplete: 0, without: 0 }
+        )
+      );
+    } catch (error) {
+      console.error("خطأ في تحميل إحصائيات السجل الاجتماعي:", error);
+    } finally {
+      setLoadingSocialStats(false);
+    }
+  }
 
   const loadCurrentUser = async () => {
     try {
@@ -195,16 +300,16 @@ export function DashboardHome() {
 
       const { data: userRole, error: roleError } = await supabase
         .from("user_roles")
-        .select("role:roles(name)")
+        .select("role:roles(name, code)")
         .eq("user_id", user.id)
         .maybeSingle();
 
       if (roleError) {
         console.error("خطأ في تحميل دور المستخدم:", roleError);
       } else {
-        setCurrentUserRole(
-          (userRole?.role as unknown as { name: string } | null)?.name ?? null
-        );
+        const role = userRole?.role as unknown as { name: string; code: string } | null;
+        setCurrentUserRole(role?.name ?? null);
+        setCurrentUserRoleCode(role?.code ?? null);
       }
     } catch (error) {
 
@@ -646,6 +751,66 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
     }
   }
 
+  async function loadMailAlerts() {
+    try {
+      setLoadingMailAlerts(true);
+      const data = await fetchTodayMailAlerts();
+      setMailAlerts(data);
+    } catch (error) {
+      console.error("خطأ في تحميل تنبيهات الفاكسات:", error);
+    } finally {
+      setLoadingMailAlerts(false);
+    }
+  }
+
+  const totalIncomingToday = mailAlerts.reduce((sum, o) => sum + o.incoming_count, 0);
+  const totalOutgoingToday = mailAlerts.reduce((sum, o) => sum + o.outgoing_count, 0);
+
+  async function loadPendingTasks() {
+    try {
+      setLoadingPendingTasks(true);
+      const data = await fetchPendingMailTasks();
+      setPendingTasks(data);
+    } catch (error) {
+      console.error("خطأ في تحميل المهام المعلقة:", error);
+    } finally {
+      setLoadingPendingTasks(false);
+    }
+  }
+
+  const tasksByType = useMemo(() => {
+    const map = new Map<PendingMailTaskType, PendingMailTask[]>();
+    pendingTasks.forEach((task) => {
+      const list = map.get(task.task_type) ?? [];
+      list.push(task);
+      map.set(task.task_type, list);
+    });
+    return map;
+  }, [pendingTasks]);
+
+  async function loadPendingLetters() {
+    try {
+      setLoadingPendingLetters(true);
+      const data = await fetchPendingLetterTasks();
+      setPendingLetters(data);
+    } catch (error) {
+      console.error("خطأ في تحميل الخطابات غير الموثقة:", error);
+    } finally {
+      setLoadingPendingLetters(false);
+    }
+  }
+
+  async function loadTodayLettersCount() {
+    try {
+      setLoadingTodayLetters(true);
+      const count = await fetchTodayLettersCount();
+      setTodayLettersCount(count);
+    } catch (error) {
+      console.error("خطأ في تحميل عدد الخطابات اليوم:", error);
+    } finally {
+      setLoadingTodayLetters(false);
+    }
+  }
   const formatNumber = (value: number) => {
     return value.toLocaleString("en-US");
   };
@@ -855,6 +1020,355 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
 
    
 
+      <SectionTitle>المهام المعلقة</SectionTitle>
+
+      {loadingPendingTasks || loadingPendingLetters ? (
+        <div className="text-right text-gray-500 py-4">
+          جاري تحميل المهام المعلقة...
+        </div>
+      ) : pendingTasks.length === 0 && pendingLetters.length === 0 ? (
+        <div
+          className="text-right text-gray-400 py-4"
+          style={{ fontFamily: "'Almarai', sans-serif" }}
+        >
+          لا توجد مهام معلقة حاليًا
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3 w-full">
+                 {(Object.keys(TASK_TYPE_META) as PendingMailTaskType[]).map((type) => {
+            const tasks = tasksByType.get(type);
+            if (!tasks || tasks.length === 0) return null;
+
+            const meta = TASK_TYPE_META[type];
+
+            return (
+              <div
+                key={type}
+                className="bg-white rounded-2xl border border-[#eff0f6] p-4"
+                dir="rtl"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span
+                    style={{
+                      fontFamily: "'Almarai', sans-serif",
+                      fontWeight: 700,
+                      fontSize: 14,
+                      color: "#2d3648",
+                    }}
+                  >
+                    {meta.label}
+                  </span>
+
+                  <span
+                    className="px-2 py-0.5 rounded-full bg-[#f7f9fc]"
+                    style={{ fontFamily: "'Almarai', sans-serif", fontSize: 12, color: "#717d96" }}
+                  >
+                    {tasks.length}
+                  </span>
+                </div>
+
+                   <div className="flex flex-wrap gap-2">
+                  {tasks.slice(0, MAX_VISIBLE_TASK_BADGES).map((task) => {
+                    const overdue = isOverdue(task.reference_date);
+
+                    return (
+                      <button
+                        key={task.fax_id}
+                        type="button"
+                        onClick={() => navigate(meta.route(task.fax_id))}
+                        className="px-3 py-1.5 rounded-full border transition-colors"
+                        style={{
+                          fontFamily: "'Almarai', sans-serif",
+                          fontSize: 13,
+                          background: overdue ? "#fef2f2" : "#f7f9fc",
+                          borderColor: overdue ? "#fecaca" : "#eff0f6",
+                          color: overdue ? "#991b1b" : "#2d3648",
+                        }}
+                      >
+                        {task.fax_number}/{task.fax_year}
+                      </button>
+                    );
+                  })}
+
+                  {tasks.length > MAX_VISIBLE_TASK_BADGES && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(meta.route(tasks[0].fax_id))}
+                      className="px-3 py-1.5 rounded-full border transition-colors"
+                      style={{
+                        fontFamily: "'Almarai', sans-serif",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        background: "#f0f2fd",
+                        borderColor: "#dbe0fb",
+                        color: "#1f3d97",
+                      }}
+                    >
+                      و{tasks.length - MAX_VISIBLE_TASK_BADGES} أخرى
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {pendingLetters.length > 0 && (
+            <div className="bg-white rounded-2xl border border-[#eff0f6] p-4" dir="rtl">
+              <div className="flex items-center justify-between mb-2">
+                <span
+                  style={{
+                    fontFamily: "'Almarai', sans-serif",
+                    fontWeight: 700,
+                    fontSize: 14,
+                    color: "#2d3648",
+                  }}
+                >
+                  خطابات غير موثقة
+                </span>
+
+                <span
+                  className="px-2 py-0.5 rounded-full bg-[#f7f9fc]"
+                  style={{ fontFamily: "'Almarai', sans-serif", fontSize: 12, color: "#717d96" }}
+                >
+                  {pendingLetters.length}
+                </span>
+              </div>
+
+                   <div className="flex flex-wrap gap-2">
+                {pendingLetters.slice(0, MAX_VISIBLE_TASK_BADGES).map((letter) => {
+                  const overdue = isOverdue(letter.reference_date);
+
+                  return (
+                    <button
+                      key={letter.letter_id}
+                      type="button"
+                      onClick={() =>
+                        navigate("/dashboard/letters-archive", {
+                          state: { statusFilter: "UNDOCUMENTED" },
+                        })
+                      }
+                      className="px-3 py-1.5 rounded-full border transition-colors"
+                      style={{
+                        fontFamily: "'Almarai', sans-serif",
+                        fontSize: 13,
+                        background: overdue ? "#fef2f2" : "#f7f9fc",
+                        borderColor: overdue ? "#fecaca" : "#eff0f6",
+                        color: overdue ? "#991b1b" : "#2d3648",
+                      }}
+                    >
+                      خطاب {letter.letter_number}
+                    </button>
+                  );
+                })}
+
+                {pendingLetters.length > MAX_VISIBLE_TASK_BADGES && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate("/dashboard/letters-archive", {
+                        state: { statusFilter: "UNDOCUMENTED" },
+                      })
+                    }
+                    className="px-3 py-1.5 rounded-full border transition-colors"
+                    style={{
+                      fontFamily: "'Almarai', sans-serif",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      background: "#f0f2fd",
+                      borderColor: "#dbe0fb",
+                      color: "#1f3d97",
+                    }}
+                  >
+                    و{pendingLetters.length - MAX_VISIBLE_TASK_BADGES} أخرى
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <SectionTitle>التنبيهات</SectionTitle>
+
+      {loadingMailAlerts ? (
+        <div className="text-right text-gray-500 py-4">
+          جاري تحميل التنبيهات...
+        </div>
+      ) : mailAlerts.length === 0 ? (
+        <div
+          className="text-right text-gray-400 py-4"
+          style={{ fontFamily: "'Almarai', sans-serif" }}
+        >
+          لا توجد فاكسات جديدة اليوم
+        </div>
+      ) : (
+        <>
+          <div className="flex gap-3 sm:gap-4 flex-wrap">
+            <button
+              type="button"
+              onClick={() =>
+                navigate("/dashboard/archive/incoming", {
+                  state: {
+                    officeFilter:
+                      mailAlerts.length === 1 ? mailAlerts[0].office_id : undefined,
+                  },
+                })
+              }
+              className="text-right"
+            >
+              <StatCard
+                icon={<Inbox size={20} />}
+                value={formatNumber(totalIncomingToday)}
+                label="فاكسات واردة جديدة اليوم"
+              />
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                navigate("/dashboard/archive/outgoing", {
+                  state: {
+                    officeFilter:
+                      mailAlerts.length === 1 ? mailAlerts[0].office_id : undefined,
+                    dateToday: true,
+                  },
+                })
+              }
+              className="text-right"
+            >
+              <StatCard
+                icon={<Send size={20} />}
+                value={formatNumber(totalOutgoingToday)}
+                label="فاكسات صادرة اليوم"
+              />
+            </button>
+
+            {!loadingTodayLetters && todayLettersCount > 0 && (
+              <button
+                type="button"
+                onClick={() =>
+                  navigate("/dashboard/letters-archive", {
+                    state: { dateToday: true },
+                  })
+                }
+                className="text-right"
+              >
+                <StatCard
+                  icon={<FileText size={20} />}
+                  value={formatNumber(todayLettersCount)}
+                  label="خطابات صادرة اليوم"
+                />
+              </button>
+            )}
+          </div>
+
+          {mailAlerts.length > 1 && (
+            <div className="bg-white rounded-2xl border border-[#eff0f6] overflow-hidden">
+              <table className="w-full text-sm" dir="rtl">
+                <thead>
+                  <tr>
+                    <th className="bg-[#f7f9fc] px-4 py-3 text-right border-b-2 border-[#e2e7f0]">
+                      <span style={{ fontFamily: "'Almarai', sans-serif", fontSize: 13, color: "#717d96" }}>
+                        المكتب
+                      </span>
+                    </th>
+                    <th className="bg-[#f7f9fc] px-4 py-3 text-right border-b-2 border-[#e2e7f0]">
+                      <span style={{ fontFamily: "'Almarai', sans-serif", fontSize: 13, color: "#717d96" }}>
+                        وارد اليوم
+                      </span>
+                    </th>
+                    <th className="bg-[#f7f9fc] px-4 py-3 text-right border-b-2 border-[#e2e7f0]">
+                      <span style={{ fontFamily: "'Almarai', sans-serif", fontSize: 13, color: "#717d96" }}>
+                        صادر اليوم
+                      </span>
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {mailAlerts.map((office) => (
+                    <tr key={office.office_id} className="hover:bg-[#fafbff]">
+                      <td className="px-4 py-2.5 border-b border-[#eaecf0]">
+                        <span style={{ fontFamily: "'Almarai', sans-serif", fontSize: 14, color: "#2d3648" }}>
+                          {office.office_name}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 border-b border-[#eaecf0]">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate("/dashboard/archive/incoming", {
+                              state: { officeFilter: office.office_id },
+                            })
+                          }
+                          style={{ fontFamily: "'Almarai', sans-serif", fontSize: 14, color: "#1f3d97" }}
+                        >
+                          {office.incoming_count}
+                        </button>
+                      </td>
+                      <td className="px-4 py-2.5 border-b border-[#eaecf0]">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate("/dashboard/archive/outgoing", {
+                              state: { officeFilter: office.office_id, dateToday: true },
+                            })
+                          }
+                          style={{ fontFamily: "'Almarai', sans-serif", fontSize: 14, color: "#1f3d97" }}
+                        >
+                          {office.outgoing_count}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {canViewSocialRecordStats && (
+        <>
+          <SectionTitle>موقف السجل الاجتماعي</SectionTitle>
+
+          {loadingSocialStats ? (
+            <div className="text-right text-gray-500 py-4">
+              جاري تحميل إحصائيات السجل الاجتماعي...
+            </div>
+          ) : (
+            <div className="flex gap-3 sm:gap-4 flex-wrap">
+              <StatCard
+                icon={<Users size={20} />}
+                value={formatNumber(socialStats.total)}
+                label="إجمالي الأفراد"
+              />
+
+              <StatCard
+                icon={<Users size={20} color="#166534" />}
+                value={formatNumber(socialStats.complete)}
+                label="له سجل"
+                valueColor="#166534"
+              />
+
+              <StatCard
+                icon={<Users size={20} color="#92400e" />}
+                value={formatNumber(socialStats.incomplete)}
+                label="غير مكتمل"
+                valueColor="#92400e"
+              />
+
+              <StatCard
+                icon={<Users size={20} color="#9d2e15" />}
+                value={formatNumber(socialStats.without)}
+                label="بدون سجل"
+                valueColor="#9d2e15"
+              />
+            </div>
+          )}
+        </>
+      )}
+
       <SectionTitle>الموقف العام للقوة الحالية</SectionTitle>
 
       {loadingStats ? (
@@ -939,6 +1453,13 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
           icon={<CalendarIcon />}
           value={loadingReserveBatch ? "..." : formatArabicDate(nextBatchDate)}
           label="تاريخ الدفعة التالية"
+          disabled={loadingReserveBatch || !nextBatchDate}
+          onClick={() =>
+            nextBatchDate &&
+            navigate("/dashboard/reserve-batches", {
+              state: { batchDate: toDbDateString(nextBatchDate) },
+            })
+          }
         />
 
         <StatCard

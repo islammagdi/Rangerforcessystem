@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { supabase } from "../../../lib/supabase";
 import {
   computeKhawarijByUnit,
@@ -8,6 +9,7 @@ import {
 interface ChartData {
   name: string;
   value: number;
+  unitId?: string;
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────
@@ -119,6 +121,7 @@ function TooltipBubble({
 // ── Component ─────────────────────────────────────────────────────────────
 
 export function UnitBarChart() {
+  const navigate = useNavigate();
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -224,6 +227,7 @@ while (true) {
       // ============================================================
 
       const unitNameById = new Map<string, string>();
+      const unitIdByName = new Map<string, string>();
 
       personnel.forEach((person: any) => {
         if (
@@ -233,6 +237,11 @@ while (true) {
           unitNameById.set(
             person.primary_unit_id,
             person.units.name
+          );
+
+          unitIdByName.set(
+            person.units.name,
+            person.primary_unit_id
           );
         }
       });
@@ -253,8 +262,8 @@ while (true) {
         .map((row) => ({
           name: row.unitName,
           value: row.count,
+          unitId: unitIdByName.get(row.unitName),
         }));
-
       setChartData(result);
 
       console.log(
@@ -476,18 +485,25 @@ while (true) {
                 PAD_TOP +
                 CHART_H +
                 16;
-
               return (
                 <g
                   key={`bar-${entry.name}`}
                   style={{
-                    cursor: "pointer",
+                    cursor: entry.unitId
+                      ? "pointer"
+                      : "default",
                   }}
                   onMouseEnter={() =>
                     setHoveredIndex(i)
                   }
                   onMouseLeave={() =>
                     setHoveredIndex(null)
+                  }
+                  onClick={() =>
+                    entry.unitId &&
+                    navigate(
+                      `/dashboard/units-report/${entry.unitId}`
+                    )
                   }
                 >
 

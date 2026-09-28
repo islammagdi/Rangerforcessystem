@@ -12,3 +12,9 @@ export function normalizeDigits(value: string): string {
     return digit;
   });
 }
+
+export function toArabicDigits(value: string): string {
+  const arabicIndicDigits = "٠١٢٣٤٥٦٧٨٩";
+
+  return value.replace(/[0-9]/g, (digit) => arabicIndicDigits[Number(digit)]);
+}

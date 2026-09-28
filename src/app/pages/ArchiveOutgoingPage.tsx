@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useLocation } from "react-router";
 import { Search, Plus, Calendar } from "lucide-react";
 import {
   fetchMailOffices,
@@ -7,7 +7,7 @@ import {
   type MailOffice,
   type OutgoingMail,
 } from "../../lib/mailArchive";
-
+import { usePermissions } from "../../lib/usePermissions";
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
@@ -27,6 +27,13 @@ function formatDate(dateStr: string): string {
 
 export function ArchiveOutgoingPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { hasPermission } = usePermissions();
+
+  const todayStr = new Date().toISOString().split("T")[0];
+  const navState = location.state as
+    | { officeFilter?: string; dateToday?: boolean }
+    | null;
 
   const [mails, setMails] = useState<OutgoingMail[]>([]);
   const [offices, setOffices] = useState<MailOffice[]>([]);
@@ -37,9 +44,13 @@ export function ArchiveOutgoingPage() {
   // فلاتر
   const [faxNumberFilter, setFaxNumberFilter] = useState("");
   const [faxYearFilter, setFaxYearFilter] = useState("");
-  const [dateFromFilter, setDateFromFilter] = useState("");
-  const [dateToFilter, setDateToFilter] = useState("");
-  const [officeFilter, setOfficeFilter] = useState("");
+  const [dateFromFilter, setDateFromFilter] = useState(
+    navState?.dateToday ? todayStr : ""
+  );
+  const [dateToFilter, setDateToFilter] = useState(
+    navState?.dateToday ? todayStr : ""
+  );
+  const [officeFilter, setOfficeFilter] = useState(navState?.officeFilter ?? "");
   const [faxSummaryFilter, setFaxSummaryFilter] = useState("");
   const [destinationEntityFilter, setDestinationEntityFilter] = useState("");
 
@@ -134,21 +145,23 @@ export function ArchiveOutgoingPage() {
           أرشيف الصادر
         </h1>
 
-        <button
-          type="button"
-          onClick={() =>
-            navigate("/dashboard/archive/outgoing/new")
-          }
-          className="flex items-center gap-2 h-[46px] px-5 rounded-[8px]"
-          style={{
-            background: "linear-gradient(to bottom,#00b867,#00522e)",
-          }}
-        >
-          <Plus size={18} color="#fff" />
-          <span style={{ ...F, fontSize: 15, color: "#fff" }}>
-            إضافة فاكس جديد
-          </span>
-        </button>
+{hasPermission("archive_outgoing:create") && (
+          <button
+            type="button"
+            onClick={() =>
+              navigate("/dashboard/archive/outgoing/new")
+            }
+            className="flex items-center gap-2 h-[46px] px-5 rounded-[8px]"
+            style={{
+              background: "linear-gradient(to bottom,#00b867,#00522e)",
+            }}
+          >
+            <Plus size={18} color="#fff" />
+            <span style={{ ...F, fontSize: 15, color: "#fff" }}>
+              إضافة فاكس جديد
+            </span>
+          </button>
+        )}
       </div>
 
       {error && (

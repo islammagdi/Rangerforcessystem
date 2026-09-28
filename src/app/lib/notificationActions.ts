@@ -44,7 +44,13 @@ export async function handleNotificationAction(
     navigate("/dashboard/reserve-batches", {
       state: { batchDate: data.batch_date },
     });
+    
 
+    return true;
+  }
+
+  if (entity_type === "mail_incoming") {
+    navigate(`/dashboard/archive/incoming/${entity_id}`);
     return true;
   }
 

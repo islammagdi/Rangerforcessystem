@@ -51,6 +51,9 @@ import { MartyrsRecordPage } from "./pages/MartyrsRecordPage";
 import { IncidentsRecordPage } from "./pages/IncidentsRecordPage";
 import { JobsManagementPage } from "./pages/JobsManagementPage";
 import { UnitsTreePage } from "./pages/UnitsTreePage"; // عدّل المسار حسب مكانك
+import { PromotionNotificationsPage } from "./pages/promotion-notifications"; 
+import { SocialRecordUnitPage } from "./pages/SocialRecordUnitPage";
+import { SocialRecordDetailPage } from "./pages/SocialRecordDetailPage";// ✅ جديد
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -115,6 +118,9 @@ export const router = createBrowserRouter([
 { path: "incidents-record", Component: IncidentsRecordPage },
 { path: "manage-jobs", Component: JobsManagementPage }, // ✅ جديد
 { path: "units-tree", Component: UnitsTreePage }, // ✅ جديد
+{ path: "promotion-notifications", Component: PromotionNotificationsPage },
+{ path: "social-record/unit/:unitId", Component: SocialRecordUnitPage },
+{ path: "social-record/personnel/:personnelId", Component: SocialRecordDetailPage }, // ✅ جديد
     ],
   },
 ]);

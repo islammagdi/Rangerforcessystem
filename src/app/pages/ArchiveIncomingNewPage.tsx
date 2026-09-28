@@ -5,11 +5,13 @@ import { Upload, X } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { logActivity } from "../../lib/logActivity";
 import { useUnsavedChanges } from "../../lib/unsavedChanges";
+import { usePermissions } from "../../lib/usePermissions";
 import {
   fetchMailOffices,
   createIncomingMail,
   uploadIncomingScanFile,
   addIncomingMailScan,
+  notifyOfficesAboutNewIncomingMail,
   type MailOffice,
 } from "../../lib/mailArchive";
 
@@ -29,54 +31,42 @@ export function ArchiveIncomingNewPage() {
   const [offices, setOffices] = useState<MailOffice[]>([]);
   const [loadingOffices, setLoadingOffices] = useState(true);
 
+  const { loading: checkingAccess, hasPermission } = usePermissions();
+const canCreate = hasPermission("archive_incoming:create");
+
   const [faxDate, setFaxDate] = useState(
     new Date().toISOString().split("T")[0]
   );
 
   const [sourceEntity, setSourceEntity] = useState("");
-  const [officeId, setOfficeId] = useState("");
-
-  const [isCopyDistributed, setIsCopyDistributed] = useState(false);
-  const [distributedToName, setDistributedToName] = useState("");
+  const [selectedOfficeIds, setSelectedOfficeIds] = useState<string[]>([]);
 
   const [faxSummary, setFaxSummary] = useState("");
-  const [notes, setNotes] = useState("");
-  const [actionTaken, setActionTaken] = useState("");
-  const [branchHeadDecision, setBranchHeadDecision] = useState("");
+  const [initialNote, setInitialNote] = useState("");
 
   const [pendingScans, setPendingScans] = useState<PendingScan[]>([]);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  // ─────────────────────────────────────────────────────────
-  // تتبّع التعديلات غير المحفوظة
-  // ─────────────────────────────────────────────────────────
-  const { setDirty, guardNavigation } = useUnsavedChanges();
+  const { setDirty, guardNavigation, setPerformingSensitiveOperation } = useUnsavedChanges();
+
+  useEffect(() => {
+    setPerformingSensitiveOperation(true);
+    return () => {
+      setPerformingSensitiveOperation(false);
+    };
+  }, [setPerformingSensitiveOperation]);
 
   const isDirty = useMemo(() => {
     return (
       sourceEntity.trim() !== "" ||
-      Boolean(officeId) ||
+      selectedOfficeIds.length > 0 ||
       faxSummary.trim() !== "" ||
-      notes.trim() !== "" ||
-      actionTaken.trim() !== "" ||
-      branchHeadDecision.trim() !== "" ||
-      isCopyDistributed ||
-      distributedToName.trim() !== "" ||
+      initialNote.trim() !== "" ||
       pendingScans.length > 0
     );
-  }, [
-    sourceEntity,
-    officeId,
-    faxSummary,
-    notes,
-    actionTaken,
-    branchHeadDecision,
-    isCopyDistributed,
-    distributedToName,
-    pendingScans.length,
-  ]);
+  }, [sourceEntity, selectedOfficeIds.length, faxSummary, initialNote, pendingScans.length]);
 
   useEffect(() => {
     setDirty(isDirty);
@@ -91,22 +81,27 @@ export function ArchiveIncomingNewPage() {
     loadOffices();
   }, []);
 
+
+
   async function loadOffices() {
     try {
       setLoadingOffices(true);
       const data = await fetchMailOffices();
       setOffices(data);
     } catch (err: any) {
-
       setError("حدث خطأ أثناء تحميل قائمة المكاتب");
     } finally {
       setLoadingOffices(false);
     }
   }
 
-  function handleFileSelect(
-    e: React.ChangeEvent<HTMLInputElement>
-  ) {
+  function toggleOffice(officeId: string) {
+    setSelectedOfficeIds((prev) =>
+      prev.includes(officeId) ? prev.filter((id) => id !== officeId) : [...prev, officeId]
+    );
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -143,12 +138,16 @@ export function ArchiveIncomingNewPage() {
       return "الجهة الواردة منها الفاكس مطلوبة";
     }
 
-    if (!officeId) {
-      return "المكتب المختص مطلوب";
+    if (selectedOfficeIds.length === 0) {
+      return "يجب اختيار مكتب واحد على الأقل";
     }
 
-    if (isCopyDistributed && !distributedToName.trim()) {
-      return "يجب إدخال اسم المختص الذي استلم النسخة";
+    if (!faxSummary.trim()) {
+      return "ملخص الفاكس مطلوب";
+    }
+
+    if (pendingScans.length === 0) {
+      return "يجب رفع صورة ضوئية واحدة على الأقل للفاكس";
     }
 
     return null;
@@ -187,15 +186,9 @@ export function ArchiveIncomingNewPage() {
       const newMail = await createIncomingMail({
         fax_date: faxDate,
         source_entity: sourceEntity.trim(),
-        receiving_office_id: officeId,
-        fax_summary: faxSummaryTrimmed || null,
-        notes: notes.trim() || null,
-        is_copy_distributed: isCopyDistributed,
-        distributed_to_name: isCopyDistributed
-          ? distributedToName.trim()
-          : null,
-        action_taken: actionTaken.trim() || null,
-        branch_head_decision: branchHeadDecision.trim() || null,
+        office_ids: selectedOfficeIds,
+        fax_summary: faxSummaryTrimmed,
+        initial_note: initialNote.trim() || null,
         created_by: user?.id ?? null,
         created_by_name: createdByName,
       });
@@ -204,21 +197,10 @@ export function ArchiveIncomingNewPage() {
       const faxDisplayNumber = `${newMail.fax_number}/${newMail.fax_year}`;
 
       for (const scan of pendingScans) {
-        const filePath = await uploadIncomingScanFile(
-          faxId,
-          scan.file
-        );
+        const filePath = await uploadIncomingScanFile(faxId, scan.file);
 
-        await addIncomingMailScan(
-          faxId,
-          filePath,
-          scan.label.trim() || null
-        );
+        await addIncomingMailScan(faxId, filePath, scan.label.trim() || null);
       }
-
-      // ═════════════════════════════════════════════════════════════════════
-      // Audit Log
-      // ═════════════════════════════════════════════════════════════════════
 
       try {
         await logActivity({
@@ -227,22 +209,72 @@ export function ArchiveIncomingNewPage() {
           actionType: "CREATE",
           action: `تم اضافة فاكس وارد رقم ${faxDisplayNumber}`,
           entity: "incoming_mail",
-          details: `ملخص الفاكس: ${faxSummaryTrimmed || "بدون ملخص"}`,
+          details: `ملخص الفاكس: ${faxSummaryTrimmed}`,
         });
       } catch (auditError) {
-
+        // تجاهل فشل سجل العمليات
       }
 
-      // ✅ الفاكس اتحفظ فعليًا في قاعدة البيانات
+      try {
+        await notifyOfficesAboutNewIncomingMail({
+          officeIds: selectedOfficeIds,
+          faxId,
+          faxDisplayNumber,
+          summary: faxSummaryTrimmed,
+          createdBy: user?.id ?? null,
+          createdByName,
+        });
+      } catch (notifyError) {
+        // مفيش داعي نوقف العملية لو الإشعار فشل
+      }
+
       setDirty(false);
 
       navigate(`/dashboard/archive/incoming/${faxId}`);
     } catch (err: any) {
-
       setError(err?.message || "حدث خطأ أثناء حفظ الفاكس");
     } finally {
       setSaving(false);
     }
+  }
+
+  if (checkingAccess) {
+    return (
+      <div className="flex items-center justify-center py-20" dir="rtl">
+        <span style={{ ...F, fontSize: 15, color: "#717d96" }}>
+          جاري التحقق من الصلاحيات...
+        </span>
+      </div>
+    );
+  }
+
+  if (!canCreate) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center gap-3 py-24 w-full"
+        dir="rtl"
+      >
+        <div
+          className="w-14 h-14 rounded-full flex items-center justify-center"
+          style={{ background: "#fef2f2" }}
+        >
+          <X size={26} color="#991b1b" />
+        </div>
+
+        <p style={{ ...F, fontWeight: 700, fontSize: 18, color: "#2d3648" }}>
+          غير مسموح لك بالدخول لهذه الصفحة
+        </p>
+
+        <button
+          type="button"
+          onClick={() => navigate("/dashboard/archive/incoming")}
+          className="h-[42px] px-5 rounded-[8px] border border-[#e2e7f0] mt-2"
+          style={{ ...F, fontSize: 14, color: "#475569" }}
+        >
+          الرجوع لأرشيف الوارد
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -273,9 +305,9 @@ export function ArchiveIncomingNewPage() {
         </div>
       )}
 
-      <div className="bg-white rounded-[20px] border border-[#eff0f6] p-6 flex flex-col gap-6">
-        {/* التاريخ والجهة الواردة منها */}
 
+
+      <div className="bg-white rounded-[20px] border border-[#eff0f6] p-6 flex flex-col gap-6">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex flex-col gap-1.5 flex-1">
             <label style={{ ...F, fontSize: 14, color: "#2d3648" }}>
@@ -308,35 +340,49 @@ export function ArchiveIncomingNewPage() {
           </div>
         </div>
 
-        {/* المكتب المختص */}
-
         <div className="flex flex-col gap-1.5">
           <label style={{ ...F, fontSize: 14, color: "#2d3648" }}>
-            المكتب المختص بالفاكس
+            المكاتب المختصة بالفاكس (يمكن اختيار أكثر من مكتب)
           </label>
 
-          <select
-            value={officeId}
-            onChange={(e) => setOfficeId(e.target.value)}
-            dir="rtl"
-            disabled={loadingOffices}
-            className="w-full h-[46px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867] bg-white"
-            style={{ ...F, fontSize: 15, color: "#2d3648" }}
-          >
-            <option value="">اختر المكتب</option>
-            {offices.map((office) => (
-              <option key={office.id} value={office.id}>
-                {office.name}
-              </option>
-            ))}
-          </select>
+          {loadingOffices ? (
+            <span style={{ ...F, fontSize: 13, color: "#a1aebe" }}>
+              جاري تحميل المكاتب...
+            </span>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {offices.map((office) => {
+                const checked = selectedOfficeIds.includes(office.id);
+
+                return (
+                  <label
+                    key={office.id}
+                    className={[
+                      "flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors",
+                      checked
+                        ? "bg-[#DCF4DF] border-[#00B867]"
+                        : "bg-[#f7f9fc] border-[#eff0f6] hover:bg-[#f5f6fb]",
+                    ].join(" ")}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleOffice(office.id)}
+                      className="w-4 h-4 accent-[#00B867]"
+                    />
+                    <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>
+                      {office.name}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label
-            style={{ ...F, fontWeight: 700, fontSize: 15, color: "#2d3648" }}
-          >
-            ملخص الفاكس (اختياري)
+          <label style={{ ...F, fontWeight: 700, fontSize: 15, color: "#2d3648" }}>
+            ملخص الفاكس <span style={{ color: "#e3282c" }}>*</span>
           </label>
 
           <textarea
@@ -351,16 +397,14 @@ export function ArchiveIncomingNewPage() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label
-            style={{ ...F, fontWeight: 700, fontSize: 15, color: "#2d3648" }}
-          >
-            ملاحظات (اختياري)
+          <label style={{ ...F, fontWeight: 700, fontSize: 15, color: "#2d3648" }}>
+            ملاحظة أولية (اختياري)
           </label>
 
           <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="اكتب أي ملاحظات إضافية"
+            value={initialNote}
+            onChange={(e) => setInitialNote(e.target.value)}
+            placeholder="أي ملاحظة تحب تسجّلها الآن — هتظهر باسمك ووقت التسجيل في سجل الملاحظات"
             rows={2}
             dir="rtl"
             className="w-full rounded-[8px] border border-[#e2e7f0] px-3 py-2 text-right outline-none resize-none focus:border-[#00b867]"
@@ -370,95 +414,9 @@ export function ArchiveIncomingNewPage() {
 
         <div className="w-full h-px bg-[#eff0f6]" />
 
-        {/* توزيع نسخة على المختص */}
-
         <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <input
-              id="copyDistributed"
-              type="checkbox"
-              checked={isCopyDistributed}
-              onChange={(e) => {
-                setIsCopyDistributed(e.target.checked);
-                if (!e.target.checked) {
-                  setDistributedToName("");
-                }
-              }}
-              className="w-4 h-4 accent-[#00b867]"
-            />
-
-            <label
-              htmlFor="copyDistributed"
-              style={{ ...F, fontSize: 14, color: "#2d3648" }}
-            >
-              تم توزيع نسخة على المختص
-            </label>
-          </div>
-
-          {isCopyDistributed && (
-            <input
-              type="text"
-              value={distributedToName}
-              onChange={(e) => setDistributedToName(e.target.value)}
-              placeholder="اسم المختص الذي استلم النسخة"
-              dir="rtl"
-              className="w-full h-[44px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867]"
-              style={{ ...F, fontSize: 14, color: "#2d3648" }}
-            />
-          )}
-        </div>
-
-        <div className="w-full h-px bg-[#eff0f6]" />
-
-        {/* ما تم حياله من المختص */}
-
-        <div className="flex flex-col gap-1.5">
-          <label
-            style={{ ...F, fontWeight: 700, fontSize: 15, color: "#2d3648" }}
-          >
-            ما تم حياله من المختص (اختياري)
-          </label>
-
-          <textarea
-            value={actionTaken}
-            onChange={(e) => setActionTaken(e.target.value)}
-            placeholder="اكتب ما تم اتخاذه من إجراء"
-            rows={3}
-            dir="rtl"
-            className="w-full rounded-[8px] border border-[#e2e7f0] px-3 py-2 text-right outline-none resize-none focus:border-[#00b867]"
-            style={{ ...F, fontSize: 14, color: "#2d3648" }}
-          />
-        </div>
-
-        {/* قرار رئيس الفرع */}
-
-        <div className="flex flex-col gap-1.5">
-          <label
-            style={{ ...F, fontWeight: 700, fontSize: 15, color: "#2d3648" }}
-          >
-            قرار رئيس الفرع (اختياري)
-          </label>
-
-          <textarea
-            value={branchHeadDecision}
-            onChange={(e) => setBranchHeadDecision(e.target.value)}
-            placeholder="اكتب قرار رئيس الفرع"
-            rows={3}
-            dir="rtl"
-            className="w-full rounded-[8px] border border-[#e2e7f0] px-3 py-2 text-right outline-none resize-none focus:border-[#00b867]"
-            style={{ ...F, fontSize: 14, color: "#2d3648" }}
-          />
-        </div>
-
-        <div className="w-full h-px bg-[#eff0f6]" />
-
-        {/* الصور الضوئية */}
-
-        <div className="flex flex-col gap-3">
-          <label
-            style={{ ...F, fontWeight: 700, fontSize: 15, color: "#2d3648" }}
-          >
-            الصور الضوئية للفاكس
+          <label style={{ ...F, fontWeight: 700, fontSize: 15, color: "#2d3648" }}>
+            الصور الضوئية للفاكس <span style={{ color: "#e3282c" }}>*</span>
           </label>
 
           <label
@@ -467,7 +425,7 @@ export function ArchiveIncomingNewPage() {
           >
             <Upload size={20} className="text-[#415844]" />
             <span style={{ ...F, fontSize: 14, color: "#4a5468" }}>
-              اضغط هنا لاختيار صورة أو أكثر
+              اضغط هنا لاختيار صورة أو أكثر (مطلوب)
             </span>
 
             <input
@@ -495,9 +453,7 @@ export function ArchiveIncomingNewPage() {
                   <input
                     type="text"
                     value={scan.label}
-                    onChange={(e) =>
-                      updateScanLabel(index, e.target.value)
-                    }
+                    onChange={(e) => updateScanLabel(index, e.target.value)}
                     placeholder="تسمية (اختياري)"
                     dir="rtl"
                     className="flex-1 h-[38px] rounded-[6px] border border-[#e2e7f0] px-2 text-right outline-none"
@@ -518,13 +474,11 @@ export function ArchiveIncomingNewPage() {
           )}
         </div>
 
-        {/* أزرار الحفظ */}
-
         <div className="flex items-center gap-3 pt-2">
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={saving}
+            disabled={saving || checkingAccess || !canCreate}
             className="h-[48px] px-6 rounded-[8px] disabled:opacity-50"
             style={{
               background: "linear-gradient(to bottom,#00b867,#00522e)",

@@ -5,6 +5,7 @@ import { Plus, Trash2, Upload, X } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { logActivity } from "../../lib/logActivity";
 import { useUnsavedChanges } from "../../lib/unsavedChanges";
+import { usePermissions } from "../../lib/usePermissions";
 import {
   fetchMailOffices,
   createOutgoingMail,
@@ -39,9 +40,11 @@ interface PendingScan {
 export function ArchiveOutgoingNewPage() {
   const navigate = useNavigate();
 
+  const { loading: checkingAccess, hasPermission } = usePermissions();
+const canCreate = hasPermission("archive_outgoing:create");
+
   const [offices, setOffices] = useState<MailOffice[]>([]);
   const [loadingOffices, setLoadingOffices] = useState(true);
-
   const [faxDate, setFaxDate] = useState(
     new Date().toISOString().split("T")[0]
   );
@@ -57,9 +60,6 @@ export function ArchiveOutgoingNewPage() {
 
   const [pendingScans, setPendingScans] = useState<PendingScan[]>([]);
 
-  const [isOriginalReceived, setIsOriginalReceived] = useState(false);
-  const [originalReceivedBy, setOriginalReceivedBy] = useState("");
-
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -68,9 +68,17 @@ export function ArchiveOutgoingNewPage() {
   // ─────────────────────────────────────────────────────────
   // الصفحة دي "إنشاء" بحت، فبدل مقارنة snapshot بنتحقق مباشرة
   // من وجود أي محتوى فعلي دخله المستخدم في أي حقل
-  const { setDirty, guardNavigation } = useUnsavedChanges();
+  const { setDirty, guardNavigation, setPerformingSensitiveOperation } = useUnsavedChanges();
 
-  const isDirty = useMemo(() => {
+  // ⭐ عملية حساسة (إضافة فاكس صادر)
+  useEffect(() => {
+    setPerformingSensitiveOperation(true);
+    return () => {
+      setPerformingSensitiveOperation(false);
+    };
+  }, [setPerformingSensitiveOperation]);
+
+   const isDirty = useMemo(() => {
     const hasDestinations = destinations.some((d) => d.trim());
     const hasNotes = notes.some((n) => n.trim());
     const hasRecipients = recipients.some(
@@ -83,20 +91,9 @@ export function ArchiveOutgoingNewPage() {
       hasDestinations ||
       hasNotes ||
       hasRecipients ||
-      pendingScans.length > 0 ||
-      isOriginalReceived ||
-      originalReceivedBy.trim() !== ""
+      pendingScans.length > 0
     );
-  }, [
-    officeId,
-    faxSummary,
-    destinations,
-    notes,
-    recipients,
-    pendingScans.length,
-    isOriginalReceived,
-    originalReceivedBy,
-  ]);
+  }, [officeId, faxSummary, destinations, notes, recipients, pendingScans.length]);
 
   useEffect(() => {
     setDirty(isDirty);
@@ -235,10 +232,6 @@ export function ArchiveOutgoingNewPage() {
       return "يجب إدخال جهة واحدة على الأقل صادر لها الفاكس";
     }
 
-    if (isOriginalReceived && !originalReceivedBy.trim()) {
-      return "يجب إدخال اسم الشخص الذي استلم الأصل";
-    }
-
     return null;
   }
 
@@ -277,24 +270,22 @@ export function ArchiveOutgoingNewPage() {
       const faxSummaryTrimmed = faxSummary.trim();
 
        const newMail = await createOutgoingMail({
-        fax_date: faxDate,
-        issuing_office_id: officeId,
-        fax_summary: faxSummaryTrimmed || null,
-        destinations: destinations.filter((d) => d.trim()),
-        notes: notes.filter((n) => n.trim()),
-        recipients: recipients
-          .filter((r) => r.name.trim())
-          .map((r) => ({
-            name: r.name,
-            entity: r.entity || null,
-          })),
-        is_original_received: isOriginalReceived,
-        original_received_by: isOriginalReceived
-          ? originalReceivedBy.trim()
-          : null,
-        created_by: user?.id ?? null,
-        created_by_name: createdByName,
-      });
+         fax_date: faxDate,
+         issuing_office_id: officeId,
+         fax_summary: faxSummaryTrimmed || null,
+         destinations: destinations.filter((d) => d.trim()),
+         notes: notes.filter((n) => n.trim()),
+         recipients: recipients
+           .filter((r) => r.name.trim())
+           .map((r) => ({
+             name: r.name,
+             entity: r.entity || null,
+           })),
+         created_by: user?.id ?? null,
+         created_by_name: createdByName,
+         is_original_received: false,
+         original_received_by: null
+       });
 
       const faxId = newMail.id;
       const faxDisplayNumber = `${newMail.fax_number}/${newMail.fax_year}`;
@@ -347,6 +338,45 @@ export function ArchiveOutgoingNewPage() {
   /* =======================================================
      Render
   ======================================================= */
+
+  if (checkingAccess) {
+    return (
+      <div className="flex items-center justify-center py-20" dir="rtl">
+        <span style={{ ...F, fontSize: 15, color: "#717d96" }}>
+          جاري التحقق من الصلاحيات...
+        </span>
+      </div>
+    );
+  }
+
+  if (!canCreate) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center gap-3 py-24 w-full"
+        dir="rtl"
+      >
+        <div
+          className="w-14 h-14 rounded-full flex items-center justify-center"
+          style={{ background: "#fef2f2" }}
+        >
+          <X size={26} color="#991b1b" />
+        </div>
+
+        <p style={{ ...F, fontWeight: 700, fontSize: 18, color: "#2d3648" }}>
+          غير مسموح لك بالدخول لهذه الصفحة
+        </p>
+
+        <button
+          type="button"
+          onClick={() => navigate("/dashboard/archive/outgoing")}
+          className="h-[42px] px-5 rounded-[8px] border border-[#e2e7f0] mt-2"
+          style={{ ...F, fontSize: 14, color: "#475569" }}
+        >
+          الرجوع لأرشيف الصادر
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6 w-full pb-10" dir="rtl">
@@ -658,53 +688,14 @@ export function ArchiveOutgoingNewPage() {
           )}
         </div>
 
-        <div className="w-full h-px bg-[#eff0f6]" />
-
-        {/* استلام الأصل */}
-
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <input
-              id="originalReceived"
-              type="checkbox"
-              checked={isOriginalReceived}
-              onChange={(e) => {
-                setIsOriginalReceived(e.target.checked);
-                if (!e.target.checked) {
-                  setOriginalReceivedBy("");
-                }
-              }}
-              className="w-4 h-4 accent-[#00b867]"
-            />
-
-            <label
-              htmlFor="originalReceived"
-              style={{ ...F, fontSize: 14, color: "#2d3648" }}
-            >
-              تم استلام الأصل بعد التوزيع
-            </label>
-          </div>
-
-          {isOriginalReceived && (
-            <input
-              type="text"
-              value={originalReceivedBy}
-              onChange={(e) => setOriginalReceivedBy(e.target.value)}
-              placeholder="اسم الشخص الذي استلم الأصل"
-              dir="rtl"
-              className="w-full h-[44px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867]"
-              style={{ ...F, fontSize: 14, color: "#2d3648" }}
-            />
-          )}
-        </div>
+            <div className="w-full h-px bg-[#eff0f6]" />
 
         {/* أزرار الحفظ */}
-
         <div className="flex items-center gap-3 pt-2">
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={saving}
+            disabled={saving || checkingAccess || !canCreate}
             className="h-[48px] px-6 rounded-[8px] disabled:opacity-50"
             style={{
               background: "linear-gradient(to bottom,#00b867,#00522e)",

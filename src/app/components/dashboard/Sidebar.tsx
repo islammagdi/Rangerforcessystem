@@ -26,12 +26,14 @@ import {
   X,
     Briefcase, // ✅ جديد
     Network, // ✅ جديد - الهيكل التنظيمي
+    TrendingUp 
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { supabase } from "../../../lib/supabase";
 import { useUnsavedChanges } from "../../../lib/unsavedChanges";
 import { FileText,FileDown,FileUp } from "lucide-react";
 import { usePermissions } from "../../../lib/usePermissions";
+import { usePendingMailTasksCount } from "../../../hooks/usePendingMailTasksCount";
 import { Settings2 } from "lucide-react";
 // =====================================================
 // Types
@@ -86,6 +88,7 @@ const LABEL_TO_PATH: Record<string, string> = {
 "سجل الحوادث": "/dashboard/incidents-record",
   "إدارة الوظائف": "/dashboard/manage-jobs", // ✅ جديد
   "الهيكل التنظيمي": "/dashboard/units-tree", // ✅ جديد
+    "نشرات الترقي": "/dashboard/promotion-notifications",
 };
 
 // =====================================================
@@ -132,7 +135,13 @@ function LogoIcon() {
 // Nav Item
 // =====================================================
 
-function NavItem({ icon, label, active = false, onClick }: NavItemProps) {
+function NavItem({
+  icon,
+  label,
+  active = false,
+  onClick,
+  badge,
+}: NavItemProps & { badge?: number }) {
   const styledIcon = active
     ? cloneElement(icon, { stroke: "url(#navActiveGrad)" } as object)
     : icon;
@@ -156,6 +165,16 @@ function NavItem({ icon, label, active = false, onClick }: NavItemProps) {
       }}
     >
       <span className="flex-1 text-right">{label}</span>
+
+      {Boolean(badge) && (
+        <span
+          className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-[#e3282c] text-white flex items-center justify-center"
+          style={{ fontFamily: "'Almarai', sans-serif", fontSize: 11, fontWeight: 700 }}
+        >
+          {badge}
+        </span>
+      )}
+
       <span className="shrink-0">{styledIcon}</span>
     </button>
   );
@@ -224,6 +243,7 @@ export function Sidebar({
   // صلاحيات المستخدم الحالي (بدل الاعتماد على اسم الدور)
   // ===================================================
   const { loading: permsLoading, hasPermission } = usePermissions();
+  const { count: pendingTasksCount } = usePendingMailTasksCount();
 
   // ===================================================
   // Active Label
@@ -526,6 +546,15 @@ export function Sidebar({
         section: "ادارة المنظومة",
         permission: "units_tree:view",
       },
+            // -------------------------------
+      // الترقي
+      // -------------------------------
+      {
+        icon: <TrendingUp size={18} />,
+        label: "نشرات الترقي",
+        section: "الترقي",
+        permission: "promotion_notifications:view",
+      },
     ],
     []
   );
@@ -544,8 +573,7 @@ export function Sidebar({
   // Group By Section
   // ===================================================
 
- const sections = ["الافراد", "الخطابات", "الأرشيف", "اليوميات", "الخدمة الاجتماعية", "الإدارة العسكرية", "ادارة المنظومة"];
-
+const sections = ["الافراد", "الخطابات", "الأرشيف", "اليوميات", "الخدمة الاجتماعية", "الإدارة العسكرية", "الترقي", "ادارة المنظومة"];
   function getSectionItems(section: string) {
     return visibleNavItems.filter((item) => item.section === section);
   }
@@ -630,7 +658,7 @@ export function Sidebar({
                   textDecoration: "none",
                 }}
               >
-                منظومة الافراد
+               فرع التنظيم والادارة
               </Link>
               <LogoIcon />
             </div>
@@ -683,6 +711,7 @@ export function Sidebar({
                         label={label}
                         active={activeLabel === label}
                         onClick={() => handleClick(label)}
+                        badge={label === "الموقف العام" ? pendingTasksCount : undefined}
                       />
                     ))}
                   </div>
@@ -712,7 +741,7 @@ export function Sidebar({
                     title={label}
                     onClick={() => handleClick(label)}
                     className={[
-                      "w-10 h-10",
+                      "relative w-10 h-10",
                       "rounded-full",
                       "flex items-center justify-center",
                       "transition-colors",
@@ -720,6 +749,15 @@ export function Sidebar({
                     ].join(" ")}
                   >
                     {styledIcon}
+
+                    {label === "الموقف العام" && pendingTasksCount > 0 && (
+                      <span
+                        className="absolute -top-1 -left-1 min-w-[16px] h-4 px-1 rounded-full bg-[#e3282c] text-white flex items-center justify-center"
+                        style={{ fontFamily: "'Almarai', sans-serif", fontSize: 9, fontWeight: 700 }}
+                      >
+                        {pendingTasksCount}
+                      </span>
+                    )}
                   </button>
                 );
               })}

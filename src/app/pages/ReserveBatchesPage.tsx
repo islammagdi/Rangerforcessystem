@@ -1178,7 +1178,15 @@ export function ReserveBatchesPage() {
   // بنقارن كل صف في الجدول بنسخته الأصلية (originalSoldierDataRef)
   // على نفس الحقول اللي فعليًا بتتحفظ (الكارنيه/الرخصة/محو الأمية/
   // مراجعة النموذج وملاحظاته)
-  const { setDirty, guardNavigation } = useUnsavedChanges();
+  const { setDirty, guardNavigation, setPerformingSensitiveOperation } = useUnsavedChanges();
+
+  // ⭐ عملية حساسة (تعديل مستندات/إنهاء خدمة/ترحيل دفعة رديف)
+  useEffect(() => {
+    setPerformingSensitiveOperation(true);
+    return () => {
+      setPerformingSensitiveOperation(false);
+    };
+  }, [setPerformingSensitiveOperation]);
 
   const isDirty = useMemo(() => {
     return soldierData.some((soldier) => {

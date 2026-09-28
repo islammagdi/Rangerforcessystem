@@ -1,5 +1,30 @@
 import { supabase } from "./supabase";
+export interface RoleOption {
+  id: string;
+  name: string;
+}
 
+export async function fetchAllRoleOptions(): Promise<RoleOption[]> {
+  const { data, error } = await supabase
+    .from("roles")
+    .select("id, name")
+    .order("name", { ascending: true });
+
+  if (error) throw error;
+
+  return data ?? [];
+}
+
+export async function fetchSheetShareRoleIds(sheetId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("sheet_shares")
+    .select("role_id")
+    .eq("sheet_id", sheetId);
+
+  if (error) throw error;
+
+  return (data ?? []).map((r) => r.role_id as string);
+}
 export type SheetColumnType = "TEXT" | "NUMBER" | "DATE";
 
 export const COLUMN_TYPE_LABELS: Record<SheetColumnType, string> = {
@@ -70,6 +95,7 @@ export async function createSheet(params: {
   columns: { name: string; column_type: SheetColumnType }[];
   createdBy: string | null;
   createdByName: string;
+  sharedRoleIds?: string[];
 }): Promise<string> {
   const { data: sheet, error: sheetError } = await supabase
     .from("sheets")
@@ -95,6 +121,17 @@ export async function createSheet(params: {
     .insert(columnsPayload);
 
   if (columnsError) throw columnsError;
+
+  if (params.sharedRoleIds && params.sharedRoleIds.length > 0) {
+    const { error: sharesError } = await supabase.from("sheet_shares").insert(
+      params.sharedRoleIds.map((roleId) => ({
+        sheet_id: sheet.id,
+        role_id: roleId,
+      }))
+    );
+
+    if (sharesError) throw sharesError;
+  }
 
   await addSheetLog(sheet.id, `${params.createdByName} أنشأ الكشف`);
 

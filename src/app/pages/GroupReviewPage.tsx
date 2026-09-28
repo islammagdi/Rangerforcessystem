@@ -1994,13 +1994,14 @@ export function GroupReviewPage() {
   const [editingRowId, setEditingRowId] =
     useState<number | null>(null);
 
-  // ─────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────
   // تتبّع التعديلات غير المحفوظة
-  // ─────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────
   // وجود "rows" معناه إن فيه كشف تم رفعه وتحليله ولسه محفوظش
   // في قاعدة البيانات — لو المستخدم غادر (حتى من غير ما يعدّل
   // أي صف)، هيفقد الكشف كله ويضطر يرفعه تاني
-  const { setDirty } = useUnsavedChanges();
+  const { setDirty, setPerformingSensitiveOperation } =
+    useUnsavedChanges();
 
   useEffect(() => {
     setDirty(rows.length > 0);
@@ -2010,6 +2011,17 @@ export function GroupReviewPage() {
     return () => setDirty(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ─────────────────────────────────────────────────────
+  // تحديد أن هذه عملية حساسة
+  // ─────────────────────────────────────────────────────
+  useEffect(() => {
+    setPerformingSensitiveOperation(true);
+
+    return () => {
+      setPerformingSensitiveOperation(false);
+    };
+  }, [setPerformingSensitiveOperation]);
 
   /* =======================================================
      Load references

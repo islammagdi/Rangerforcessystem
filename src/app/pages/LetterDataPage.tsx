@@ -579,7 +579,15 @@ export function LetterDataPage() {
   // ─────────────────────────────────────────────────────────
   // الأفراد جايين من خطوة سابقة (عمل تم إنجازه)، وأي بيانات
   // خطاب أو تخصيص لحقول الأفراد لسه محفوظتش في قاعدة البيانات
-  const { setDirty } = useUnsavedChanges();
+  const { setDirty, setPerformingSensitiveOperation } = useUnsavedChanges();
+
+  // ⭐ عملية حساسة (جزء من مسار إصدار خطاب)
+  useEffect(() => {
+    setPerformingSensitiveOperation(true);
+    return () => {
+      setPerformingSensitiveOperation(false);
+    };
+  }, [setPerformingSensitiveOperation]);
 
   const isDirty = useMemo(() => {
     const hasDestination = destination.trim() !== "";

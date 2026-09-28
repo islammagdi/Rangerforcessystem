@@ -31,6 +31,14 @@ interface UnsavedChangesContextValue {
    * بوب اب تأكيد وبيتأجل التنفيذ لحد ما المستخدم يقرر.
    */
   guardNavigation: (action: () => void) => void;
+
+  /** هل المستخدم بيقوم بعملية حساسة (إضافة فرد / تعديل بيانات / إصدار خطاب) */
+  isPerformingSensitiveOperation: boolean;
+
+  /** تحديث حالة العملية الحساسة */
+  setPerformingSensitiveOperation: (
+    performing: boolean
+  ) => void;
 }
 
 const UnsavedChangesContext =
@@ -47,6 +55,8 @@ export function UnsavedChangesProvider({
 }) {
   const [isDirty, setIsDirty] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [isPerformingSensitiveOperation, setPerformingSensitiveOperation] =
+    useState(false);
 
   // بنخزّن الأكشن المؤجل (غالبًا navigate(path)) هنا لحد ما
   // المستخدم يأكد قرار المغادرة
@@ -67,7 +77,6 @@ export function UnsavedChangesProvider({
     },
     [isDirty]
   );
-
   // تحذير المتصفح الأصلي عند إغلاق التاب / تحديث الصفحة (F5).
   // ملحوظة: المتصفحات الحديثة بتعرض نص ثابت من عندها لأسباب أمنية
   // ومينفعش نغيّر النص، لكن السلوك (تحذير قبل الخروج) بيشتغل صح.
@@ -103,9 +112,15 @@ export function UnsavedChangesProvider({
     pendingActionRef.current = null;
   }
 
-  return (
+return (
     <UnsavedChangesContext.Provider
-      value={{ isDirty, setDirty, guardNavigation }}
+      value={{
+        isDirty,
+        setDirty,
+        guardNavigation,
+        isPerformingSensitiveOperation,
+        setPerformingSensitiveOperation,
+      }}
     >
       {children}
 

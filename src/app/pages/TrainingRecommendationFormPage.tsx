@@ -122,7 +122,15 @@ export function TrainingRecommendationFormPage() {
   // تتبّع التعديلات غير المحفوظة
   // ─────────────────────────────────────────────────────────
 
-  const { setDirty, guardNavigation } = useUnsavedChanges();
+  const { setDirty, guardNavigation, setPerformingSensitiveOperation } = useUnsavedChanges();
+
+  // ⭐ عملية حساسة (إضافة/تعديل توصية تدريب)
+  useEffect(() => {
+    setPerformingSensitiveOperation(true);
+    return () => {
+      setPerformingSensitiveOperation(false);
+    };
+  }, [setPerformingSensitiveOperation]);
 
   const initialSnapshotRef = useRef<string>("");
 

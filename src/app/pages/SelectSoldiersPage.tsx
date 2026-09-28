@@ -353,16 +353,27 @@ export function SelectSoldiersPage() {
   // ─────────────────────────────────────────────────────────
   // بمجرد إضافة فرد واحد على الأقل للجدول (بأي طريقة) ولسه
   // محصلش انتقال للخطوة اللي بعدها، يبقى فيه تعديل غير محفوظ
-  const { setDirty } = useUnsavedChanges();
+// ─────────────────────────────────────────────────────────
+// تتبّع التعديلات غير المحفوظة
+// ─────────────────────────────────────────────────────────
+const { setDirty, setPerformingSensitiveOperation } = useUnsavedChanges();
 
-  useEffect(() => {
-    setDirty(soldiers.length > 0);
-  }, [soldiers.length, setDirty]);
+useEffect(() => {
+  setDirty(soldiers.length > 0);
+}, [soldiers.length, setDirty]);
 
-  useEffect(() => {
-    return () => setDirty(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+useEffect(() => {
+  return () => setDirty(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
+// ⭐ عملية حساسة (جزء من مسار إصدار خطاب)
+useEffect(() => {
+  setPerformingSensitiveOperation(true);
+  return () => {
+    setPerformingSensitiveOperation(false);
+  };
+}, [setPerformingSensitiveOperation]);
 
   /* =======================================================
      تحميل بيانات نوع الخطاب (بما فيها eligibility_rules)

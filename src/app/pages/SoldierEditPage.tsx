@@ -1124,13 +1124,12 @@ export function SoldierEditPage() {
   const [militaryNumberError, setMilitaryNumberError] = useState("");
   const [nameError, setNameError] = useState("");
   const [error, setError] = useState("");
+  // ─────────────────────────────────────────────────────
+  // تتبّع التعديلات غير المحفوظة
+  // ─────────────────────────────────────────────────────
 
-  // ─────────────────────────────────────────────────────────
-  // تتبّع التعديلات غير المحفوظة (يُبلّغ الـ context المركزي
-  // اللي بيحمي أي تنقل من الـ Sidebar / Breadcrumbs / إغلاق الصفحة)
-  // ─────────────────────────────────────────────────────────
-
-  const { setDirty } = useUnsavedChanges();
+  const { setDirty, setPerformingSensitiveOperation } =
+    useUnsavedChanges();
 
   // نسخة من قيم الفورم زي ما جاءت من قاعدة البيانات، بنقارن
   // بيها القيم الحالية عشان نعرف لو المستخدم عدّل حاجة فعلاً
@@ -1168,12 +1167,33 @@ export function SoldierEditPage() {
     setDirty(isDirty);
   }, [isDirty, setDirty]);
 
-  // لو المستخدم غادر الصفحة من غير ما يرجع من هنا بشكل طبيعي
-  // (unmount)، نصفّر الحالة عشان مايفضلش أثر على صفحة تانية
+  // لو المستخدم غادر الصفحة من غير ما يكمل الفورم بشكل طبيعي
   useEffect(() => {
     return () => setDirty(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ─────────────────────────────────────────────────────
+  // تحديد أن هذه عملية حساسة
+  // ─────────────────────────────────────────────────────
+  useEffect(() => {
+    setPerformingSensitiveOperation(true);
+
+    return () => {
+      setPerformingSensitiveOperation(false);
+    };
+  }, [setPerformingSensitiveOperation]);
+
+  // ─────────────────────────────────────────────────────
+  // تحديد أن هذه عملية حساسة
+  // ─────────────────────────────────────────────────────
+  useEffect(() => {
+    setPerformingSensitiveOperation(true);
+
+    return () => {
+      setPerformingSensitiveOperation(false);
+    };
+  }, [setPerformingSensitiveOperation]);
   // هل الموقف الخدمي الحالي المختار = "ملحق"؟
   const selectedServiceStatusName =
     serviceStatusOptions.find((o) => o.id === serviceStatusId)?.name ??

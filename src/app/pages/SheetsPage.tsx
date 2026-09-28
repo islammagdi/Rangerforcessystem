@@ -10,8 +10,10 @@ import {
   createSheet,
   deleteSheet,
   duplicateSheet,
+  fetchAllRoleOptions,
   type Sheet,
   type SheetColumnType,
+  type RoleOption,
   COLUMN_TYPE_LABELS,
 } from "../../lib/sheets";
 
@@ -23,7 +25,6 @@ interface ColumnDraft {
   name: string;
   column_type: SheetColumnType;
 }
-
 function CreateSheetModal({
   onClose,
   onCreated,
@@ -37,6 +38,24 @@ function CreateSheetModal({
   ]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const [roles, setRoles] = useState<RoleOption[]>([]);
+  const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    fetchAllRoleOptions()
+      .then(setRoles)
+      .catch((err) => console.error("Load roles error:", err));
+  }, []);
+
+  function toggleRole(roleId: string) {
+    setSelectedRoleIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(roleId)) next.delete(roleId);
+      else next.add(roleId);
+      return next;
+    });
+  }
 
   function addColumnDraft() {
     setColumns((prev) => [...prev, { name: "", column_type: "TEXT" }]);
@@ -99,6 +118,7 @@ function CreateSheetModal({
         })),
         createdBy: user?.id ?? null,
         createdByName: userName,
+        sharedRoleIds: Array.from(selectedRoleIds),
       });
 
       try {
@@ -240,6 +260,50 @@ function CreateSheetModal({
                 )}
               </div>
             ))}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label style={{ ...F, fontWeight: 700, fontSize: 14, color: "#2d3648" }}>
+              مشاركة الكشف مع أدوار أخرى (اختياري)
+            </label>
+
+            <p style={{ ...F, fontSize: 12, color: "#a1aebe" }}>
+              الأدوار المختارة هتقدر تشوف الكشف ده بالإضافة لدورك ولمدير النظام
+            </p>
+
+            {roles.length === 0 ? (
+              <span style={{ ...F, fontSize: 13, color: "#a1aebe" }}>
+                جاري تحميل الأدوار...
+              </span>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {roles.map((role) => {
+                  const checked = selectedRoleIds.has(role.id);
+
+                  return (
+                    <label
+                      key={role.id}
+                      className={[
+                        "flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors",
+                        checked
+                          ? "bg-[#DCF4DF] border-[#00B867]"
+                          : "bg-[#f7f9fc] border-[#eff0f6] hover:bg-[#f5f6fb]",
+                      ].join(" ")}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleRole(role.id)}
+                        className="w-4 h-4 accent-[#00B867]"
+                      />
+                      <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>
+                        {role.name}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -490,7 +554,7 @@ async function handleDuplicate(sheet: Sheet) {
               </div>
 
               <p style={{ ...F, fontSize: 12, color: "#a1aebe" }}>
-                {new Date(sheet.created_at).toLocaleDateString("ar-EG", {
+              تاريخ الانشاء:   {new Date(sheet.created_at).toLocaleDateString("ar-EG", {
                   dateStyle: "medium",
                 })}
               </p>
@@ -502,10 +566,10 @@ async function handleDuplicate(sheet: Sheet) {
                     navigate(`/dashboard/sheets/${sheet.id}`)
                   }
                   className="flex-1 h-9 rounded-[7px] flex items-center justify-center gap-1.5"
-                  style={{ background: "#f0f2fd" }}
+                  style={{ background: "#DCF4DF" }}
                 >
-                  <Eye size={14} color="#1f3d97" />
-                  <span style={{ ...F, fontSize: 13, color: "#1f3d97" }}>
+                  <Eye size={14} color="#00522e" />
+                  <span style={{ ...F, fontSize: 13, color: "#00522e" }}>
                     فتح
                   </span>
                 </button>
@@ -515,10 +579,10 @@ async function handleDuplicate(sheet: Sheet) {
     onClick={() => handleDuplicate(sheet)}
     disabled={duplicatingId === sheet.id}
     className="w-9 h-9 rounded-[7px] flex items-center justify-center shrink-0 disabled:opacity-50"
-    style={{ background: "#fff4de" }}
+    style={{ background: "#f0f2fd" }}
     title="نسخ الكشف"
   >
-    <Copy size={14} color="#b45309" />
+    <Copy size={14} color="#1f3d97" />
   </button>
 )}
                 {hasPermission("sheets:delete") && (

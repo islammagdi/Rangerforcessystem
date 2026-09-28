@@ -8,8 +8,8 @@ import { supabase } from "./supabase";
 export interface UserPermissionsResult {
   loading: boolean;
   permissions: Set<string>; // e.g. { "letters_archive:view", "letters_archive:export" }
-  roleName: string | null;
-  roleCode: string | null;
+  roleNames: string[];
+  roleCodes: string[];
   isAdmin: boolean;
   hasPermission: (code: string) => boolean;
   refresh: () => void;
@@ -22,8 +22,8 @@ export interface UserPermissionsResult {
 export function usePermissions(): UserPermissionsResult {
   const [loading, setLoading] = useState(true);
   const [permissions, setPermissions] = useState<Set<string>>(new Set());
-  const [roleName, setRoleName] = useState<string | null>(null);
-  const [roleCode, setRoleCode] = useState<string | null>(null);
+  const [roleNames, setRoleNames] = useState<string[]>([]);
+  const [roleCodes, setRoleCodes] = useState<string[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const refresh = useCallback(() => {
@@ -43,48 +43,52 @@ export function usePermissions(): UserPermissionsResult {
       if (!user) {
         if (mounted) {
           setPermissions(new Set());
-          setRoleName(null);
-          setRoleCode(null);
+          setRoleNames([]);
+          setRoleCodes([]);
           setLoading(false);
         }
         return;
       }
 
-      // 1) هات دور المستخدم
-      const { data: userRoleData, error: userRoleError } = await supabase
+      // 1) هات كل الأدوار المرتبطة بالمستخدم (مش دور واحد بس)
+      const { data: userRolesData, error: userRolesError } = await supabase
         .from("user_roles")
         .select(`
           role_id,
           roles ( id, name, code )
         `)
-        .eq("user_id", user.id)
-        .maybeSingle();
+        .eq("user_id", user.id);
 
-      if (userRoleError) {
-        console.error("PERMISSIONS: load role error", userRoleError);
+      if (userRolesError) {
+        console.error("PERMISSIONS: load roles error", userRolesError);
       }
 
-      const role = Array.isArray(userRoleData?.roles)
-        ? userRoleData?.roles[0]
-        : userRoleData?.roles;
+      const roles = (userRolesData ?? [])
+        .map((row: any) =>
+          Array.isArray(row.roles) ? row.roles[0] : row.roles
+        )
+        .filter(Boolean);
 
-      if (!role) {
+      if (roles.length === 0) {
         if (mounted) {
           setPermissions(new Set());
-          setRoleName(null);
-          setRoleCode(null);
+          setRoleNames([]);
+          setRoleCodes([]);
           setLoading(false);
         }
         return;
       }
 
-      // 2) هات كل صلاحيات الدور ده (module:action)
+      const roleIds = roles.map((r: any) => r.id);
+
+      // 2) هات كل صلاحيات كل الأدوار دي مجمّعة مع بعض (module:action)
       const { data: permsData, error: permsError } = await supabase
         .from("role_permissions")
         .select(`
+          role_id,
           permissions ( module, action )
         `)
-        .eq("role_id", role.id);
+        .in("role_id", roleIds);
 
       if (permsError) {
         console.error("PERMISSIONS: load permissions error", permsError);
@@ -104,8 +108,8 @@ export function usePermissions(): UserPermissionsResult {
 
       if (mounted) {
         setPermissions(permsSet);
-        setRoleName(role.name ?? null);
-        setRoleCode(role.code ?? null);
+        setRoleNames(roles.map((r: any) => r.name).filter(Boolean));
+        setRoleCodes(roles.map((r: any) => r.code).filter(Boolean));
         setLoading(false);
       }
     }
@@ -117,18 +121,18 @@ export function usePermissions(): UserPermissionsResult {
     };
   }, [refreshKey]);
 
-  const hasPermission = useCallback(
-    (code: string) => permissions.has(code),
-    [permissions]
-  );
+  const isAdmin = roleCodes.includes("ADMIN");
 
-  const isAdmin = roleCode === "ADMIN";
+  const hasPermission = useCallback(
+    (code: string) => isAdmin || permissions.has(code),
+    [permissions, isAdmin]
+  );
 
   return {
     loading,
     permissions,
-    roleName,
-    roleCode,
+    roleNames,
+    roleCodes,
     isAdmin,
     hasPermission,
     refresh,

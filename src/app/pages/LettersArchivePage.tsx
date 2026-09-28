@@ -606,16 +606,20 @@ function GeneralArchiveTab({
   onView,
   onPrint,
   initialStatusFilter = "",
+  initialDateFrom = "",
+  initialDateTo = "",
 }: {
   onView: (id: string) => void;
   onPrint: (id: string) => void;
   initialStatusFilter?: string;
+  initialDateFrom?: string;
+  initialDateTo?: string;
 }) {
   const [searchText, setSearchText] = useState("");
   const [filterStatus, setFilterStatus] = useState(initialStatusFilter);
   const [filterType, setFilterType] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(initialDateFrom);
+  const [dateTo, setDateTo] = useState(initialDateTo);
   const [records, setRecords] =
     useState<LetterArchiveRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1570,9 +1574,11 @@ export function LettersArchivePage() {
   // ✅ لو جاي من تنبيه "خطابات غير موثقة" في الداشبورد،
   // بيبعت statusFilter = "UNDOCUMENTED"، وهنا بنحوّلها
   // للقيمة العربي اللي فلتر الحالة شغال بيها فعليًا
-  const incomingStatusFilter = (
-    location.state as { statusFilter?: string } | null
-  )?.statusFilter;
+  const navState = location.state as
+    | { statusFilter?: string; dateToday?: boolean }
+    | null;
+
+  const incomingStatusFilter = navState?.statusFilter;
 
   const initialStatusFilter =
     incomingStatusFilter === "UNDOCUMENTED"
@@ -1580,6 +1586,10 @@ export function LettersArchivePage() {
       : incomingStatusFilter === "DOCUMENTED"
       ? "موثق"
       : "";
+
+  const todayStr = new Date().toISOString().split("T")[0];
+  const initialDateFrom = navState?.dateToday ? todayStr : "";
+  const initialDateTo = navState?.dateToday ? todayStr : "";
 
   const [tab, setTab] = useState<"general" | "individual">("general");
 
@@ -1681,11 +1691,13 @@ export function LettersArchivePage() {
         </div>
       </div>
 
-         {tab === "general" ? (
+      {tab === "general" ? (
         <GeneralArchiveTab
           onView={handleView}
           onPrint={handlePrint}
           initialStatusFilter={initialStatusFilter}
+          initialDateFrom={initialDateFrom}
+          initialDateTo={initialDateTo}
         />
       ) : (
         <IndividualTab

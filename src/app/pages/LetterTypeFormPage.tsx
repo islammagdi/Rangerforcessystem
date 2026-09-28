@@ -21,6 +21,7 @@ import type {
   LetterTypeConfig,
 } from "../../lib/letterTypeEngine";
 import { usePermissions } from "../../lib/usePermissions";
+import { useUnsavedChanges } from "../../lib/unsavedChanges";
 import {
   BASE_SOLDIER_COLUMNS,
   DEFAULT_VISIBLE_SOLDIER_COLUMNS,
@@ -1251,7 +1252,17 @@ export function LetterTypeFormPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
 const { hasPermission } = usePermissions();
+  const { setPerformingSensitiveOperation } = useUnsavedChanges();
+
   const isEditMode = Boolean(id);
+
+  // ⭐ عملية حساسة (إدارة الخطابات)
+  useEffect(() => {
+    setPerformingSensitiveOperation(true);
+    return () => {
+      setPerformingSensitiveOperation(false);
+    };
+  }, [setPerformingSensitiveOperation]);
 
   const [name, setName] = useState("");
   const [code, setCode] = useState("");

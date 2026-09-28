@@ -59,6 +59,7 @@ const PAGE_TITLES: Record<string, string> = {
 "/dashboard/incidents-record": "سجل الحوادث",
  "/dashboard/manage-jobs": "إدارة الوظائف", // ✅ جديدب
  "/dashboard/units-tree": "الهيكل التنظيمي", // ✅ جديد
+   "/dashboard/promotion-notifications": "نشرات الترقي",
 };
 
 // ============================================================
@@ -112,7 +113,24 @@ const PATH_PERMISSION_MAP: { prefix: string; permission: string }[] = [
   { prefix: "/dashboard/incidents-record", permission: "incidents_record:view" },
     { prefix: "/dashboard/manage-jobs", permission: "manage_jobs:view" }, // ✅ جديد
     { prefix: "/dashboard/units-tree", permission: "units_tree:view" }, // ✅ جديد
+    { prefix: "/dashboard/promotion-notifications", permission: "promotion_notifications:view" },
 ];
+// قواعد خاصة بمسارات "التعديل" — بتتحقق قبل القاعدة العامة، عشان
+// تفرّق بين صفحة عرض بيانات الفرد (تكفيها individual_query:view)
+// وصفحة تعديل بياناته (لازم صلاحية منفصلة)، رغم إن الاتنين تحت
+// نفس بادئة /dashboard/individual-query
+const PATH_SUFFIX_PERMISSION_MAP: {
+  prefix: string;
+  suffix: string;
+  permission: string;
+}[] = [
+  {
+    prefix: "/dashboard/individual-query",
+    suffix: "/edit",
+    permission: "individual_query:edit",
+  },
+];
+
 function isPathAllowed(
   pathname: string,
   hasPermission: (code: string) => boolean
@@ -120,6 +138,16 @@ function isPathAllowed(
   // الصفحة الرئيسية /dashboard متاحة لأي مستخدم مسجل دخول
   if (pathname === "/dashboard") {
     return true;
+  }
+
+  // القواعد المبنية على نهاية المسار لها أولوية أعلى من القواعد
+  // العامة المبنية على البادئة بس
+  const suffixRule = PATH_SUFFIX_PERMISSION_MAP.find(
+    (r) => pathname.startsWith(r.prefix) && pathname.endsWith(r.suffix)
+  );
+
+  if (suffixRule) {
+    return hasPermission(suffixRule.permission);
   }
 
   // أطول تطابق بادئة (prefix) عشان نتجنب تصادم مسارات متشابهة
@@ -134,7 +162,6 @@ function isPathAllowed(
 
   return hasPermission(rule.permission);
 }
-
 // ============================================================
 // تحديد عنوان الصفحة الحالية
 // ============================================================
@@ -233,6 +260,9 @@ if (pathname.includes("/manage-letter-types")) {
   if (pathname.includes("/units-tree")) {
     return "الهيكل التنظيمي";
   }
+  if (pathname.includes("/promotion-notifications")) {
+  return "نشرات الترقي";
+}
   // القيمة الافتراضية
   return "الموقف العام";
 }
@@ -417,6 +447,9 @@ else if (label === "سجل الحوادث") {
 }
 else if (label === "الهيكل التنظيمي") {
   navigate("/dashboard/units-tree");
+}
+else if (label === "نشرات الترقي") {
+  navigate("/dashboard/promotion-notifications");
 }
   }
 

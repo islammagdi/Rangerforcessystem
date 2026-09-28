@@ -1020,7 +1020,7 @@ export function ManageUnitsPage() {
               </th>
 
               <th className="px-5 py-4 text-sm font-bold text-gray-600">
-                الوحدة الأب
+                الوحدة التابع لها
               </th>
 
               <th className="px-5 py-4 text-sm font-bold text-gray-600">
@@ -1111,7 +1111,7 @@ export function ManageUnitsPage() {
                           {unit.parent_unit_name ||
                             (unit.unit_type ===
                             "MAIN"
-                              ? "بدون أب"
+                              ? "بدون تابع"
                               : "-")}
                         </div>
 

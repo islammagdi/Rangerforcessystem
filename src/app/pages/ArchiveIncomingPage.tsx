@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useLocation } from "react-router";
 import { Search, Plus, Calendar } from "lucide-react";
 import {
   fetchMailOffices,
@@ -7,6 +7,7 @@ import {
   type MailOffice,
   type IncomingMail,
 } from "../../lib/mailArchive";
+import { usePermissions } from "../../lib/usePermissions";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
@@ -19,6 +20,8 @@ function formatDate(dateStr: string): string {
 
 export function ArchiveIncomingPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { hasPermission } = usePermissions();
 
   const [mails, setMails] = useState<IncomingMail[]>([]);
   const [offices, setOffices] = useState<MailOffice[]>([]);
@@ -29,7 +32,9 @@ export function ArchiveIncomingPage() {
   const [faxYearFilter, setFaxYearFilter] = useState("");
   const [dateFromFilter, setDateFromFilter] = useState("");
   const [dateToFilter, setDateToFilter] = useState("");
-  const [officeFilter, setOfficeFilter] = useState("");
+  const [officeFilter, setOfficeFilter] = useState(
+    (location.state as { officeFilter?: string } | null)?.officeFilter ?? ""
+  );
   const [faxSummaryFilter, setFaxSummaryFilter] = useState("");
   const [sourceEntityFilter, setSourceEntityFilter] = useState("");
 
@@ -120,21 +125,23 @@ export function ArchiveIncomingPage() {
           أرشيف الوارد
         </h1>
 
-        <button
-          type="button"
-          onClick={() =>
-            navigate("/dashboard/archive/incoming/new")
-          }
-          className="flex items-center gap-2 h-[46px] px-5 rounded-[8px]"
-          style={{
-            background: "linear-gradient(to bottom,#00b867,#00522e)",
-          }}
-        >
-          <Plus size={18} color="#fff" />
-          <span style={{ ...F, fontSize: 15, color: "#fff" }}>
-            إضافة فاكس جديد
-          </span>
-        </button>
+{hasPermission("archive_incoming:create") && (
+          <button
+            type="button"
+            onClick={() =>
+              navigate("/dashboard/archive/incoming/new")
+            }
+            className="flex items-center gap-2 h-[46px] px-5 rounded-[8px]"
+            style={{
+              background: "linear-gradient(to bottom,#00b867,#00522e)",
+            }}
+          >
+            <Plus size={18} color="#fff" />
+            <span style={{ ...F, fontSize: 15, color: "#fff" }}>
+              إضافة فاكس جديد
+            </span>
+          </button>
+        )}
       </div>
 
       {error && (
@@ -417,11 +424,29 @@ export function ArchiveIncomingPage() {
                         {mail.source_entity}
                       </span>
                     </td>
-
                     <td className={tdClass}>
-                      <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
-                        {mail.mail_offices?.name ?? "-"}
-                      </span>
+                      {mail.office_names && mail.office_names.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {mail.office_names.map((name, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2 py-0.5 rounded-full"
+                              style={{
+                                ...F,
+                                fontSize: 12,
+                                background: "#f7f9fc",
+                                color: "#2d3648",
+                              }}
+                            >
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
+                          -
+                        </span>
+                      )}
                     </td>
 
                     <td className={tdClass}>

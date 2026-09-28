@@ -31,6 +31,7 @@ import {
   COLUMN_TYPE_LABELS,
 } from "../../lib/sheets";
 import { SheetReportsTab } from "../components/sheets/SheetReportsTab";
+import { useUnsavedChanges } from "../../lib/unsavedChanges";
 
 
 const F: React.CSSProperties = {
@@ -350,6 +351,16 @@ export function SheetDetailPage() {
 
   const canEdit = hasPermission("sheets:create");
   const canDelete = hasPermission("sheets:delete");
+
+  const { setPerformingSensitiveOperation } = useUnsavedChanges();
+
+  // ⭐ عملية حساسة (تعديل بيانات كشف)
+  useEffect(() => {
+    setPerformingSensitiveOperation(true);
+    return () => {
+      setPerformingSensitiveOperation(false);
+    };
+  }, [setPerformingSensitiveOperation]);
 
   const [activeTab, setActiveTab] = useState<"data" | "reports">("data");
 

@@ -493,7 +493,7 @@ function ActivityLogPage() {
       ================================================= */}
 
       {!loading && !error && (
-        <div className="bg-white rounded-2xl border border-[#e2e8f0] overflow-hidden shadow-sm">
+        <div className="bg-white rounded-2xl border border-[#e2e8f0] overflow-hidden ">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-[#f8fafc]">

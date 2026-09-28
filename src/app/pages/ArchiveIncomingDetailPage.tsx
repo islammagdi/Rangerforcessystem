@@ -6,7 +6,11 @@ import {
   updateIncomingMail,
   uploadIncomingScanFile,
   addIncomingMailScan,
+  addIncomingMailNote,
   getScanSignedUrl,
+  markIncomingMailReceived,
+  fetchIncomingMailPermissions,
+  upsertIncomingMailOfficeAction,
   type IncomingMailFull,
 } from "../../lib/mailArchive";
 import { logActivity } from "../../lib/logActivity";
@@ -40,44 +44,50 @@ export function ArchiveIncomingDetailPage() {
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
-  // حقول قابلة للتعديل
+  const [permissions, setPermissions] = useState({
+    isArchive: false,
+    isBranchHead: false,
+    editableOfficeIds: [] as string[],
+  });
+
+  const [officeActionTexts, setOfficeActionTexts] = useState<Record<string, string>>({});
+  const originalOfficeActionsRef = useRef<Record<string, string>>({});
+  const [savingOfficeActionId, setSavingOfficeActionId] = useState<string | null>(null);
+
   const [faxSummary, setFaxSummary] = useState("");
-  const [notes, setNotes] = useState("");
-  const [isCopyDistributed, setIsCopyDistributed] = useState(false);
-  const [distributedToName, setDistributedToName] = useState("");
-  const [actionTaken, setActionTaken] = useState("");
+  const [savingArchive, setSavingArchive] = useState(false);
+  const originalArchiveRef = useRef<string>("");
+
   const [branchHeadDecision, setBranchHeadDecision] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [savingBranch, setSavingBranch] = useState(false);
+  const originalBranchRef = useRef<string>("");
+
+  const [newNoteText, setNewNoteText] = useState("");
+  const [addingNote, setAddingNote] = useState(false);
+
   const [uploadingScan, setUploadingScan] = useState(false);
 
-  // ─────────────────────────────────────────────────────────
-  // تتبّع التعديلات غير المحفوظة
-  // ─────────────────────────────────────────────────────────
-  const { setDirty, guardNavigation } = useUnsavedChanges();
+  const { setDirty, guardNavigation, setPerformingSensitiveOperation } = useUnsavedChanges();
 
-  const initialSnapshotRef = useRef<string>("");
+  useEffect(() => {
+    setPerformingSensitiveOperation(true);
+    return () => {
+      setPerformingSensitiveOperation(false);
+    };
+  }, [setPerformingSensitiveOperation]);
 
-  const isDirty = useMemo(() => {
-    if (!initialSnapshotRef.current) return false;
+  const archiveDirty = faxSummary !== originalArchiveRef.current;
+  const branchDirty = branchHeadDecision !== originalBranchRef.current;
 
-    const current = JSON.stringify({
-      faxSummary,
-      notes,
-      isCopyDistributed,
-      distributedToName,
-      actionTaken,
-      branchHeadDecision,
-    });
+  const officeActionsDirty = mail
+    ? mail.offices.some(
+        (o) =>
+          (officeActionTexts[o.office_id] ?? "") !==
+          (originalOfficeActionsRef.current[o.office_id] ?? "")
+      )
+    : false;
 
-    return current !== initialSnapshotRef.current;
-  }, [
-    faxSummary,
-    notes,
-    isCopyDistributed,
-    distributedToName,
-    actionTaken,
-    branchHeadDecision,
-  ]);
+  const isDirty = archiveDirty || officeActionsDirty || branchDirty;
 
   useEffect(() => {
     setDirty(isDirty);
@@ -92,52 +102,8 @@ export function ArchiveIncomingDetailPage() {
     if (id) {
       loadMail(id);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
-
-  async function loadMail(mailId: string) {
-    setLoading(true);
-    setError("");
-
-    try {
-      const data = await fetchIncomingMailById(mailId);
-      setMail(data);
-      setFaxSummary(data.fax_summary ?? "");
-      setNotes(data.notes ?? "");
-      setIsCopyDistributed(data.is_copy_distributed);
-      setDistributedToName(data.distributed_to_name ?? "");
-      setActionTaken(data.action_taken ?? "");
-      setBranchHeadDecision(data.branch_head_decision ?? "");
-
-      // ✅ نلتقط الـ snapshot بعد تعمير كل الحقول القابلة للتعديل
-      initialSnapshotRef.current = JSON.stringify({
-        faxSummary: data.fax_summary ?? "",
-        notes: data.notes ?? "",
-        isCopyDistributed: data.is_copy_distributed,
-        distributedToName: data.distributed_to_name ?? "",
-        actionTaken: data.action_taken ?? "",
-        branchHeadDecision: data.branch_head_decision ?? "",
-      });
-
-      const urls: Record<string, string> = {};
-
-      await Promise.all(
-        data.scans.map(async (scan) => {
-          try {
-            urls[scan.id] = await getScanSignedUrl(scan.file_path);
-          } catch (err) {
-
-          }
-        })
-      );
-
-      setScanUrls(urls);
-    } catch (err: any) {
-
-      setError(err?.message || "حدث خطأ أثناء تحميل بيانات الفاكس");
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function getCurrentUserInfo(): Promise<{
     userId: string | null;
@@ -163,156 +129,221 @@ export function ArchiveIncomingDetailPage() {
     };
   }
 
-  // نص وصفي موحّد لحالة توزيع النسخة، يُستخدم في تسجيل التعديل
-  function describeDistributionState(
-    distributed: boolean,
-    name: string
-  ): string {
-    if (!distributed) {
-      return "لم يتم التوزيع";
-    }
-
-    return `تم التوزيع على: ${name || "غير محدد"}`;
-  }
-
-  function validate(): string | null {
-    if (isCopyDistributed && !distributedToName.trim()) {
-      return "يجب إدخال اسم المختص الذي استلم النسخة";
-    }
-
-    return null;
-  }
-
-  async function handleSave() {
-    if (!mail) return;
-
-    const validationError = validate();
-
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
-
-    setSaving(true);
+  async function loadMail(mailId: string) {
+    setLoading(true);
     setError("");
 
     try {
-      // ═══════════════════════════════════════════════════════════════════
-      // التقاط القيم القديمة قبل الحفظ، عشان نقدر نسجل الفرق بعد كده
-      // ═══════════════════════════════════════════════════════════════════
+      const data = await fetchIncomingMailById(mailId);
+      const officeIds = data.offices.map((o) => o.office_id);
 
+      const perms = await fetchIncomingMailPermissions(officeIds);
+      setPermissions(perms);
+
+      let finalData = data;
+
+      if (perms.editableOfficeIds.length > 0) {
+        try {
+          const receivedBefore = new Set(
+            data.receipts.filter((r) => r.received_at).map((r) => r.office_id)
+          );
+
+          await markIncomingMailReceived(mailId);
+          finalData = await fetchIncomingMailById(mailId);
+
+          const newlyReceived = finalData.receipts.filter(
+            (r) => r.received_at && !receivedBefore.has(r.office_id)
+          );
+
+          if (newlyReceived.length > 0) {
+            const { userId, userName } = await getCurrentUserInfo();
+
+            for (const r of newlyReceived) {
+              await logActivity({
+                userId,
+                userName,
+                actionType: "UPDATE",
+                action: "استلام نسخة من الفاكس الوارد",
+                entity: "incoming_mail",
+                details: `تم استلام الفاكس رقم ${finalData.fax_number}/${finalData.fax_year} من مكتب ${r.office_name} بواسطة ${userName}`,
+              });
+            }
+          }
+        } catch (receiveErr) {
+          // مفيش داعي نوقف تحميل الصفحة لو تسجيل الاستلام فشل
+        }
+      }
+
+      setMail(finalData);
+
+      setFaxSummary(finalData.fax_summary ?? "");
+      setBranchHeadDecision(finalData.branch_head_decision ?? "");
+
+      originalArchiveRef.current = finalData.fax_summary ?? "";
+      originalBranchRef.current = finalData.branch_head_decision ?? "";
+
+      const actionsMap: Record<string, string> = {};
+      finalData.officeActions.forEach((a) => {
+        actionsMap[a.office_id] = a.action_text ?? "";
+      });
+      setOfficeActionTexts(actionsMap);
+      originalOfficeActionsRef.current = actionsMap;
+
+      const urls: Record<string, string> = {};
+
+      await Promise.all(
+        finalData.scans.map(async (scan) => {
+          try {
+            urls[scan.id] = await getScanSignedUrl(scan.file_path);
+          } catch (err) {
+            // تجاهل فشل توليد رابط صورة واحدة
+          }
+        })
+      );
+
+      setScanUrls(urls);
+    } catch (err: any) {
+      setError(err?.message || "حدث خطأ أثناء تحميل بيانات الفاكس");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSaveArchiveFields() {
+    if (!mail) return;
+
+    setSavingArchive(true);
+    setError("");
+
+    try {
       const oldFaxSummary = mail.fax_summary?.trim() || "بدون ملخص";
       const newFaxSummary = faxSummary.trim() || "بدون ملخص";
 
-      const oldNotes = mail.notes?.trim() || "بدون ملاحظات";
-      const newNotes = notes.trim() || "بدون ملاحظات";
-
-      const oldDistributionState = describeDistributionState(
-        mail.is_copy_distributed,
-        mail.distributed_to_name ?? ""
-      );
-      const newDistributionState = describeDistributionState(
-        isCopyDistributed,
-        distributedToName.trim()
-      );
-
-      const oldActionTaken = mail.action_taken?.trim() || "بدون إجراء مسجل";
-      const newActionTaken = actionTaken.trim() || "بدون إجراء مسجل";
-
-      const oldBranchDecision =
-        mail.branch_head_decision?.trim() || "بدون قرار مسجل";
-      const newBranchDecision =
-        branchHeadDecision.trim() || "بدون قرار مسجل";
-
       await updateIncomingMail(mail.id, {
         fax_summary: faxSummary.trim() || null,
-        notes: notes.trim() || null,
-        is_copy_distributed: isCopyDistributed,
-        distributed_to_name: isCopyDistributed
-          ? distributedToName.trim()
-          : null,
-        action_taken: actionTaken.trim() || null,
-        branch_head_decision: branchHeadDecision.trim() || null,
       });
 
-      // ═══════════════════════════════════════════════════════════════════
-      // Audit Log — سطر منفصل لكل حقل اتغيّر فعليًا
-      // ═══════════════════════════════════════════════════════════════════
-
-      try {
-        const { userId, userName } = await getCurrentUserInfo();
-
-        const changes: { action: string; details: string }[] = [];
-
-        if (oldFaxSummary !== newFaxSummary) {
-          changes.push({
-            action: "تعديل ملخص الفاكس",
-            details: `القيمة القديمة: ${oldFaxSummary} - القيمة الجديدة: ${newFaxSummary}`,
-          });
-        }
-
-        if (oldNotes !== newNotes) {
-          changes.push({
-            action: "تعديل الملاحظات",
-            details: `القيمة القديمة: ${oldNotes} - القيمة الجديدة: ${newNotes}`,
-          });
-        }
-
-        if (oldDistributionState !== newDistributionState) {
-          changes.push({
-            action: "تعديل توزيع النسخة على المختص",
-            details: `القيمة القديمة: ${oldDistributionState} - القيمة الجديدة: ${newDistributionState}`,
-          });
-        }
-
-        if (oldActionTaken !== newActionTaken) {
-          changes.push({
-            action: "تعديل ما تم حياله من المختص",
-            details: `القيمة القديمة: ${oldActionTaken} - القيمة الجديدة: ${newActionTaken}`,
-          });
-        }
-
-        if (oldBranchDecision !== newBranchDecision) {
-          changes.push({
-            action: "تعديل قرار رئيس الفرع",
-            details: `القيمة القديمة: ${oldBranchDecision} - القيمة الجديدة: ${newBranchDecision}`,
-          });
-        }
-
-        for (const change of changes) {
+      if (oldFaxSummary !== newFaxSummary) {
+        try {
+          const { userId, userName } = await getCurrentUserInfo();
           await logActivity({
             userId,
             userName,
             actionType: "UPDATE",
-            action: change.action,
+            action: "تعديل ملخص الفاكس",
             entity: "incoming_mail",
-            details: change.details,
+            details: `القيمة القديمة: ${oldFaxSummary} - القيمة الجديدة: ${newFaxSummary}`,
           });
+        } catch (auditError) {
+          // تجاهل فشل تسجيل سجل العمليات
         }
-      } catch (auditError) {
-
       }
 
       setSuccessMsg("تم حفظ التعديلات بنجاح");
       setTimeout(() => setSuccessMsg(""), 3000);
 
-      // ✅ التعديلات اتحفظت فعليًا؛ loadMail هيعيد تعمير الـ
-      // snapshot تلقائيًا برضو، لكن نصفّر الحالة فورًا هنا
-      // عشان مايحصلش وميض (flash) للبوب اب في اللحظة البينية
-      setDirty(false);
-
       await loadMail(mail.id);
     } catch (err: any) {
-
       setError(err?.message || "حدث خطأ أثناء حفظ التعديلات");
     } finally {
-      setSaving(false);
+      setSavingArchive(false);
     }
   }
 
-  async function handleAddScan(
-    e: React.ChangeEvent<HTMLInputElement>
-  ) {
+  async function handleSaveOfficeAction(officeId: string) {
+    if (!mail) return;
+
+    setSavingOfficeActionId(officeId);
+    setError("");
+
+    try {
+      const { userId, userName } = await getCurrentUserInfo();
+      const text = officeActionTexts[officeId] ?? "";
+
+      await upsertIncomingMailOfficeAction(mail.id, officeId, text, userId, userName);
+
+      try {
+        const officeName = mail.offices.find((o) => o.office_id === officeId)?.office_name ?? "";
+
+        await logActivity({
+          userId,
+          userName,
+          actionType: "UPDATE",
+          action: `تحديث ما تم حياله من مكتب ${officeName}`,
+          entity: "incoming_mail",
+          details: text.trim() || "بدون نص",
+        });
+      } catch (auditError) {
+        // تجاهل فشل تسجيل سجل العمليات
+      }
+
+      setSuccessMsg("تم حفظ الإجراء بنجاح");
+      setTimeout(() => setSuccessMsg(""), 3000);
+
+      await loadMail(mail.id);
+    } catch (err: any) {
+      setError(err?.message || "حدث خطأ أثناء حفظ الإجراء");
+    } finally {
+      setSavingOfficeActionId(null);
+    }
+  }
+
+  async function handleSaveBranchDecision() {
+    if (!mail) return;
+
+    setSavingBranch(true);
+    setError("");
+
+    try {
+      await updateIncomingMail(mail.id, {
+        branch_head_decision: branchHeadDecision.trim() || null,
+      });
+
+      setSuccessMsg("تم حفظ قرار رئيس الفرع بنجاح");
+      setTimeout(() => setSuccessMsg(""), 3000);
+
+      await loadMail(mail.id);
+    } catch (err: any) {
+      setError(err?.message || "حدث خطأ أثناء حفظ القرار");
+    } finally {
+      setSavingBranch(false);
+    }
+  }
+
+  async function handleAddNote() {
+    if (!mail || !newNoteText.trim()) return;
+
+    setAddingNote(true);
+    setError("");
+
+    try {
+      const { userId, userName } = await getCurrentUserInfo();
+
+      await addIncomingMailNote(mail.id, newNoteText.trim(), userId, userName);
+
+      try {
+        await logActivity({
+          userId,
+          userName,
+          actionType: "CREATE",
+          action: "إضافة ملاحظة على الفاكس الوارد",
+          entity: "incoming_mail",
+          details: newNoteText.trim(),
+        });
+      } catch (auditError) {
+        // تجاهل فشل تسجيل سجل العمليات
+      }
+
+      setNewNoteText("");
+      await loadMail(mail.id);
+    } catch (err: any) {
+      setError(err?.message || "حدث خطأ أثناء إضافة الملاحظة");
+    } finally {
+      setAddingNote(false);
+    }
+  }
+
+  async function handleAddScan(e: React.ChangeEvent<HTMLInputElement>) {
     if (!mail) return;
 
     const file = e.target.files?.[0];
@@ -342,16 +373,12 @@ export function ArchiveIncomingDetailPage() {
 
       await loadMail(mail.id);
     } catch (err: any) {
-
       setError(err?.message || "حدث خطأ أثناء رفع الصورة");
     } finally {
       setUploadingScan(false);
       e.target.value = "";
     }
   }
-  /* =======================================================
-     طباعة كل المرفقات (الصور)
-  ======================================================= */
 
   function handlePrintScans() {
     if (!mail || mail.scans.length === 0) {
@@ -373,11 +400,7 @@ export function ArchiveIncomingDetailPage() {
         return `
           <div class="print-page">
             <img src="${url}" alt="${scan.label ?? ""}" />
-            ${
-              scan.label
-                ? `<p class="caption">${scan.label}</p>`
-                : ""
-            }
+            ${scan.label ? `<p class="caption">${scan.label}</p>` : ""}
           </div>
         `;
       })
@@ -393,24 +416,13 @@ export function ArchiveIncomingDetailPage() {
           <title>مرفقات فاكس وارد رقم ${mail.fax_number}/${mail.fax_year}</title>
 
           <style>
-            @page {
-              size: A4;
-              margin: 10mm;
-            }
-
+            @page { size: A4; margin: 10mm; }
             * {
               box-sizing: border-box;
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
             }
-
-            body {
-              margin: 0;
-              padding: 0;
-              font-family: Arial, sans-serif;
-              direction: rtl;
-            }
-
+            body { margin: 0; padding: 0; font-family: Arial, sans-serif; direction: rtl; }
             .print-page {
               width: 100%;
               height: 277mm;
@@ -420,23 +432,9 @@ export function ArchiveIncomingDetailPage() {
               justify-content: center;
               page-break-after: always;
             }
-
-            .print-page:last-child {
-              page-break-after: auto;
-            }
-
-            .print-page img {
-              max-width: 100%;
-              max-height: 250mm;
-              object-fit: contain;
-            }
-
-            .caption {
-              margin-top: 8px;
-              font-size: 14px;
-              text-align: center;
-              color: #333;
-            }
+            .print-page:last-child { page-break-after: auto; }
+            .print-page img { max-width: 100%; max-height: 250mm; object-fit: contain; }
+            .caption { margin-top: 8px; font-size: 14px; text-align: center; color: #333; }
           </style>
         </head>
 
@@ -461,12 +459,10 @@ export function ArchiveIncomingDetailPage() {
       printWindow.onload = doPrint;
     }
   }
+
   if (loading) {
     return (
-      <div
-        className="flex items-center justify-center w-full min-h-[400px]"
-        dir="rtl"
-      >
+      <div className="flex items-center justify-center w-full min-h-[400px]" dir="rtl">
         <span style={{ ...F, fontSize: 16, color: "#717d96" }}>
           جاري تحميل بيانات الفاكس...
         </span>
@@ -496,6 +492,8 @@ export function ArchiveIncomingDetailPage() {
     );
   }
 
+  const canEditArchiveFields = permissions.isArchive;
+
   return (
     <div className="flex flex-col gap-6 w-full pb-10" dir="rtl">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -512,9 +510,7 @@ export function ArchiveIncomingDetailPage() {
 
         <button
           type="button"
-          onClick={() =>
-            guardNavigation(() => navigate("/dashboard/archive/incoming"))
-          }
+          onClick={() => guardNavigation(() => navigate("/dashboard/archive/incoming"))}
           className="flex items-center gap-1.5"
           style={{ ...F, fontSize: 14, color: "#1f3d97" }}
         >
@@ -541,25 +537,16 @@ export function ArchiveIncomingDetailPage() {
       {successMsg && (
         <div
           className="w-full rounded-[10px] px-5 py-4"
-          style={{
-            background: "#dcfce7",
-            color: "#166534",
-            ...F,
-            fontSize: 14,
-          }}
+          style={{ background: "#dcfce7", color: "#166534", ...F, fontSize: 14 }}
         >
           {successMsg}
         </div>
       )}
 
-      {/* البيانات الأساسية */}
-
       <section className="bg-white rounded-[20px] border border-[#eff0f6] p-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="flex items-center gap-2">
-            <span style={{ ...F, fontSize: 14, color: "#717d96" }}>
-              تاريخ الفاكس:
-            </span>
+            <span style={{ ...F, fontSize: 14, color: "#717d96" }}>تاريخ الفاكس:</span>
             <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
               {formatDate(mail.fax_date)}
             </span>
@@ -574,193 +561,275 @@ export function ArchiveIncomingDetailPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span style={{ ...F, fontSize: 14, color: "#717d96" }}>
-              المكتب المختص:
-            </span>
-            <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
-              {mail.mail_offices?.name ?? "-"}
-            </span>
+          <div className="flex items-center gap-2 sm:col-span-2">
+            <span style={{ ...F, fontSize: 14, color: "#717d96" }}>المكاتب المختصة:</span>
+            <div className="flex flex-wrap gap-1.5">
+              {mail.offices.map((o) => (
+                <span
+                  key={o.office_id}
+                  className="px-2 py-0.5 rounded-full"
+                  style={{ ...F, fontSize: 13, background: "#f7f9fc", color: "#2d3648" }}
+                >
+                  {o.office_name}
+                </span>
+              ))}
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <span style={{ ...F, fontSize: 14, color: "#717d96" }}>
-              تاريخ التسجيل:
-            </span>
+            <span style={{ ...F, fontSize: 14, color: "#717d96" }}>تاريخ التسجيل:</span>
             <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
               {formatDateTime(mail.created_at)}
             </span>
           </div>
 
           <div className="flex items-center gap-2">
-            <span style={{ ...F, fontSize: 14, color: "#717d96" }}>
-              سجّله:
-            </span>
+            <span style={{ ...F, fontSize: 14, color: "#717d96" }}>سجّله:</span>
             <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
               {mail.created_by_name ?? "-"}
             </span>
           </div>
         </div>
-      </section>
-      {/* ملخص الفاكس */}
 
-      <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
-        <div className="px-6 py-4 border-b border-[#e2e7f0]">
-          <span style={{ ...F, fontSize: 16, color: "#4a5468" }}>
-            ملخص الفاكس
-          </span>
-        </div>
+        <div className="mt-4 pt-4 border-t border-[#eff0f6] flex flex-col gap-2">
+          <span style={{ ...F, fontSize: 14, color: "#717d96" }}>حالة الاستلام:</span>
 
-        <div className="p-6">
-          <textarea
-            value={faxSummary}
-            onChange={(e) => setFaxSummary(e.target.value)}
-            placeholder="اكتب ملخصًا مختصرًا لموضوع الفاكس"
-            rows={3}
-            dir="rtl"
-            className="w-full rounded-[8px] border border-[#e2e7f0] px-3 py-2 text-right outline-none resize-none focus:border-[#00b867]"
-            style={{ ...F, fontSize: 14, color: "#2d3648" }}
-          />
-        </div>
-      </section>
-
-      {/* الملاحظات */}
-
-      <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
-        <div className="px-6 py-4 border-b border-[#e2e7f0]">
-          <span style={{ ...F, fontSize: 16, color: "#4a5468" }}>
-            ملاحظات
-          </span>
-        </div>
-
-        <div className="p-6">
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="اكتب أي ملاحظات إضافية"
-            rows={3}
-            dir="rtl"
-            className="w-full rounded-[8px] border border-[#e2e7f0] px-3 py-2 text-right outline-none resize-none focus:border-[#00b867]"
-            style={{ ...F, fontSize: 14, color: "#2d3648" }}
-          />
+          <div className="flex flex-col gap-1.5">
+            {mail.receipts.map((r) => (
+              <div key={r.office_id} className="flex items-center gap-2">
+                <span style={{ ...F, fontSize: 13, color: "#2d3648", fontWeight: 700 }}>
+                  {r.office_name}:
+                </span>
+                {r.received_at ? (
+                  <span style={{ ...F, fontSize: 13, color: "#166534" }}>
+                    تم الاستلام بواسطة {r.received_by_name} في {formatDateTime(r.received_at)}
+                  </span>
+                ) : (
+                  <span style={{ ...F, fontSize: 13, color: "#a1aebe" }}>
+                    لم يتم الاستلام بعد
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* توزيع النسخة على المختص */}
-
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
-          <span style={{ ...F, fontSize: 16, color: "#4a5468" }}>
-            توزيع نسخة على المختص
-          </span>
+          <span style={{ ...F, fontSize: 16, color: "#4a5468" }}>ملخص الفاكس</span>
         </div>
 
         <div className="p-6 flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <input
-              id="copyDistributedDetail"
-              type="checkbox"
-              checked={isCopyDistributed}
-              onChange={(e) => {
-                setIsCopyDistributed(e.target.checked);
-                if (!e.target.checked) {
-                  setDistributedToName("");
-                }
+          <textarea
+            value={faxSummary}
+            onChange={(e) => setFaxSummary(e.target.value)}
+            disabled={!canEditArchiveFields}
+            placeholder="اكتب ملخصًا مختصرًا لموضوع الفاكس"
+            rows={3}
+            dir="rtl"
+            className="w-full rounded-[8px] border border-[#e2e7f0] px-3 py-2 text-right outline-none resize-none focus:border-[#00b867] disabled:bg-[#f7f9fc] disabled:text-[#717d96]"
+            style={{ ...F, fontSize: 14, color: "#2d3648" }}
+          />
+
+          {canEditArchiveFields && (
+            <button
+              type="button"
+              onClick={handleSaveArchiveFields}
+              disabled={savingArchive || !archiveDirty}
+              className="h-[44px] px-6 rounded-[8px] self-start disabled:opacity-50"
+              style={{
+                background: "linear-gradient(to bottom,#00b867,#00522e)",
+                ...F,
+                fontSize: 14,
+                color: "#fff",
               }}
-              className="w-4 h-4 accent-[#00b867]"
-            />
-
-            <label
-              htmlFor="copyDistributedDetail"
-              style={{ ...F, fontSize: 14, color: "#2d3648" }}
             >
-              تم توزيع نسخة على المختص
-            </label>
-          </div>
-
-          {isCopyDistributed && (
-            <input
-              type="text"
-              value={distributedToName}
-              onChange={(e) => setDistributedToName(e.target.value)}
-              placeholder="اسم المختص الذي استلم النسخة"
-              dir="rtl"
-              className="w-full h-[44px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867]"
-              style={{ ...F, fontSize: 14, color: "#2d3648" }}
-            />
+              {savingArchive ? "جاري الحفظ..." : "حفظ التعديلات"}
+            </button>
           )}
         </div>
       </section>
 
-      {/* ما تم حياله من المختص */}
-
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
           <span style={{ ...F, fontSize: 16, color: "#4a5468" }}>
-            ما تم حياله من المختص
+            ما تم حياله من كل مكتب مختص
           </span>
         </div>
 
-        <div className="p-6">
-          <textarea
-            value={actionTaken}
-            onChange={(e) => setActionTaken(e.target.value)}
-            placeholder="اكتب ما تم اتخاذه من إجراء"
-            rows={3}
-            dir="rtl"
-            className="w-full rounded-[8px] border border-[#e2e7f0] px-3 py-2 text-right outline-none resize-none focus:border-[#00b867]"
-            style={{ ...F, fontSize: 14, color: "#2d3648" }}
-          />
+        <div className="p-6 flex flex-col gap-6">
+          {mail.offices.length === 0 ? (
+            <span style={{ ...F, fontSize: 14, color: "#a1aebe" }}>
+              لا توجد مكاتب مختصة بهذا الفاكس
+            </span>
+          ) : (
+            mail.offices.map((office) => {
+              const canEdit = permissions.editableOfficeIds.includes(office.office_id);
+              const text = officeActionTexts[office.office_id] ?? "";
+              const isDirtyForOffice =
+                text !== (originalOfficeActionsRef.current[office.office_id] ?? "");
+              const action = mail.officeActions.find(
+                (a) => a.office_id === office.office_id
+              );
+
+              return (
+                <div key={office.office_id} className="flex flex-col gap-2">
+                  <span style={{ ...F, fontWeight: 700, fontSize: 14, color: "#2d3648" }}>
+                    {office.office_name}
+                  </span>
+
+                  <textarea
+                    value={text}
+                    onChange={(e) =>
+                      setOfficeActionTexts((prev) => ({
+                        ...prev,
+                        [office.office_id]: e.target.value,
+                      }))
+                    }
+                    disabled={!canEdit}
+                    placeholder={
+                      canEdit ? "اكتب ما تم اتخاذه من إجراء" : "لا يوجد إجراء مسجل بعد"
+                    }
+                    rows={3}
+                    dir="rtl"
+                    className="w-full rounded-[8px] border border-[#e2e7f0] px-3 py-2 text-right outline-none resize-none focus:border-[#00b867] disabled:bg-[#f7f9fc] disabled:text-[#717d96]"
+                    style={{ ...F, fontSize: 14, color: "#2d3648" }}
+                  />
+
+                  {action?.action_by_name && action?.action_at && (
+                    <span style={{ ...F, fontSize: 12, color: "#a1aebe" }}>
+                      آخر تحديث بواسطة {action.action_by_name} في{" "}
+                      {formatDateTime(action.action_at)}
+                    </span>
+                  )}
+
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => handleSaveOfficeAction(office.office_id)}
+                      disabled={savingOfficeActionId === office.office_id || !isDirtyForOffice}
+                      className="h-[40px] px-5 rounded-[8px] self-start disabled:opacity-50"
+                      style={{
+                        background: "linear-gradient(to bottom,#00b867,#00522e)",
+                        ...F,
+                        fontSize: 13,
+                        color: "#fff",
+                      }}
+                    >
+                      {savingOfficeActionId === office.office_id
+                        ? "جاري الحفظ..."
+                        : "حفظ الإجراء"}
+                    </button>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       </section>
 
-      {/* قرار رئيس الفرع */}
-
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
-          <span style={{ ...F, fontSize: 16, color: "#4a5468" }}>
-            قرار رئيس الفرع
-          </span>
+          <span style={{ ...F, fontSize: 16, color: "#4a5468" }}>قرار رئيس الفرع</span>
         </div>
 
-        <div className="p-6">
+        <div className="p-6 flex flex-col gap-3">
           <textarea
             value={branchHeadDecision}
             onChange={(e) => setBranchHeadDecision(e.target.value)}
-            placeholder="اكتب قرار رئيس الفرع"
+            disabled={!permissions.isBranchHead}
+            placeholder={
+              permissions.isBranchHead ? "اكتب قرار رئيس الفرع" : "لم يصدر قرار بعد"
+            }
             rows={3}
             dir="rtl"
-            className="w-full rounded-[8px] border border-[#e2e7f0] px-3 py-2 text-right outline-none resize-none focus:border-[#00b867]"
+            className="w-full rounded-[8px] border border-[#e2e7f0] px-3 py-2 text-right outline-none resize-none focus:border-[#00b867] disabled:bg-[#f7f9fc] disabled:text-[#717d96]"
             style={{ ...F, fontSize: 14, color: "#2d3648" }}
           />
+
+          {mail.branch_head_decision_by_name && mail.branch_head_decision_at && (
+            <span style={{ ...F, fontSize: 12, color: "#a1aebe" }}>
+              آخر تحديث بواسطة {mail.branch_head_decision_by_name} في{" "}
+              {formatDateTime(mail.branch_head_decision_at)}
+            </span>
+          )}
+
+          {permissions.isBranchHead && (
+            <button
+              type="button"
+              onClick={handleSaveBranchDecision}
+              disabled={savingBranch || !branchDirty}
+              className="h-[44px] px-6 rounded-[8px] self-start disabled:opacity-50"
+              style={{
+                background: "linear-gradient(to bottom,#00b867,#00522e)",
+                ...F,
+                fontSize: 14,
+                color: "#fff",
+              }}
+            >
+              {savingBranch ? "جاري الحفظ..." : "حفظ القرار"}
+            </button>
+          )}
         </div>
       </section>
 
-      {/* زر حفظ التعديلات (للحقول الثلاثة أعلاه) */}
+      <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
+        <div className="px-6 py-4 border-b border-[#e2e7f0]">
+          <span style={{ ...F, fontSize: 16, color: "#4a5468" }}>الملاحظات</span>
+        </div>
 
-      <div>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="h-[48px] px-6 rounded-[8px] disabled:opacity-50"
-          style={{
-            background: "linear-gradient(to bottom,#00b867,#00522e)",
-            ...F,
-            fontSize: 15,
-            color: "#fff",
-          }}
-        >
-          {saving ? "جاري الحفظ..." : "حفظ التعديلات"}
-        </button>
-      </div>
-      {/* الصور الضوئية */}
+        <div className="p-6 flex flex-col gap-4">
+          {mail.notes.length === 0 ? (
+            <span style={{ ...F, fontSize: 14, color: "#a1aebe" }}>لا توجد ملاحظات بعد</span>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {mail.notes.map((note) => (
+                <div
+                  key={note.id}
+                  className="rounded-[10px] border border-[#eff0f6] bg-[#f7f9fc] p-3 flex flex-col gap-1"
+                >
+                  <p style={{ ...F, fontSize: 14, color: "#2d3648" }}>{note.note_text}</p>
+                  <span style={{ ...F, fontSize: 12, color: "#a1aebe" }}>
+                    {note.created_by_name ?? "غير معروف"} — {formatDateTime(note.created_at)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-col gap-2">
+            <textarea
+              value={newNoteText}
+              onChange={(e) => setNewNoteText(e.target.value)}
+              placeholder="اكتب ملاحظة جديدة — هتتسجل باسمك ووقت الإضافة"
+              rows={2}
+              dir="rtl"
+              className="w-full rounded-[8px] border border-[#e2e7f0] px-3 py-2 text-right outline-none resize-none focus:border-[#00b867]"
+              style={{ ...F, fontSize: 14, color: "#2d3648" }}
+            />
+
+            <button
+              type="button"
+              onClick={handleAddNote}
+              disabled={addingNote || !newNoteText.trim()}
+              className="h-[40px] px-5 rounded-[8px] self-start disabled:opacity-50"
+              style={{
+                background: "linear-gradient(to bottom,#00b867,#00522e)",
+                ...F,
+                fontSize: 13,
+                color: "#fff",
+              }}
+            >
+              {addingNote ? "جاري الإضافة..." : "إضافة ملاحظة"}
+            </button>
+          </div>
+        </div>
+      </section>
 
       <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#e2e7f0] flex items-center justify-between">
-          <span style={{ ...F, fontSize: 16, color: "#4a5468" }}>
-            الصور الضوئية للفاكس
-          </span>
+          <span style={{ ...F, fontSize: 16, color: "#4a5468" }}>الصور الضوئية للفاكس</span>
 
           <button
             type="button"
@@ -771,16 +840,14 @@ export function ArchiveIncomingDetailPage() {
           >
             <Printer size={15} color="#2d3648" />
             <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>
-              طباعة كل المرفقات
+              طباعة / تحميل كل المرفقات
             </span>
           </button>
         </div>
 
         <div className="p-6 flex flex-col gap-4">
           {mail.scans.length === 0 ? (
-            <span style={{ ...F, fontSize: 14, color: "#a1aebe" }}>
-              لا توجد صور مرفوعة
-            </span>
+            <span style={{ ...F, fontSize: 14, color: "#a1aebe" }}>لا توجد صور مرفوعة</span>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {mail.scans.map((scan) => (
@@ -810,23 +877,25 @@ export function ArchiveIncomingDetailPage() {
             </div>
           )}
 
-          <label
-            className="flex items-center justify-center gap-2 h-[60px] rounded-[10px] border-2 border-dashed cursor-pointer self-start px-6"
-            style={{ borderColor: "#cbd2e0" }}
-          >
-            <Upload size={18} className="text-[#415844]" />
-            <span style={{ ...F, fontSize: 13, color: "#4a5468" }}>
-              {uploadingScan ? "جاري الرفع..." : "إضافة صورة جديدة"}
-            </span>
+          {canEditArchiveFields && (
+            <label
+              className="flex items-center justify-center gap-2 h-[60px] rounded-[10px] border-2 border-dashed cursor-pointer self-start px-6"
+              style={{ borderColor: "#cbd2e0" }}
+            >
+              <Upload size={18} className="text-[#415844]" />
+              <span style={{ ...F, fontSize: 13, color: "#4a5468" }}>
+                {uploadingScan ? "جاري الرفع..." : "إضافة صورة جديدة"}
+              </span>
 
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleAddScan}
-              disabled={uploadingScan}
-              className="hidden"
-            />
-          </label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleAddScan}
+                disabled={uploadingScan}
+                className="hidden"
+              />
+            </label>
+          )}
         </div>
       </section>
     </div>

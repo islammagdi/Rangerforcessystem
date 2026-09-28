@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { Plus, Trash2, ShieldCheck, X, Save, Loader2 } from "lucide-react";
-
+import {
+  fetchMailOffices,
+  fetchAllOfficeRoleLinks,
+  setOfficeRoleLink,
+  type MailOffice,
+} from "../../lib/mailArchive";
 // ============================================================
 // Types
 // ============================================================
@@ -41,7 +46,9 @@ export function ManageRolesPage() {
   const [permissions, setPermissions] = useState<PermissionRow[]>([]);
   const [userCounts, setUserCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
-
+const [mailOffices, setMailOffices] = useState<MailOffice[]>([]);
+const [officeLinkByRole, setOfficeLinkByRole] = useState<Record<string, string>>({});
+const [savingOfficeLink, setSavingOfficeLink] = useState(false);
   // ------------------------------------------------------------
   // الدور المختار حاليًا + صلاحياته
   // ------------------------------------------------------------
@@ -84,12 +91,13 @@ const [createPermissionError, setCreatePermissionError] = useState<string | null
     loadInitialData();
   }, []);
 
-  async function loadInitialData() {
-    setLoading(true);
-    setErrorMessage(null);
+async function loadInitialData() {
+  setLoading(true);
+  setErrorMessage(null);
 
-    try {
-      const [rolesRes, permissionsRes, userRolesRes] = await Promise.all([
+  try {
+    const [rolesRes, permissionsRes, userRolesRes, officesRes, officeLinksRes] =
+      await Promise.all([
         supabase
           .from("roles")
           .select("id, name, code, is_system, description")
@@ -101,33 +109,77 @@ const [createPermissionError, setCreatePermissionError] = useState<string | null
           .order("module", { ascending: true })
           .order("action", { ascending: true }),
         supabase.from("user_roles").select("role_id"),
+        fetchMailOffices(),
+        fetchAllOfficeRoleLinks(),
       ]);
 
-      if (rolesRes.error) throw rolesRes.error;
-      if (permissionsRes.error) throw permissionsRes.error;
-      if (userRolesRes.error) throw userRolesRes.error;
+    if (rolesRes.error) throw rolesRes.error;
+    if (permissionsRes.error) throw permissionsRes.error;
+    if (userRolesRes.error) throw userRolesRes.error;
 
-      setRoles(rolesRes.data ?? []);
-      setPermissions(permissionsRes.data ?? []);
+    setRoles(rolesRes.data ?? []);
+    setPermissions(permissionsRes.data ?? []);
+    setMailOffices(officesRes);
 
-      const counts: Record<string, number> = {};
-      (userRolesRes.data ?? []).forEach((row: any) => {
-        counts[row.role_id] = (counts[row.role_id] ?? 0) + 1;
-      });
-      setUserCounts(counts);
+    const linkMap: Record<string, string> = {};
+    officeLinksRes.forEach((link) => {
+      linkMap[link.role_id] = link.office_id;
+    });
+    setOfficeLinkByRole(linkMap);
 
-      // اختار أول دور تلقائيًا
-      if ((rolesRes.data ?? []).length > 0) {
-        setSelectedRoleId(rolesRes.data![0].id);
-      }
-    } catch (error: any) {
-   
-      setErrorMessage("حدث خطأ أثناء تحميل البيانات. حاول تحديث الصفحة.");
-    } finally {
-      setLoading(false);
+    const counts: Record<string, number> = {};
+    (userRolesRes.data ?? []).forEach((row: any) => {
+      counts[row.role_id] = (counts[row.role_id] ?? 0) + 1;
+    });
+    setUserCounts(counts);
+
+    if ((rolesRes.data ?? []).length > 0) {
+      setSelectedRoleId(rolesRes.data![0].id);
     }
+  } catch (error: any) {
+    setErrorMessage("حدث خطأ أثناء تحميل البيانات. حاول تحديث الصفحة.");
+  } finally {
+    setLoading(false);
   }
+}
+async function handleOfficeLinkChange(newOfficeId: string) {
+  if (!selectedRoleId) return;
 
+  const officeIdOrNull = newOfficeId || null;
+  const previousValue = officeLinkByRole[selectedRoleId] ?? "";
+
+  setSavingOfficeLink(true);
+  setErrorMessage(null);
+  setSuccessMessage(null);
+
+  try {
+    await setOfficeRoleLink(selectedRoleId, officeIdOrNull);
+
+    setOfficeLinkByRole((prev) => {
+      const next = { ...prev };
+      if (officeIdOrNull) {
+        next[selectedRoleId] = officeIdOrNull;
+      } else {
+        delete next[selectedRoleId];
+      }
+      return next;
+    });
+
+    setSuccessMessage("تم حفظ ربط المكتب بالدور بنجاح.");
+  } catch (error: any) {
+    if (error?.code === "23505") {
+      setErrorMessage(
+        "هذا المكتب مرتبط بدور آخر بالفعل. فك الربط من الدور الآخر أولًا."
+      );
+    } else {
+      setErrorMessage("حدث خطأ أثناء حفظ ربط المكتب.");
+    }
+    // نرجّع الاختيار القديم في القائمة لأن الحفظ فشل
+    setOfficeLinkByRole((prev) => ({ ...prev, [selectedRoleId]: previousValue }));
+  } finally {
+    setSavingOfficeLink(false);
+  }
+}
   // ============================================================
   // تحميل صلاحيات الدور المختار
   // ============================================================
@@ -618,7 +670,34 @@ async function handleCreatePermission() {
                   </button>
                 )}
               </div>
+<div className="w-full h-px bg-[#eff0f6]" />
 
+<div className="flex flex-col gap-2">
+  <p style={{ fontSize: 14, fontWeight: 700, color: "#2d3648" }}>
+    المكتب المرتبط بهذا الدور
+  </p>
+  <p style={{ fontSize: 12, color: "#717d96" }}>
+    عند الربط، أي مستخدم بهذا الدور هيبقى "المختص" الرسمي لفاكسات هذا
+    المكتب — هيوصله إشعار بأي فاكس وارد جديد، وهو الوحيد اللي يقدر يفتح
+    الفاكس ويسجّل استلامه ويعدّل حقل "ما تم حياله من المختص".
+  </p>
+
+  <select
+    value={officeLinkByRole[selectedRole.id] ?? ""}
+    onChange={(e) => handleOfficeLinkChange(e.target.value)}
+    disabled={savingOfficeLink}
+    dir="rtl"
+    className="w-full h-[42px] rounded-lg border border-[#eff0f6] px-3 focus:outline-none focus:border-[#00B867] bg-white disabled:opacity-60"
+    style={{ fontSize: 14, color: "#2d3648" }}
+  >
+    <option value="">بدون ربط</option>
+    {mailOffices.map((office) => (
+      <option key={office.id} value={office.id}>
+        {office.name}
+      </option>
+    ))}
+  </select>
+</div>
 <div className="w-full h-px bg-[#eff0f6]" />
 
 <div className="flex items-center justify-between">

@@ -1802,7 +1802,7 @@ const { hasPermission } = usePermissions();
               placeholder={
                 queryBasis ===
                 "رقم عسكري"
-                  ? "أدخل الرقم العسكري او جزء منه"
+                  ? "أدخل الرقم العسكري او جزء منه    "
                   : "أدخل الاسم او جزء منه"
               }
               className={[
@@ -1825,7 +1825,7 @@ const { hasPermission } = usePermissions();
 
 {queryTextError && (
               <p
-                className="absolute top-full inset-x-0 mt-1 text-right break-words"
+                className="absolute top-full right-0 mt-1"
                 style={{
                   fontFamily:
                     "'Almarai', sans-serif",
@@ -1945,7 +1945,7 @@ const { hasPermission } = usePermissions();
           {/* ═══════════════════════════════════════════════════════════════ */}
 
           {found && (
-            <div className="w-full bg-white border border-[#e2e7f0] rounded-[12px] p-4 sm:p-5 shadow-sm">
+            <div className="w-full bg-white border border-[#e2e7f0] rounded-[12px] p-5 shadow-sm">
 
               <div className="flex flex-col gap-4">
 
@@ -2001,7 +2001,7 @@ const { hasPermission } = usePermissions();
 
                 {/* Filter Fields */}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
 
                   {/* ⭐ Name Filter */}
 
@@ -2178,7 +2178,7 @@ const { hasPermission } = usePermissions();
           {/* ═══════════════════════════════════════════════════════════════ */}
 
           {filteredNotFound && (
-            <div className="w-full py-12 flex flex-col items-center gap-3 bg-white rounded-[12px] border border-[#e2e7f0] px-4 text-center">
+            <div className="w-full py-12 flex flex-col items-center gap-3 bg-white rounded-[12px] border border-[#e2e7f0]">
               <p
                 style={{
                   fontFamily:
@@ -2242,7 +2242,7 @@ const { hasPermission } = usePermissions();
           {/* ═══════════════════════════════════════════════════════════════ */}
 
           {notFound && (
-            <div className="w-full py-16 flex flex-col items-center gap-3 bg-white rounded-[12px] border border-[#e2e7f0] px-4 text-center">
+            <div className="w-full py-16 flex flex-col items-center gap-3 bg-white rounded-[12px] border border-[#e2e7f0]">
               <p
                 style={{
                   fontFamily:
