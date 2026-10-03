@@ -9,9 +9,11 @@ import {
   CheckSquare,
   Square,
 } from "lucide-react";
-
+import { todayLocalIso } from "../../lib/dates";
 import { supabase } from "../../lib/supabase";
-
+import { fetchAllRows, fetchByIdsInChunks } from "../../lib/fetchAllRows";
+import { DraftsTab } from "../components/DraftsTab";
+import { usePermissions } from "../../lib/usePermissions";
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
@@ -633,35 +635,36 @@ function GeneralArchiveTab({
       setError("");
 
       try {
-        const { data, error } = await supabase
-          .from("letters")
-          .select(`
-            id,
-            letter_number,
-            letter_date,
-            reason,
-            personnel_count,
-            status,
-            letter_type_id,
-            issuing_unit_id,
-            destination_name,
-
-            letter_types (
+        const data = await fetchAllRows((from, to) =>
+          supabase
+            .from("letters")
+            .select(`
               id,
-              name,
-              code
-            ),
+              letter_number,
+              letter_date,
+              reason,
+              personnel_count,
+              status,
+              letter_type_id,
+              issuing_unit_id,
+              destination_name,
 
-            issuing_unit:units!issuing_unit_id (
-              id,
-              name,
-              code
-            )
-          `)
+              letter_types (
+                id,
+                name,
+                code
+              ),
 
-        if (error) {
-          throw error;
-        }
+              issuing_unit:units!issuing_unit_id (
+                id,
+                name,
+                code
+              )
+            `)
+            .order("letter_date", { ascending: false })
+            .order("id", { ascending: true })
+            .range(from, to)
+        );
 
         if (!mounted) return;
 
@@ -1349,38 +1352,37 @@ function IndividualTab({
        * وبالتالي destination لن تكون reason.
        * ============================================================
        */
-      const {
-        data: lettersData,
-        error: lettersError,
-      } = await supabase
-        .from("letters")
-        .select(`
-          id,
-          letter_number,
-          letter_date,
-          reason,
-          personnel_count,
-          status,
-          letter_type_id,
-          issuing_unit_id,
-          destination_name,
-
-          letter_types (
+      const lettersData = await fetchByIdsInChunks(letterIds, (chunk, from, to) =>
+        supabase
+          .from("letters")
+          .select(`
             id,
-            name,
-            code
-          ),
+            letter_number,
+            letter_date,
+            reason,
+            personnel_count,
+            status,
+            letter_type_id,
+            issuing_unit_id,
+            destination_name,
 
-          issuing_unit:units!issuing_unit_id (
-            id,
-            name,
-            code
-          )
-        `)
+            letter_types (
+              id,
+              name,
+              code
+            ),
 
-      if (lettersError) {
-        throw lettersError;
-      }
+            issuing_unit:units!issuing_unit_id (
+              id,
+              name,
+              code
+            )
+          `)
+          .in("id", chunk)
+          .order("letter_date", { ascending: false })
+          .order("id", { ascending: true })
+          .range(from, to)
+      );
 
       const mapped: LetterArchiveRecord[] =
         (lettersData ?? []).map((letter: any) => {
@@ -1575,7 +1577,7 @@ export function LettersArchivePage() {
   // بيبعت statusFilter = "UNDOCUMENTED"، وهنا بنحوّلها
   // للقيمة العربي اللي فلتر الحالة شغال بيها فعليًا
   const navState = location.state as
-    | { statusFilter?: string; dateToday?: boolean }
+    | { statusFilter?: string; dateToday?: boolean; tab?: string }
     | null;
 
   const incomingStatusFilter = navState?.statusFilter;
@@ -1587,12 +1589,25 @@ export function LettersArchivePage() {
       ? "موثق"
       : "";
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = todayLocalIso();
   const initialDateFrom = navState?.dateToday ? todayStr : "";
   const initialDateTo = navState?.dateToday ? todayStr : "";
 
-  const [tab, setTab] = useState<"general" | "individual">("general");
+  const [tab, setTab] = useState<"general" | "individual" | "drafts">(
+    navState?.tab === "drafts" ? "drafts" : "general"
+  );
 
+   // ✅ تاب المسودات بيظهر لمن عنده صلاحية إصدار الخطابات (والأدمن دايمًا)
+  const { hasPermission, loading: permissionsLoading } = usePermissions();
+  const canUseDrafts = hasPermission("issue_letter:create");
+
+  // لو جاي بـ tab=drafts وملوش صلاحية، نرجّعه للتاب العام
+  // (بنستنى تحميل الصلاحيات الأول عشان ما نرجّعوش بالغلط)
+  useEffect(() => {
+    if (!permissionsLoading && !canUseDrafts && tab === "drafts") {
+      setTab("general");
+    }
+  }, [permissionsLoading, canUseDrafts, tab]);
   function handleView(id: string) {
     navigate(
       `/dashboard/letters-archive/${id}`
@@ -1688,6 +1703,22 @@ export function LettersArchivePage() {
           >
             الفرد
           </button>
+
+          {canUseDrafts && (
+            <button
+              type="button"
+              style={
+                tab === "drafts"
+                  ? activeTabStyle
+                  : inactiveTabStyle
+              }
+              onClick={() =>
+                setTab("drafts")
+              }
+            >
+              المسودات
+            </button>
+          )}
         </div>
       </div>
 
@@ -1699,6 +1730,8 @@ export function LettersArchivePage() {
           initialDateFrom={initialDateFrom}
           initialDateTo={initialDateTo}
         />
+      ) : tab === "drafts" && canUseDrafts ? (
+        <DraftsTab />
       ) : (
         <IndividualTab
           onView={handleView}

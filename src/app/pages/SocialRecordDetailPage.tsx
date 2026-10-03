@@ -50,6 +50,15 @@ const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
 
+type MovementMeta = { type: "promotion" | "demotion"; notes: string | null };
+
+const CONSCRIPT_RANK_NAMES = ["عريف مجند", "جندي", "جندى"];
+
+function movementLabel(type: "promotion" | "demotion", rankName: string | null | undefined) {
+  if (type === "demotion") return "عزل مجند";
+  return rankName === "عريف مجند" ? "ترقي مجند" : "ترقية";
+}
+
 export function SocialRecordDetailPage() {
   const { personnelId } = useParams<{ personnelId: string }>();
   const navigate = useNavigate();
@@ -132,6 +141,7 @@ export function SocialRecordDetailPage() {
   const [uploadingDocument, setUploadingDocument] = useState(false);
 
     const [promotions, setPromotions] = useState<PromotionRow[]>([]);
+  const [movementMeta, setMovementMeta] = useState<Record<string, MovementMeta>>({});
 
   const [newPromotionRankId, setNewPromotionRankId] = useState("");
   const [newPromotionDate, setNewPromotionDate] = useState("");
@@ -221,11 +231,27 @@ export function SocialRecordDetailPage() {
         setInjuries(injuryRows);
         setDocuments(documentRows);
         setPromotions(promotionRows);
+
+        // نوع الحركة (ترقي / عزل) + الملاحظات
+        const { data: metaRows } = await supabase
+          .from("social_record_promotions")
+          .select("id, movement_type, notes")
+          .eq("social_record_id", full.record.id);
+
+        const meta: Record<string, MovementMeta> = {};
+        (metaRows ?? []).forEach((row: any) => {
+          meta[row.id] = {
+            type: row.movement_type === "demotion" ? "demotion" : "promotion",
+            notes: row.notes ?? null,
+          };
+        });
+        setMovementMeta(meta);
       } else {
         setUnitHistory([]);
         setInjuries([]);
         setDocuments([]);
         setPromotions([]);
+        setMovementMeta({});
       }
     } catch (err: any) {
       setError(err?.message || "حدث خطأ أثناء تحميل السجل");
@@ -517,7 +543,17 @@ export function SocialRecordDetailPage() {
   }
 
   async function handleDeletePromotion(id: string) {
-    if (!window.confirm("هل تريد حذف هذه الترقية؟")) return;
+    const row = promotions.find((p) => p.id === id);
+    const meta = movementMeta[id];
+
+    const isConscriptMovement =
+      meta?.type === "demotion" || CONSCRIPT_RANK_NAMES.includes(row?.rank_name ?? "");
+
+    const message = isConscriptMovement
+      ? "تنبيه: حذف حركة ترقي/عزل المجند من هنا بيمسح السطر من السجل بس، ومش بيرجّع درجة الفرد.\nلو عايز تلغي الحركة فعلًا، اعمل حركة عكسية من صفحة «ترقي المجندين».\n\nهل تريد حذف السطر؟"
+      : "هل تريد حذف هذه الترقية؟";
+
+    if (!window.confirm(message)) return;
 
     try {
       await deletePromotion(id);
@@ -733,16 +769,20 @@ export function SocialRecordDetailPage() {
       : `<tr><td colspan="6" class="empty-row">لا يوجد سجل وحدات مضاف</td></tr>`;
     const promotionRowsHtml = promotions.length
       ? promotions
-          .map(
-            (p) => `
+          .map((p) => {
+            const meta = movementMeta[p.id];
+            const type = meta?.type ?? "promotion";
+            return `
         <tr>
           <td>${ar(p.promotion_date)}</td>
           <td>${p.rank_name ?? "-"}</td>
           <td>${ar(p.decision_number)}</td>
-        </tr>`
-          )
+          <td>${movementLabel(type, p.rank_name)}</td>
+          <td>${meta?.notes ?? "-"}</td>
+        </tr>`;
+          })
           .join("")
-      : `<tr><td colspan="3" class="empty-row">لا يوجد ترقيات مسجلة</td></tr>`;
+      : `<tr><td colspan="5" class="empty-row">لا يوجد ترقيات مسجلة</td></tr>`;
     const injuryRowsHtml = injuries.length
       ? injuries
           .map(
@@ -1193,6 +1233,8 @@ export function SocialRecordDetailPage() {
                   <th>تاريخ الترقي</th>
                   <th>الدرجة</th>
                   <th>رقم قرار الترقي</th>
+                  <th>الحركة</th>
+                  <th>ملاحظات / السبب</th>
                 </tr>
               </thead>
               <tbody>${promotionRowsHtml}</tbody>
@@ -2324,12 +2366,14 @@ export function SocialRecordDetailPage() {
                 className={inputClass}
                 style={{ ...F, height: 42 }}
               >
-                <option value="">اختر الدرجة</option>
-                {ranks.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
+                          <option value="">اختر الدرجة</option>
+                {ranks
+                  .filter((r) => r.name !== "عريف مجند")
+                  .map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
               </select>
             </div>
 
@@ -2356,6 +2400,11 @@ export function SocialRecordDetailPage() {
               <Plus size={14} />
               إضافة ترقية
             </button>
+
+            <p className="w-full" style={{ ...F, fontSize: 12, color: "#b45309" }}>
+              الإضافة هنا للتوثيق فقط ولا تغيّر درجة الفرد الحالية. ترقيات ضباط الصف تتم من «نشرات الترقي»، وترقي المجندين من «ترقي المجندين».
+              تاريخ آخر ترقية يدخل في حساب استحقاق النقل لشؤون الضباط.
+            </p>
           </div>
         )}
 
@@ -2375,8 +2424,14 @@ export function SocialRecordDetailPage() {
                     <th className="px-4 py-2.5 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]">
                       <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الدرجة</span>
                     </th>
-                    <th className="px-4 py-2.5 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]">
+                          <th className="px-4 py-2.5 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]">
                       <span style={{ ...F, fontSize: 12, color: "#717d96" }}>رقم قرار الترقي</span>
+                    </th>
+                    <th className="px-4 py-2.5 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]">
+                      <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الحركة</span>
+                    </th>
+                    <th className="px-4 py-2.5 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]">
+                      <span style={{ ...F, fontSize: 12, color: "#717d96" }}>ملاحظات / السبب</span>
                     </th>
                     {canEdit && <th className="px-4 py-2.5 border-b border-[#e2e7f0] bg-[#f7f9fc]" />}
                   </tr>
@@ -2394,6 +2449,30 @@ export function SocialRecordDetailPage() {
                       </td>
                       <td className="px-4 py-2.5 border-b border-[#eaecf0]">
                         <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>{p.decision_number}</span>
+                      </td>
+                      <td className="px-4 py-2.5 border-b border-[#eaecf0]">
+                        {(() => {
+                          const type = movementMeta[p.id]?.type ?? "promotion";
+                          return (
+                            <span
+                              className="inline-flex px-2.5 py-0.5 rounded-full whitespace-nowrap"
+                              style={{
+                                ...F,
+                                fontSize: 12,
+                                fontWeight: 700,
+                                background: type === "promotion" ? "#dcfce7" : "#fce9ea",
+                                color: type === "promotion" ? "#166534" : "#9d2e15",
+                              }}
+                            >
+                              {movementLabel(type, p.rank_name)}
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-4 py-2.5 border-b border-[#eaecf0]">
+                        <span style={{ ...F, fontSize: 13, color: "#717d96" }}>
+                          {movementMeta[p.id]?.notes ?? "-"}
+                        </span>
                       </td>
                       {canEdit && (
                         <td className="px-4 py-2.5 border-b border-[#eaecf0]">

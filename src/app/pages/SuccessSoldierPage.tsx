@@ -1171,9 +1171,9 @@ export function SuccessSoldierPage() {
 
             <button
               type="button"
-              onClick={() => {
-                // إصدار الخطاب لاحقًا
-              }}
+              onClick={() =>
+                navigate(`/dashboard/issue-letter?personnel_id=${personnel.id}`)
+              }
               className="
                 flex
                 items-center

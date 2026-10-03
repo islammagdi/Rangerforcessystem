@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   Calendar,
@@ -346,8 +346,12 @@ const STEPS = [
 
 function DailyStepper({
   step,
+  onStepClick,
+  canGoTo,
 }: {
   step: 1 | 2 | 3;
+  onStepClick?: (n: 1 | 2 | 3) => void;
+  canGoTo?: (n: 1 | 2 | 3) => boolean;
 }) {
   return (
     <div
@@ -363,8 +367,22 @@ function DailyStepper({
             key={n}
             className="flex items-start"
           >
-            <div
-              className="flex flex-col items-center"
+              <button
+              type="button"
+              disabled={
+                !onStepClick ||
+                n === step ||
+                (canGoTo ? !canGoTo(n as 1 | 2 | 3) : false)
+              }
+              onClick={() => onStepClick?.(n as 1 | 2 | 3)}
+              title={
+                onStepClick &&
+                n !== step &&
+                (!canGoTo || canGoTo(n as 1 | 2 | 3))
+                  ? "الانتقال لهذه الخطوة"
+                  : undefined
+              }
+              className="flex flex-col items-center bg-transparent p-0 enabled:cursor-pointer enabled:hover:opacity-80 transition-opacity"
               style={{ width: 90 }}
             >
               <div
@@ -410,7 +428,7 @@ function DailyStepper({
               >
                 {STEPS[idx]}
               </p>
-            </div>
+            </button>
 
             {idx < 2 && (
               <div
@@ -661,20 +679,27 @@ function Step2({
   reportTitle,
   units,
   onNext,
+  initial,
+  onDraftChange,
 }: {
   reportTitle: string;
   units: Unit[];
   onNext: (cfg: ReportConfig) => void;
+  initial?: ReportConfig | null;
+  onDraftChange?: (cfg: ReportConfig) => void;
 }) {
-  const [unitId, setUnitId] = useState("");
-  const [category, setCategory] =
-    useState<Category>("الكل");
+  const [unitId, setUnitId] = useState(initial?.unitId ?? "");
+  const [category, setCategory] = useState<Category>(
+    initial?.category ?? "الكل"
+  );
 
-  const [excludeBatch, setExcludeBatch] =
-    useState(false);
+  const [excludeBatch, setExcludeBatch] = useState(
+    initial?.excludeBatch ?? false
+  );
 
-  const [dischargeDate, setDischargeDate] =
-    useState("");
+  const [dischargeDate, setDischargeDate] = useState(
+    initial?.dischargeDate ?? ""
+  );
 
   // ✅ دفعات الرديف — تُجلب من قاعدة البيانات بدل إدخال تاريخ حر
   const [batchOptions, setBatchOptions] = useState<
@@ -724,10 +749,14 @@ function Step2({
 
   const [administrationMode, setAdministrationMode] = useState<
     "all" | "specific"
-  >("all");
+  >(
+    initial && initial.administrationIds.length > 0
+      ? "specific"
+      : "all"
+  );
 
   const [selectedAdministrationIds, setSelectedAdministrationIds] =
-    useState<string[]>([]);
+    useState<string[]>(initial?.administrationIds ?? []);
 
   const [showAdminModal, setShowAdminModal] = useState(false);
 
@@ -837,6 +866,38 @@ function Step2({
   function handleUnitChange(id: string) {
     setUnitId(id);
   }
+  // ✅ أول تنفيذ للـ effect بيحصل وقت الـ mount من غير أي تغيير فعلي من
+  // المستخدم، فنتجاهله عشان ما نلغيش المعاينة الموجودة بالغلط
+  const isFirstRender = useRef(true);
+
+  // ✅ أي تغيير في الإعدادات بيتحفظ في الصفحة الأب، فالرجوع للخطوة
+  // بعد الانتقال بين الخطوات ما يضيّعش حاجة
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+
+    onDraftChange?.({
+      unitId,
+      unitName: selectedUnit?.name ?? "",
+      category,
+      excludeBatch,
+      dischargeDate,
+      administrationIds:
+        administrationMode === "specific"
+          ? selectedAdministrationIds
+          : [],
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    unitId,
+    category,
+    excludeBatch,
+    dischargeDate,
+    administrationMode,
+    selectedAdministrationIds,
+  ]);
 
   // ==========================================================
   // Submit
@@ -4239,6 +4300,10 @@ export function DailyReportsPage() {
   const [reportConfig, setReportConfig] =
     useState<ReportConfig | null>(null);
 
+  // ✅ آخر إعدادات اتكتبت في الخطوة 2 (حتى لو ما اتعملتش معاينة)
+  const [settingsDraft, setSettingsDraft] =
+    useState<ReportConfig | null>(null);
+
   const [units, setUnits] =
     useState<Unit[]>([]);
 
@@ -4416,9 +4481,31 @@ export function DailyReportsPage() {
   function handleSelectCard(
     card: ReportCard
   ) {
+    // ✅ نفس اليومية: نحافظ على الإعدادات. يومية مختلفة: نصفّرها لأن
+    // الحقول (وحدة / إدارات) بتختلف حسب النوع
+    if (selectedCard?.id !== card.id) {
+      setSettingsDraft(null);
+      setReportConfig(null);
+    }
+
     setSelectedCard(card);
-    setReportConfig(null);
     setStep(2);
+  }
+
+  function handleStepClick(target: 1 | 2 | 3) {
+    if (target === 3) {
+      // نعيد بناء المعاينة من آخر إعدادات، بعد نفس التحقق بتاع "معاينة"
+      if (reportConfig) setStep(3);
+      return;
+    }
+
+    setStep(target);
+  }
+
+  function canGoTo(target: 1 | 2 | 3) {
+    if (target === 1) return true;
+    if (target === 2) return selectedCard !== null;
+    return reportConfig !== null && selectedCard !== null;
   }
 
   // ==========================================================
@@ -4428,12 +4515,15 @@ export function DailyReportsPage() {
   function handleSettings(
     cfg: ReportConfig
   ) {
-    setReportConfig({
+    const finalConfig: ReportConfig = {
       ...cfg,
       reportType:
         selectedCard?.id ??
         "unit-force",
-    });
+    };
+
+    setSettingsDraft(finalConfig);
+    setReportConfig(finalConfig);
 
     setStep(3);
   }
@@ -4571,7 +4661,11 @@ export function DailyReportsPage() {
       {/* Stepper */}
 
       <div className="flex justify-center">
-        <DailyStepper step={step} />
+        <DailyStepper
+          step={step}
+          onStepClick={handleStepClick}
+          canGoTo={canGoTo}
+        />
       </div>
 
       {/* Step 1 */}
@@ -4587,11 +4681,19 @@ export function DailyReportsPage() {
       {step === 2 &&
         selectedCard && (
           <Step2
+            key={selectedCard.id}
             reportTitle={
               selectedCard.title
             }
             units={units}
             onNext={handleSettings}
+            initial={settingsDraft}
+            onDraftChange={(cfg) => {
+              setSettingsDraft(cfg);
+              // أي تعديل بيلغي المعاينة القديمة، فالمستخدم يضغط
+              // "معاينة اليومية" من جديد وياخد آخر إعدادات
+              setReportConfig(null);
+            }}
           />
         )}
 

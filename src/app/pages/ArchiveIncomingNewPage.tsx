@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Upload, X } from "lucide-react";
-
+	import { todayLocalIso } from "../../lib/dates";
 import { supabase } from "../../lib/supabase";
 import { logActivity } from "../../lib/logActivity";
 import { useUnsavedChanges } from "../../lib/unsavedChanges";
@@ -35,7 +35,7 @@ export function ArchiveIncomingNewPage() {
 const canCreate = hasPermission("archive_incoming:create");
 
   const [faxDate, setFaxDate] = useState(
-    new Date().toISOString().split("T")[0]
+    todayLocalIso()
   );
 
   const [sourceEntity, setSourceEntity] = useState("");

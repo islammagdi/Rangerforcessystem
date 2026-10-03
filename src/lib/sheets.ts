@@ -1,4 +1,27 @@
 import { supabase } from "./supabase";
+import { fetchAllRows, fetchByIdsInChunks } from "./fetchAllRows";
+
+// إدخال على دفعات (علشان حجم الطلب)، وبيرجّع الصفوف المضافة بنفس الترتيب
+async function insertInChunks<T>(
+  table: string,
+  payload: Record<string, unknown>[],
+  select: string,
+  chunkSize = 500
+): Promise<T[]> {
+  const out: T[] = [];
+
+  for (let i = 0; i < payload.length; i += chunkSize) {
+    const { data, error } = await supabase
+      .from(table)
+      .insert(payload.slice(i, i + chunkSize))
+      .select(select);
+
+    if (error) throw error;
+    out.push(...((data ?? []) as T[]));
+  }
+
+  return out;
+}
 export interface RoleOption {
   id: string;
   name: string;
@@ -25,13 +48,67 @@ export async function fetchSheetShareRoleIds(sheetId: string): Promise<string[]>
 
   return (data ?? []).map((r) => r.role_id as string);
 }
-export type SheetColumnType = "TEXT" | "NUMBER" | "DATE";
+export type SheetColumnType = "TEXT" | "NUMBER" | "DATE" | "DROPDOWN";
 
 export const COLUMN_TYPE_LABELS: Record<SheetColumnType, string> = {
   TEXT: "نص",
   NUMBER: "رقم",
   DATE: "تاريخ",
+  DROPDOWN: "قائمة منسدلة",
 };
+
+// مصادر القوائم المنسدلة من قاعدة البيانات
+// ⚠️ عدّل table / labelColumn حسب أسماء الجداول والأعمدة الفعلية عندك
+export const DROPDOWN_SOURCES: Record<
+  string,
+  { label: string; table: string; labelColumn: string }
+> = {
+  units: { label: "الوحدات", table: "units", labelColumn: "name" },
+  ranks: { label: "الرتب", table: "ranks", labelColumn: "name" },
+  personnel_categories: {
+    label: "فئات الأفراد",
+    table: "personnel_categories",
+    labelColumn: "name",
+  },
+  jobs: { label: "الوظائف", table: "jobs", labelColumn: "name" },
+  external_administrations: {
+    label: "الإدارات الخارجية",
+    table: "external_administrations",
+    labelColumn: "name",
+  },
+  education_levels: {
+    label: "المؤهلات الدراسية",
+    table: "education_levels",
+    labelColumn: "name",
+  },
+};
+
+export async function fetchDropdownSourceValues(
+  source: string
+): Promise<string[]> {
+  const cfg = DROPDOWN_SOURCES[source];
+  if (!cfg) return [];
+
+  const { data, error } = await supabase
+    .from(cfg.table)
+    .select(cfg.labelColumn);
+
+  if (error) throw error;
+
+  const values = ((data ?? []) as any[])
+    .map((r) => String(r[cfg.labelColumn] ?? "").trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b, "ar"));
+}
+
+export async function fetchColumnDropdownOptions(
+  col: SheetColumn
+): Promise<string[]> {
+  if (col.column_type !== "DROPDOWN") return [];
+  if (col.dropdown_source) return fetchDropdownSourceValues(col.dropdown_source);
+  return col.dropdown_options ?? [];
+}
 
 export interface Sheet {
   id: string;
@@ -48,6 +125,8 @@ export interface SheetColumn {
   name: string;
   column_type: SheetColumnType;
   column_order: number;
+  dropdown_source: string | null;
+  dropdown_options: string[] | null;
 }
 
 export interface SheetRow {
@@ -92,7 +171,12 @@ export async function fetchSheetById(id: string): Promise<Sheet> {
 
 export async function createSheet(params: {
   name: string;
-  columns: { name: string; column_type: SheetColumnType }[];
+  columns: {
+    name: string;
+    column_type: SheetColumnType;
+    dropdown_source?: string | null;
+    dropdown_options?: string[] | null;
+  }[];
   createdBy: string | null;
   createdByName: string;
   sharedRoleIds?: string[];
@@ -114,6 +198,8 @@ export async function createSheet(params: {
     name: col.name,
     column_type: col.column_type,
     column_order: index,
+    dropdown_source: col.dropdown_source ?? null,
+    dropdown_options: col.dropdown_options ?? null,
   }));
 
   const { error: columnsError } = await supabase
@@ -202,6 +288,8 @@ export async function duplicateSheet(params: {
       name: col.name,
       column_type: col.column_type,
       column_order: col.column_order,
+      dropdown_source: col.dropdown_source,
+      dropdown_options: col.dropdown_options,
     }));
 
     const { data: insertedColumns, error: columnsError } = await supabase
@@ -223,24 +311,26 @@ export async function duplicateSheet(params: {
   const originalRows = await fetchSheetRows(params.sheetId);
   const rowIdMap = new Map<string, string>();
 
-  if (originalRows.length > 0) {
-    const rowsPayload = originalRows.map((row) => ({
+   if (originalRows.length > 0) {
+    // ترقيم جديد متسلسل (بيصلّح أي أرقام متكررة في الكشف الأصلي)،
+    // والربط بالترتيب نفسه مش بـ row_order
+    const rowsPayload = originalRows.map((_, index) => ({
       sheet_id: newSheetId,
-      row_order: row.row_order,
+      row_order: index,
     }));
 
-    const { data: insertedRows, error: rowsError } = await supabase
-      .from("sheet_rows")
-      .insert(rowsPayload)
-      .select("id, row_order");
+    const insertedRows = await insertInChunks<{ id: string; row_order: number }>(
+      "sheet_rows",
+      rowsPayload,
+      "id, row_order"
+    );
 
-    if (rowsError) throw rowsError;
+    const newRowIdByOrder = new Map(insertedRows.map((r) => [r.row_order, r.id]));
 
-    originalRows.forEach((oldRow) => {
-      const newRow = insertedRows?.find((r) => r.row_order === oldRow.row_order);
-      if (newRow) rowIdMap.set(oldRow.id, newRow.id);
+    originalRows.forEach((oldRow, index) => {
+      const newRowId = newRowIdByOrder.get(index);
+      if (newRowId) rowIdMap.set(oldRow.id, newRowId);
     });
-
     // 5) نسخ الخلايا (القيم)
     const originalCells = await fetchSheetCells(originalRows.map((r) => r.id));
 
@@ -259,11 +349,7 @@ export async function duplicateSheet(params: {
         .filter((c): c is NonNullable<typeof c> => c !== null);
 
       if (cellsPayload.length > 0) {
-        const { error: cellsError } = await supabase
-          .from("sheet_cells")
-          .insert(cellsPayload);
-
-        if (cellsError) throw cellsError;
+        await insertInChunks("sheet_cells", cellsPayload, "id");
       }
     }
   }
@@ -340,13 +426,16 @@ export async function addColumn(
   sheetId: string,
   name: string,
   columnType: SheetColumnType,
-  order: number
+  order: number,
+  dropdown?: { source: string | null; options: string[] | null }
 ) {
   const { error } = await supabase.from("sheet_columns").insert({
     sheet_id: sheetId,
     name,
     column_type: columnType,
     column_order: order,
+    dropdown_source: dropdown?.source ?? null,
+    dropdown_options: dropdown?.options ?? null,
   });
 
   if (error) throw error;
@@ -366,17 +455,16 @@ export async function deleteColumn(id: string) {
 // =====================================================
 
 export async function fetchSheetRows(sheetId: string): Promise<SheetRow[]> {
-  const { data, error } = await supabase
-    .from("sheet_rows")
-    .select("*")
-    .eq("sheet_id", sheetId)
-    .order("row_order", { ascending: true });
-
-  if (error) throw error;
-
-  return data ?? [];
+  return fetchAllRows<SheetRow>((from, to) =>
+    supabase
+      .from("sheet_rows")
+      .select("*")
+      .eq("sheet_id", sheetId)
+      .order("row_order", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
 }
-
 export async function addRow(
   sheetId: string,
   order: number
@@ -407,14 +495,14 @@ export async function fetchSheetCells(
 ): Promise<SheetCell[]> {
   if (rowIds.length === 0) return [];
 
-  const { data, error } = await supabase
-    .from("sheet_cells")
-    .select("*")
-    .in("row_id", rowIds);
-
-  if (error) throw error;
-
-  return data ?? [];
+  return fetchByIdsInChunks<SheetCell>(rowIds, (chunk, from, to) =>
+    supabase
+      .from("sheet_cells")
+      .select("*")
+      .in("row_id", chunk)
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
 }
 
 export async function upsertCell(
@@ -686,12 +774,15 @@ export interface SheetLog {
   created_at: string;
 }
 
+export const SHEET_LOGS_LIMIT = 500;
+
 export async function fetchSheetLogs(sheetId: string): Promise<SheetLog[]> {
   const { data, error } = await supabase
     .from("sheet_logs")
     .select("*")
     .eq("sheet_id", sheetId)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(SHEET_LOGS_LIMIT);
 
   if (error) throw error;
 

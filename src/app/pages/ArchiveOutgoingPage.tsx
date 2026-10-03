@@ -11,7 +11,7 @@ import { usePermissions } from "../../lib/usePermissions";
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
-
+import { todayLocalIso } from "../../lib/dates";
 /* =========================================================
    Helpers
 ========================================================= */
@@ -30,7 +30,7 @@ export function ArchiveOutgoingPage() {
   const location = useLocation();
   const { hasPermission } = usePermissions();
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = todayLocalIso();
   const navState = location.state as
     | { officeFilter?: string; dateToday?: boolean }
     | null;

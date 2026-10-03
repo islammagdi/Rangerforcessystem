@@ -4,7 +4,8 @@ import { Plus, Trash2, ShieldCheck, X, Save, Loader2 } from "lucide-react";
 import {
   fetchMailOffices,
   fetchAllOfficeRoleLinks,
-  setOfficeRoleLink,
+  addOfficeRoleLink,
+  removeOfficeRoleLink,
   type MailOffice,
 } from "../../lib/mailArchive";
 // ============================================================
@@ -47,8 +48,12 @@ export function ManageRolesPage() {
   const [userCounts, setUserCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 const [mailOffices, setMailOffices] = useState<MailOffice[]>([]);
-const [officeLinkByRole, setOfficeLinkByRole] = useState<Record<string, string>>({});
-const [savingOfficeLink, setSavingOfficeLink] = useState(false);
+const [officeLinkByRole, setOfficeLinkByRole] = useState<Record<string, string[]>>({});
+const [savingOfficeId, setSavingOfficeId] = useState<string | null>(null);
+const [roleUsers, setRoleUsers] = useState<
+  { user_id: string; full_name: string | null; username: string; rank_name: string | null }[]
+>([]);
+const [loadingRoleUsers, setLoadingRoleUsers] = useState(false);
   // ------------------------------------------------------------
   // الدور المختار حاليًا + صلاحياته
   // ------------------------------------------------------------
@@ -121,9 +126,10 @@ async function loadInitialData() {
     setPermissions(permissionsRes.data ?? []);
     setMailOffices(officesRes);
 
-    const linkMap: Record<string, string> = {};
+    const linkMap: Record<string, string[]> = {};
     officeLinksRes.forEach((link) => {
-      linkMap[link.role_id] = link.office_id;
+      if (!linkMap[link.role_id]) linkMap[link.role_id] = [];
+      linkMap[link.role_id].push(link.office_id);
     });
     setOfficeLinkByRole(linkMap);
 
@@ -142,42 +148,47 @@ async function loadInitialData() {
     setLoading(false);
   }
 }
-async function handleOfficeLinkChange(newOfficeId: string) {
+async function handleToggleOffice(officeId: string) {
   if (!selectedRoleId) return;
 
-  const officeIdOrNull = newOfficeId || null;
-  const previousValue = officeLinkByRole[selectedRoleId] ?? "";
+  const roleId = selectedRoleId;
+  const isLinked = (officeLinkByRole[roleId] ?? []).includes(officeId);
 
-  setSavingOfficeLink(true);
+  setSavingOfficeId(officeId);
   setErrorMessage(null);
   setSuccessMessage(null);
 
   try {
-    await setOfficeRoleLink(selectedRoleId, officeIdOrNull);
+    if (isLinked) {
+      await removeOfficeRoleLink(roleId, officeId);
+    } else {
+      await addOfficeRoleLink(roleId, officeId);
+    }
 
     setOfficeLinkByRole((prev) => {
+      const list = prev[roleId] ?? [];
+      const nextList = isLinked
+        ? list.filter((id) => id !== officeId)
+        : [...list, officeId];
+
       const next = { ...prev };
-      if (officeIdOrNull) {
-        next[selectedRoleId] = officeIdOrNull;
+      if (nextList.length > 0) {
+        next[roleId] = nextList;
       } else {
-        delete next[selectedRoleId];
+        delete next[roleId];
       }
       return next;
     });
 
-    setSuccessMessage("تم حفظ ربط المكتب بالدور بنجاح.");
+    setSuccessMessage(isLinked ? "تم فك ربط المكتب من الدور." : "تم ربط المكتب بالدور بنجاح.");
   } catch (error: any) {
     if (error?.code === "23505") {
-      setErrorMessage(
-        "هذا المكتب مرتبط بدور آخر بالفعل. فك الربط من الدور الآخر أولًا."
-      );
+      setErrorMessage("هذا المكتب مرتبط بهذا الدور بالفعل.");
     } else {
       setErrorMessage("حدث خطأ أثناء حفظ ربط المكتب.");
     }
-    // نرجّع الاختيار القديم في القائمة لأن الحفظ فشل
-    setOfficeLinkByRole((prev) => ({ ...prev, [selectedRoleId]: previousValue }));
   } finally {
-    setSavingOfficeLink(false);
+    setSavingOfficeId(null);
   }
 }
   // ============================================================
@@ -187,7 +198,33 @@ async function handleOfficeLinkChange(newOfficeId: string) {
   useEffect(() => {
     if (!selectedRoleId) return;
     loadRolePermissions(selectedRoleId);
+    loadRoleUsers(selectedRoleId);
   }, [selectedRoleId]);
+
+  async function loadRoleUsers(roleId: string) {
+    setLoadingRoleUsers(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("user_offices")
+        .select("user_id, full_name, username, rank_name")
+        .eq("role_id", roleId)
+        .order("full_name", { ascending: true });
+
+      if (error) throw error;
+
+      // الفرد بيتكرر في user_offices بعدد مكاتب دوره
+      const unique = new Map<string, any>();
+      (data ?? []).forEach((row: any) => {
+        if (!unique.has(row.user_id)) unique.set(row.user_id, row);
+      });
+      setRoleUsers(Array.from(unique.values()));
+    } catch (error: any) {
+      setRoleUsers([]);
+    } finally {
+      setLoadingRoleUsers(false);
+    }
+  }
 
   async function loadRolePermissions(roleId: string) {
     setLoadingRolePerms(true);
@@ -248,6 +285,22 @@ async function handleOfficeLinkChange(newOfficeId: string) {
   }, [originalPermissionIds, selectedPermissionIds]);
 
   const selectedRole = roles.find((r) => r.id === selectedRoleId) ?? null;
+
+  // كل مكتب مربوط بأنهي أدوار
+  const officeRoleIds = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    Object.entries(officeLinkByRole).forEach(([roleId, officeIds]) => {
+      officeIds.forEach((officeId) => {
+        if (!map[officeId]) map[officeId] = [];
+        map[officeId].push(roleId);
+      });
+    });
+    return map;
+  }, [officeLinkByRole]);
+
+  const selectedRoleOffices = selectedRole
+    ? mailOffices.filter((o) => (officeLinkByRole[selectedRole.id] ?? []).includes(o.id))
+    : [];
 
   // ============================================================
   // Toggle صلاحية واحدة
@@ -674,29 +727,122 @@ async function handleCreatePermission() {
 
 <div className="flex flex-col gap-2">
   <p style={{ fontSize: 14, fontWeight: 700, color: "#2d3648" }}>
-    المكتب المرتبط بهذا الدور
+    المكاتب المرتبطة بهذا الدور
   </p>
   <p style={{ fontSize: 12, color: "#717d96" }}>
-    عند الربط، أي مستخدم بهذا الدور هيبقى "المختص" الرسمي لفاكسات هذا
-    المكتب — هيوصله إشعار بأي فاكس وارد جديد، وهو الوحيد اللي يقدر يفتح
-    الفاكس ويسجّل استلامه ويعدّل حقل "ما تم حياله من المختص".
+    عند الربط، أي مستخدم بهذا الدور هيبقى "مختص" بفاكسات المكاتب المحددة —
+    هيوصله إشعار بأي فاكس وارد جديد، ويقدر يفتح الفاكس ويسجّل استلامه ويعدّل
+    حقل "ما تم حياله من المختص". لو المكتب مرتبط بأكثر من دور، أفراد كل
+    الأدوار دي بيبقوا مختصين بيه.
   </p>
 
-  <select
-    value={officeLinkByRole[selectedRole.id] ?? ""}
-    onChange={(e) => handleOfficeLinkChange(e.target.value)}
-    disabled={savingOfficeLink}
-    dir="rtl"
-    className="w-full h-[42px] rounded-lg border border-[#eff0f6] px-3 focus:outline-none focus:border-[#00B867] bg-white disabled:opacity-60"
-    style={{ fontSize: 14, color: "#2d3648" }}
-  >
-    <option value="">بدون ربط</option>
-    {mailOffices.map((office) => (
-      <option key={office.id} value={office.id}>
-        {office.name}
-      </option>
-    ))}
-  </select>
+  {mailOffices.length === 0 ? (
+    <p style={{ fontSize: 13, color: "#717d96" }}>لا توجد مكاتب مسجلة.</p>
+  ) : (
+    <div className="flex flex-wrap gap-2">
+      {mailOffices.map((office) => {
+        const checked = (officeLinkByRole[selectedRole.id] ?? []).includes(office.id);
+        const isSaving = savingOfficeId === office.id;
+
+        // الأدوار التانية المرتبطة بنفس المكتب (للعرض فقط)
+        const otherRoleNames = (officeRoleIds[office.id] ?? [])
+          .filter((roleId) => roleId !== selectedRole.id)
+          .map((roleId) => roles.find((r) => r.id === roleId)?.name)
+          .filter(Boolean) as string[];
+
+        return (
+          <label
+            key={office.id}
+            title={
+              otherRoleNames.length > 0
+                ? `مرتبط أيضًا بـ: ${otherRoleNames.join("، ")}`
+                : undefined
+            }
+            className={[
+              "flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors cursor-pointer",
+              checked
+                ? "bg-[#DCF4DF] border-[#00B867]"
+                : "bg-[#f7f9fc] border-[#eff0f6] hover:bg-[#f5f6fb]",
+            ].join(" ")}
+          >
+            {isSaving ? (
+              <Loader2 size={16} className="animate-spin text-[#00B867]" />
+            ) : (
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={savingOfficeId !== null}
+                onChange={() => void handleToggleOffice(office.id)}
+                className="w-4 h-4 accent-[#00B867] cursor-pointer disabled:cursor-not-allowed"
+              />
+            )}
+
+            <span
+              style={{
+                fontSize: 13,
+                fontWeight: checked ? 700 : 400,
+                color: checked ? "#344736" : "#2d3648",
+              }}
+            >
+              {office.name}
+            </span>
+
+            {otherRoleNames.length > 0 && (
+              <span style={{ fontSize: 11, color: "#a0aec0" }}>
+                ({otherRoleNames.join("، ")})
+              </span>
+            )}
+          </label>
+        );
+      })}
+    </div>
+  )}
+
+  {/* الأفراد اللي دورهم ده، ومكتبهم المختص بيتحدد تلقائيًا من الدور */}
+  <div className="mt-3 rounded-xl border border-[#eff0f6] p-4 flex flex-col gap-3">
+    <div className="flex items-center justify-between flex-wrap gap-2">
+      <p style={{ fontSize: 14, fontWeight: 700, color: "#2d3648" }}>
+        الأفراد بهذا الدور ({roleUsers.length})
+      </p>
+
+      <span
+        className="px-3 py-1 rounded-full"
+        style={{
+          fontSize: 12,
+          fontWeight: 700,
+          background: selectedRoleOffices.length > 0 ? "#DCF4DF" : "#f5f6fb",
+          color: selectedRoleOffices.length > 0 ? "#00522E" : "#717d96",
+        }}
+      >
+        {selectedRoleOffices.length > 1 ? "المكاتب المختصة: " : "المكتب المختص: "}
+        {selectedRoleOffices.length > 0
+          ? selectedRoleOffices.map((o) => o.name).join("، ")
+          : "بدون ربط"}
+      </span>
+    </div>
+
+    {loadingRoleUsers ? (
+      <div className="flex items-center justify-center py-4">
+        <Loader2 size={16} className="animate-spin text-[#717d96]" />
+      </div>
+    ) : roleUsers.length === 0 ? (
+      <p style={{ fontSize: 13, color: "#717d96" }}>
+        لا يوجد أفراد بهذا الدور حاليًا.
+      </p>
+    ) : (
+      <div className="flex flex-wrap gap-2">
+        {roleUsers.map((u) => (
+          <span
+            key={u.user_id}
+            className="px-3 py-1.5 rounded-lg bg-[#f7f9fc] border border-[#eff0f6]"
+            style={{ fontSize: 13, color: "#2d3648" }}
+          >
+            {[u.rank_name, u.full_name ?? u.username].filter(Boolean).join(" ")}
+          </span>
+        ))}
+      </div>
+    )}
+  </div>
 </div>
 <div className="w-full h-px bg-[#eff0f6]" />
 

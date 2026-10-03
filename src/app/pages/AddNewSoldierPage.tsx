@@ -16,6 +16,14 @@ import {
 import * as XLSX from "xlsx";
 import { supabase } from "../../lib/supabase";
 import { useUnsavedChanges } from "../../lib/unsavedChanges";
+import {
+  getAddSoldierFlow,
+  patchAddSoldierFlow,
+  patchGroupFlow,
+  resetAddSoldierFlow,
+} from "../../lib/addSoldierFlow";
+import { useLocation } from "react-router";
+import { downloadRegistrationTemplate } from "../../lib/registrationTemplate";
 
 // ============================================================
 // Types
@@ -103,6 +111,7 @@ interface GroupPersonnelRow {
 type RowClassification = "new" | "update" | "error";
 
 interface ClassifiedPersonnelRow extends GroupPersonnelRow {
+  deleted_number?: boolean;
   classification: RowClassification;
   errors: string[];
   rank_id: string | null;
@@ -141,11 +150,26 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   return chunks;
 }
 const PERSONNEL_TABLE_NAME = "personnel";
-// ✅ نفس المعرّف المستخدم في صفحة دفعات الرديف (ReserveBatchesPage.tsx)
-// لحالة "منتهي خدمته" — بنستخدمه هنا عشان نتأكد إننا بنقارن بنفس
-// الحالة الصحيحة في قاعدة البيانات.
-const DISCHARGED_STATUS_ID =
-  "ac8ddfa3-1578-455b-9b6a-b056260fcb1f";
+
+// معرّف حالة "منتهي خدمته" في جدول service_statuses
+// ⚠️ ضع هنا الـ id الحقيقي للحالة من قاعدة البيانات.
+// لو مش عايز تعتمد على id ثابت، سيب القيمة فاضية والمطابقة
+// هتتم بالاسم فقط (وده شغال أصلًا في isDischargedStatusRecord).
+const DISCHARGED_STATUS_ID: string = "";
+// درجات المجند: جندي أو عريف مجند
+const CONSCRIPT_RANK_CODES = ["SOLDIER", "CONSCRIPT_CORPORAL"];
+// درجات ممنوعة على المتطوع عند القيد
+const NON_VOLUNTEER_RANK_CODES = ["SOLDIER", "CONSCRIPT_CORPORAL", "HONORARY_LIEUTENANT"];
+
+function rankCodeOf(rank: { name: string; code: string | null }): string {
+  const code = rank.code?.trim().toUpperCase();
+  if (code) return code;
+
+  const name = normalizeExcelHeader(rank.name);
+  if (name === normalizeExcelHeader("جندي")) return "SOLDIER";
+  if (name === normalizeExcelHeader("عريف مجند")) return "CONSCRIPT_CORPORAL";
+  return "";
+}
 function normalizeExcelHeader(value: unknown): string {
   return String(value ?? "")
     .trim()
@@ -241,9 +265,14 @@ function excelDateToISO(
   return text;
 }
 
-// ============================================================
-// Shared
-// ============================================================
+function buildStatsFromRows(rows: { classification: string }[]) {
+  return {
+    total: rows.length,
+    newCount: rows.filter((r) => r.classification === "new").length,
+    updated: rows.filter((r) => r.classification === "update").length,
+    issues: rows.filter((r) => r.classification === "error").length,
+  };
+}
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
@@ -272,12 +301,24 @@ function StepDots() {
   );
 }
 
-function Stepper() {
+function Stepper({
+  canGoToReview,
+  onReviewClick,
+}: {
+  canGoToReview?: boolean;
+  onReviewClick?: () => void;
+}) {
   return (
     <div className="flex items-start gap-0" dir="rtl">
       {STEPS.map((step, idx) => (
         <div key={step.num} className="flex items-start">
-          <div className="flex flex-col items-center gap-2">
+          <button
+            type="button"
+            disabled={!(idx === 1 && canGoToReview)}
+            onClick={idx === 1 ? onReviewClick : undefined}
+            title={idx === 1 && canGoToReview ? "الانتقال للمراجعة" : undefined}
+            className="flex flex-col items-center gap-2 bg-transparent p-0 enabled:cursor-pointer enabled:hover:opacity-80 transition-opacity"
+          >
             <div
               className={[
                 "w-8 h-8 rounded-full flex items-center justify-center border-2",
@@ -307,7 +348,7 @@ function Stepper() {
             >
               {step.label}
             </span>
-          </div>
+          </button>
 
           {idx < STEPS.length - 1 && (
             <div className="mt-[14px]">
@@ -841,7 +882,8 @@ function GroupUploadSection({
   loading,
   uploadedFile,
   setUploadedFile,
-  templateUrl,
+  onDownloadTemplate,
+  downloadingTemplate,
 }: {
   onSubmit: () => void;
   loading: boolean;
@@ -849,7 +891,8 @@ function GroupUploadSection({
   setUploadedFile: React.Dispatch<
     React.SetStateAction<UploadedFile | null>
   >;
-  templateUrl: string | null;
+  onDownloadTemplate: () => void;
+  downloadingTemplate: boolean;
 }): JSX.Element {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -941,21 +984,11 @@ function GroupUploadSection({
             </p>
           </div>
 
-          <a
-           
-            href={templateUrl ?? "#"}
-            download="Data.xlsx"
-            target={templateUrl ? "_blank" : undefined}
-            rel="noopener noreferrer"
-            onClick={(e) => {
-              if (!templateUrl) {
-                e.preventDefault();
-              }
-            }}
-            className={[
-              "flex items-center gap-1.5 shrink-0 group",
-              !templateUrl ? "opacity-50 cursor-not-allowed" : "",
-            ].join(" ")}
+          <button
+            type="button"
+            onClick={onDownloadTemplate}
+            disabled={downloadingTemplate}
+            className="flex items-center gap-1.5 shrink-0 group disabled:opacity-50 disabled:cursor-wait"
           >
             <Download size={18} style={{ color: "#00b867" }} />
 
@@ -964,15 +997,14 @@ function GroupUploadSection({
               style={{
                 ...F,
                 fontSize: 16,
-                background:
-                  "linear-gradient(to bottom, #00b867, #00522e)",
+                background: "linear-gradient(to bottom, #00b867, #00522e)",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
               }}
             >
-              تحميل نموذج القيد الموحّد
+              {downloadingTemplate ? "جاري تجهيز النموذج..." : "تحميل نموذج القيد الموحّد"}
             </span>
-          </a>
+          </button>
         </div>
 
         <div className="w-full h-px bg-[#efefef]" />
@@ -1139,35 +1171,69 @@ function GroupUploadSection({
 
 export function AddNewSoldierPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // ✅ راجع من صفحة المراجعة (Stepper) = نسترجع البيانات، وإلا دخول
+  // جديد = نبدأ من الصفر
+  const resumed = Boolean(
+    (location.state as { resumed?: boolean } | null)?.resumed
+  );
+
+  const [flowAtMount] = useState(() => {
+    if (!resumed) resetAddSoldierFlow();
+    return getAddSoldierFlow();
+  });
+
+  const saved = flowAtMount.individual;
 
   // ----------------------------------------------------------
   // Basic state
   // ----------------------------------------------------------
 
-  const [method, setMethod] =
-    useState<RegistrationMethod>("فرد واحد");
+  const [method, setMethod] = useState<RegistrationMethod>(
+    flowAtMount.method
+  );
 
-  const [category, setCategory] =
-    useState<SoldierCategory>("متطوع");
+  const [category, setCategory] = useState<SoldierCategory>(
+    saved?.category ?? "متطوع"
+  );
 
-  const [milId, setMilId] = useState("");
-  const [rank, setRank] = useState("");
-  const [name, setName] = useState("");
- const [dischargeBatchId, setDischargeBatchId] = useState("");
-  const [unit, setUnit] = useState("");
-  const [status, setStatus] = useState("");
-  const [attachment, setAttachment] = useState("");
-  const [jobId, setJobId] = useState("");
+  const [milId, setMilId] = useState(saved?.milId ?? "");
+  const [rank, setRank] = useState(saved?.rank ?? "");
+  const [name, setName] = useState(saved?.name ?? "");
+  const [dischargeBatchId, setDischargeBatchId] = useState(
+    saved?.dischargeBatchId ?? ""
+  );
+  const [unit, setUnit] = useState(saved?.unit ?? "");
+  const [status, setStatus] = useState(saved?.status ?? "");
+  const [attachment, setAttachment] = useState(saved?.attachment ?? "");
+  const [jobId, setJobId] = useState(saved?.jobId ?? "");
   // ----------------------------------------------------------
   // Group upload
   // ----------------------------------------------------------
 
   const [uploadedGroupFile, setUploadedGroupFile] =
-    useState<UploadedFile | null>(null);
+    useState<UploadedFile | null>(() => {
+      const g = flowAtMount.group;
+      return g.file
+        ? { name: g.fileName, size: g.fileSize, raw: g.file }
+        : null;
+    });
 
   const [groupLoading, setGroupLoading] = useState(false);
 
-  const [templateUrl, setTemplateUrl] = useState<string | null>(null);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+
+  async function handleDownloadTemplate() {
+    try {
+      setDownloadingTemplate(true);
+      await downloadRegistrationTemplate();
+    } catch (error: any) {
+      alert("تعذر تجهيز نموذج القيد الموحد" + (error?.message ? `\n\n${error.message}` : ""));
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  }
   // ----------------------------------------------------------
   // Database state
   // ----------------------------------------------------------
@@ -1240,6 +1306,53 @@ export function AddNewSoldierPage() {
   useEffect(() => {
     setDirty(isDirty);
   }, [isDirty, setDirty]);
+
+  // ✅ مزامنة الحقول مع الـ store المشترك
+  useEffect(() => {
+    patchAddSoldierFlow({
+      method,
+      individual: {
+        category,
+        milId,
+        rank,
+        name,
+        unit,
+        status,
+        attachment,
+        jobId,
+        dischargeBatchId,
+      },
+    });
+  }, [
+    method,
+    category,
+    milId,
+    rank,
+    name,
+    unit,
+    status,
+    attachment,
+    jobId,
+    dischargeBatchId,
+  ]);
+
+  // ✅ مزامنة الملف المرفوع
+  useEffect(() => {
+    if (uploadedGroupFile) {
+      const g = getAddSoldierFlow().group;
+      if (g.file !== uploadedGroupFile.raw) {
+        patchGroupFlow({
+          file: uploadedGroupFile.raw,
+          fileName: uploadedGroupFile.name,
+          fileSize: uploadedGroupFile.size,
+          // ملف جديد = التحليل القديم مابقاش صالح
+          rows: null,
+        });
+      }
+    } else {
+      patchGroupFlow({ file: null, fileName: "", fileSize: "", rows: null });
+    }
+  }, [uploadedGroupFile]);
 
   // لو المستخدم غادر الصفحة من غير ما يكمل الفورم بشكل طبيعي
   useEffect(() => {
@@ -1344,17 +1457,7 @@ export function AddNewSoldierPage() {
       // الوظائف اختيارية: لو فشل تحميلها منوقفش الصفحة
       setJobs(jobsResult.error ? [] : jobsResult.data ?? []);
 
-      // نولّد رابط موقّع جديد لملف القيد الموحّد كل مرة، عشان
-      // نضمن إننا بنجيب أحدث نسخة من الملف ومفيش مشكلة كاش أو
-      // انتهاء صلاحية توكن قديم مكتوب في الكود
-      const { data: signedData, error: signedError } =
-        await supabase.storage
-          .from("files")
-          .createSignedUrl("Data.xlsx", 60 * 60);
 
-      if (!signedError && signedData?.signedUrl) {
-        setTemplateUrl(signedData.signedUrl);
-      }
 
       // الإدارة والمستوى التعليمي بيتستنتجوا تلقائيًا من الرقم
       // العسكري، فلو فشل تحميل الجدولين منوقفش الصفحة برضو
@@ -1424,26 +1527,10 @@ export function AddNewSoldierPage() {
 
   const filteredRanks = useMemo(() => {
     if (category === "مجند") {
-      return ranks.filter((r) => {
-        const rankName = r.name.trim();
-        const code = r.code?.trim().toUpperCase();
-
-        return (
-          rankName === "جندي" ||
-          code === "SOLDIER"
-        );
-      });
+      return ranks.filter((r) => CONSCRIPT_RANK_CODES.includes(rankCodeOf(r)));
     }
 
-    return ranks.filter((r) => {
-      const rankName = r.name.trim();
-      const code = r.code?.trim().toUpperCase();
-
-      return (
-        rankName !== "جندي" &&
-        code !== "SOLDIER"
-      );
-    });
+    return ranks.filter((r) => !NON_VOLUNTEER_RANK_CODES.includes(rankCodeOf(r)));
   }, [ranks, category]);
 
   // ==========================================================
@@ -1505,7 +1592,7 @@ export function AddNewSoldierPage() {
     if (!s) return false;
 
     return (
-      s.id === DISCHARGED_STATUS_ID ||
+      (DISCHARGED_STATUS_ID !== "" && s.id === DISCHARGED_STATUS_ID) ||
       normalizeExcelHeader(s.name) ===
         normalizeExcelHeader("منتهي خدمته")
     );
@@ -1900,35 +1987,15 @@ export function AddNewSoldierPage() {
           code === "SOLDIER";
       }
 
-      if (
-        matchedRank &&
-        matchedCategory
-      ) {
-        const rankCode =
-          matchedRank.code
-            ?.trim()
-            .toUpperCase();
+      if (matchedRank && matchedCategory) {
+        const code = rankCodeOf(matchedRank);
 
-        const isSoldierRank =
-          matchedRank.name.trim() === "جندي" ||
-          rankCode === "SOLDIER";
-
-        if (
-          isConscriptCategory &&
-          !isSoldierRank
-        ) {
-          errors.push(
-            'فئة (مجند) يجب أن تكون الدرجة فيها "جندي" فقط'
-          );
+        if (isConscriptCategory && !CONSCRIPT_RANK_CODES.includes(code)) {
+          errors.push('فئة (مجند) يجب أن تكون الدرجة فيها "جندي" أو "عريف مجند"');
         }
 
-        if (
-          !isConscriptCategory &&
-          isSoldierRank
-        ) {
-          errors.push(
-            'فئة (متطوع) لا يمكن أن تكون الدرجة فيها "جندي"'
-          );
+        if (!isConscriptCategory && NON_VOLUNTEER_RANK_CODES.includes(code)) {
+          errors.push(`فئة (متطوع) لا يمكن أن تكون الدرجة فيها "${matchedRank.name}"`);
         }
       }
 
@@ -2236,6 +2303,29 @@ if (!militaryNumber) {
       // ✅ البيانات هتنتقل لصفحة المراجعة، فمن وجهة نظر الصفحة دي
       // بقت "مسلّمة" ومفيش داعي نحذّر لو غادر منها بعد كده
       setDirty(false);
+
+      // نحفظ حالة المراجعة عشان الـ Stepper يقدر يرجّع لها
+      // (بتتحدّث تاني لو المستخدم عدّل ورجع)
+      const reviewState = {
+        ...payload,
+        personnel_category: category,
+        personnel_category_id: payload.personnel_category_id,
+        personnel_category_name: selectedCategory?.name ?? "",
+        rank_name: selectedRank?.name ?? "",
+        status_name: selectedStatus?.name ?? "",
+        primary_unit_name: selectedUnit?.name ?? "",
+        attachment_unit_name: isAttachmentEnabled
+          ? selectedAttachmentUnit?.name ?? ""
+          : "",
+        job_id: jobId || null,
+        job_name: selectedJob?.name ?? "",
+        administration_id: payload.administration_id,
+        administration_name: matchedAdministration?.name ?? "",
+        education_level_id: payload.education_level_id,
+        education_level_name: matchedEducationLevel?.name ?? "",
+      };
+
+      patchAddSoldierFlow({ individualReview: reviewState });
 
       navigate(
         "/dashboard/add-soldier/review",
@@ -2591,15 +2681,33 @@ if (!militaryNumber) {
           );
         }
       }
+      // أرقام محجوزة لأفراد محذوفين
+      const deletedMilitaryNumbers = new Set<string>();
 
-      const classifiedRows =
-        parsedRows.map((row) =>
-          classifyRow(
-            row,
-            existingMilitaryNumbers,
-            duplicateMilitaryNumbers
-          )
+      for (const chunk of chunkArray(uniqueMilitaryNumbers, 500)) {
+        const { data: deletedData } = await supabase.rpc(
+          "get_deleted_military_numbers",
+          { p_numbers: chunk }
         );
+
+        (deletedData ?? []).forEach((n: unknown) => deletedMilitaryNumbers.add(String(n)));
+      }
+
+      const classifiedRows = parsedRows.map((row) => {
+        const classified = classifyRow(row, existingMilitaryNumbers, duplicateMilitaryNumbers);
+
+        if (!deletedMilitaryNumbers.has(row.military_number)) return classified;
+
+        return {
+          ...classified,
+          classification: "error" as const,
+          deleted_number: true,
+          errors: [
+            "الرقم العسكري لفرد محذوف (يُسترجع من صفحة الأفراد المحذوفين)",
+            ...classified.errors,
+          ],
+        };
+      });
 
       const stats = {
         total:
@@ -2630,6 +2738,15 @@ if (!militaryNumber) {
       // ✅ نفس المنطق: البيانات هتنتقل لصفحة مراجعة الكشف
       setDirty(false);
 
+      const fileUrl = URL.createObjectURL(uploadedGroupFile.raw);
+
+      patchGroupFlow({
+        rows: classifiedRows,
+        fileUrl,
+        fileName: uploadedGroupFile.name,
+        fileSize: uploadedGroupFile.size,
+      });
+
       navigate(
         "/dashboard/add-soldier/group-review",
         {
@@ -2640,10 +2757,7 @@ if (!militaryNumber) {
               uploadedGroupFile.name,
             file_size:
               uploadedGroupFile.size,
-            file_url:
-              URL.createObjectURL(
-                uploadedGroupFile.raw
-              ),
+            file_url: fileUrl,
           },
         }
       );
@@ -2705,9 +2819,39 @@ if (!militaryNumber) {
       </h1>
 
       {/* Stepper */}
-
       <div className="flex justify-center">
-        <Stepper />
+        <Stepper
+          canGoToReview={
+            method === "فرد واحد"
+              ? Boolean(getAddSoldierFlow().individualReview)
+              : Boolean(getAddSoldierFlow().group.rows)
+          }
+          onReviewClick={() => {
+            const flow = getAddSoldierFlow();
+
+            if (method === "فرد واحد" && flow.individualReview) {
+              setDirty(false);
+              navigate("/dashboard/add-soldier/review", {
+                state: flow.individualReview,
+              });
+              return;
+            }
+
+            if (method === "مجموعة افراد" && flow.group.rows) {
+              setDirty(false);
+              navigate("/dashboard/add-soldier/group-review", {
+                state: {
+                  rows: flow.group.rows,
+                  stats: buildStatsFromRows(flow.group.rows),
+                  file_name: flow.group.fileName,
+                  file_size: flow.group.fileSize,
+                  file_url: flow.group.fileUrl,
+                  resumed: true,
+                },
+              });
+            }
+          }}
+        />
       </div>
 
       {/* Registration Method */}
@@ -3115,7 +3259,8 @@ if (!militaryNumber) {
           onSubmit={
             handleGroupSubmit
           }
-          templateUrl={templateUrl}
+          onDownloadTemplate={() => void handleDownloadTemplate()}
+          downloadingTemplate={downloadingTemplate}
         />
       )}
     </div>

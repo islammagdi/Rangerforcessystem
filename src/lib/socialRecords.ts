@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { REQUIRED_FIELD_LABELS } from "./socialConstants";
+import { fetchAllRows, fetchByIdsInChunks } from "./fetchAllRows";
 /* =========================================================
    Types
 ========================================================= */
@@ -233,38 +234,37 @@ function getRecordCompletionInfo(
 export async function fetchUnitPersonnelWithStatus(
   unitId: string
 ): Promise<UnitPersonnelRow[]> {
-  const { data: personnel, error: personnelError } = await supabase
-    .from("personnel")
-    .select("id, military_number, full_name, rank:ranks!rank_id ( name )")
-    .eq("primary_unit_id", unitId)
-    .eq("is_active", true)
-    .order("full_name", { ascending: true });
-
-  if (personnelError) throw personnelError;
-
-  const personnelRows = personnel ?? [];
+  const personnelRows = await fetchAllRows<any>((from, to) =>
+    supabase
+      .from("personnel")
+      .select("id, military_number, full_name, rank:ranks!rank_id ( name )")
+      .eq("primary_unit_id", unitId)
+      .eq("is_active", true)
+      .order("full_name", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
 
   if (personnelRows.length === 0) return [];
 
-  const { data: records, error: recordsError } = await supabase
-    .from("social_records")
-    .select(`personnel_id, ${REQUIRED_SOCIAL_RECORD_FIELDS.join(", ")}`)
-    .in(
-      "personnel_id",
-      personnelRows.map((p) => p.id)
-    );
-
-  if (recordsError) throw recordsError;
+  const records = await fetchByIdsInChunks<any>(
+    personnelRows.map((p) => p.id),
+    (chunk, from, to) =>
+      supabase
+        .from("social_records")
+        .select(`personnel_id, ${REQUIRED_SOCIAL_RECORD_FIELDS.join(", ")}`)
+        .in("personnel_id", chunk)
+        .order("personnel_id", { ascending: true })
+        .range(from, to)
+  );
 
   const recordsByPersonnelId = new Map<string, any>(
-    (records ?? []).map((r: any) => [r.personnel_id, r])
+    records.map((r: any) => [r.personnel_id, r])
   );
 
   return personnelRows.map((p: any) => {
     const rank = Array.isArray(p.rank) ? p.rank[0] : p.rank;
-    const record = recordsByPersonnelId.get(p.id);
-
-    const { status, missing_fields } = getRecordCompletionInfo(record);
+    const { status, missing_fields } = getRecordCompletionInfo(recordsByPersonnelId.get(p.id));
 
     return {
       id: p.id,
@@ -638,6 +638,7 @@ export async function fetchAllRankOptions(): Promise<RankOption[]> {
   const { data, error } = await supabase
     .from("ranks")
     .select("id, name")
+    .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
 
   if (error) throw error;

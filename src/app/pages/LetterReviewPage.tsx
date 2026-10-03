@@ -7,6 +7,11 @@ import { createNotification } from "../../lib/createNotification";
 import { supabase } from "../../lib/supabase";
 import { STAGE_MONTHS } from "../../lib/trainingRecommendations";
 import { useUnsavedChanges } from "../../lib/unsavedChanges";
+import {
+  getLetterDraft,
+  deleteLetterDraft,
+  resetLetterDraft,
+} from "../../lib/letterDraft";
 import imgEagle from "figma:asset/af406d517dfa4e5b22e9993bd61d8e4e002646b6.png";
 import {
   mapLetterTypeRow,
@@ -1192,6 +1197,14 @@ export function LetterReviewPage() {
       /* -----------------------------------------------
          Success
       ----------------------------------------------- */
+
+      // ✅ الخطاب اتصدر فعليًا: المسودة المصدر (لو موجودة) تتحذف
+      // والحالة المشتركة تتصفّر
+      const sourceDraftId = getLetterDraft().draftId;
+      if (sourceDraftId) {
+        await deleteLetterDraft(sourceDraftId);
+      }
+      resetLetterDraft();
 
       setLetterNumber(newLetter.letter_number);
       setBranchHeadName(branchHead.full_name ?? "");

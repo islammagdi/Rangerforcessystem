@@ -12,6 +12,11 @@ import {
 import { supabase } from "../../lib/supabase";
 import { logActivity } from "../../lib/logActivity";
 import { useUnsavedChanges } from "../../lib/unsavedChanges";
+import {
+  getAddSoldierFlow,
+  patchGroupFlow,
+  resetAddSoldierFlow,
+} from "../../lib/addSoldierFlow";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
@@ -108,6 +113,7 @@ interface ClassifiedPersonnelRow {
   attachment_unit_id: string | null;
     job_id?: string | null;
   job_name?: string;
+  deleted_number?: boolean;
 }
 
 interface ReviewRow extends ClassifiedPersonnelRow {
@@ -140,12 +146,33 @@ const ERROR_MESSAGES = {
   MISSING_DISCHARGE_DATE: "تاريخ تسريح فارغ",
     JOB_NOT_FOUND: "الوظيفة غير موجودة",
   NAME_NOT_QUADRUPLE: "الاسم يجب أن يكون رباعيًا",
+  DELETED_NUMBER: "الرقم العسكري لفرد محذوف (يُسترجع من صفحة الأفراد المحذوفين)",
 } as const;
 
 function isSoldierRankName(name?: string | null): boolean {
   const n = (name ?? "").trim();
 
   return n === "جندي" || n === "جندى";
+}
+
+// درجات المجند: جندي أو عريف مجند
+const CONSCRIPT_RANK_CODES = ["SOLDIER", "CONSCRIPT_CORPORAL"];
+// درجات ممنوعة على المتطوع عند القيد
+const NON_VOLUNTEER_RANK_CODES = ["SOLDIER", "CONSCRIPT_CORPORAL", "HONORARY_LIEUTENANT"];
+
+function rankCodeOf(rank?: { name: string; code: string | null } | null, fallbackName?: string): string {
+  const code = rank?.code?.trim().toUpperCase();
+  if (code) return code;
+
+  const name = (rank?.name ?? fallbackName ?? "").trim();
+  if (isSoldierRankName(name)) return "SOLDIER";
+  if (name === "عريف مجند") return "CONSCRIPT_CORPORAL";
+  return "";
+}
+
+interface CodedRef {
+  id: string;
+  code: string | null;
 }
 
 function isConscriptCategoryRecord(
@@ -299,10 +326,7 @@ function computeRowIssues(
     ? isConscriptCategoryRecord(category)
     : row.personnel_category_name?.trim() === "مجند";
 
-  const rankIsSoldier = rank
-    ? isSoldierRankName(rank.name) ||
-      rank.code?.trim().toUpperCase() === "SOLDIER"
-    : isSoldierRankName(row.rank_name);
+  const rankCode = rankCodeOf(rank, row.rank_name);
 
   const isAttached = status
     ? isAttachedStatusRecord(status)
@@ -328,6 +352,9 @@ function computeRowIssues(
     issues.add(ERROR_MESSAGES.NAME_NOT_QUADRUPLE);
   }
 
+  if (row.deleted_number) {
+    issues.add(ERROR_MESSAGES.DELETED_NUMBER);
+  }
   /*
    * 1- الوحدة الأساسية لازم تكون موجودة
    */
@@ -358,11 +385,11 @@ function computeRowIssues(
   if (!row.rank_id || !row.personnel_category_id) {
     issues.add(ERROR_MESSAGES.RANK_OR_CATEGORY);
   } else {
-    if (isConscript && !rankIsSoldier) {
+    if (isConscript && !CONSCRIPT_RANK_CODES.includes(rankCode)) {
       issues.add(ERROR_MESSAGES.RANK_OR_CATEGORY);
     }
 
-    if (!isConscript && rankIsSoldier) {
+    if (!isConscript && NON_VOLUNTEER_RANK_CODES.includes(rankCode)) {
       issues.add(ERROR_MESSAGES.RANK_OR_CATEGORY);
     }
   }
@@ -527,14 +554,19 @@ function StepDots({
     </div>
   );
 }
-
-function Stepper() {
+function Stepper({ onBack }: { onBack?: () => void }) {
   return (
     <div
       className="flex items-start justify-center"
       dir="rtl"
     >
-      <div className="flex flex-col items-center gap-2">
+      <button
+        type="button"
+        onClick={onBack}
+        disabled={!onBack}
+        title="الرجوع لرفع البيانات"
+        className="flex flex-col items-center gap-2 bg-transparent p-0 enabled:cursor-pointer enabled:hover:opacity-80 transition-opacity"
+      >
         <GreenCheckCircle id="step01" />
 
         <span
@@ -551,7 +583,7 @@ function Stepper() {
         >
           رفع البيانات
         </span>
-      </div>
+      </button>
 
       <StepDots color="#2d3648" />
 
@@ -1017,15 +1049,13 @@ function EditSoldierModal({
   const rankOptions = useMemo(() => {
     return ranks
       .filter((r) => {
-        const soldier =
-          isSoldierRankName(r.name) ||
-          r.code?.trim().toUpperCase() === "SOLDIER";
+        const code = rankCodeOf(r);
 
         if (isConscriptCategory) {
-          return soldier;
+          return CONSCRIPT_RANK_CODES.includes(code);
         }
 
-        return !soldier;
+        return !NON_VOLUNTEER_RANK_CODES.includes(code);
       })
       .map((r) => ({
         value: r.id,
@@ -1136,28 +1166,15 @@ function EditSoldierModal({
       (u) => u.id === attachmentId
     );
 
-    if (rankRecord && categoryRecord) {
-      const soldierRank =
-        isSoldierRankName(rankRecord.name) ||
-        rankRecord.code?.trim().toUpperCase() ===
-          "SOLDIER";
+       if (rankRecord && categoryRecord) {
+      const code = rankCodeOf(rankRecord);
 
-      if (
-        isConscriptCategory &&
-        !soldierRank
-      ) {
-        errors.push(
-          ERROR_MESSAGES.RANK_OR_CATEGORY
-        );
+      if (isConscriptCategory && !CONSCRIPT_RANK_CODES.includes(code)) {
+        errors.push(ERROR_MESSAGES.RANK_OR_CATEGORY);
       }
 
-      if (
-        !isConscriptCategory &&
-        soldierRank
-      ) {
-        errors.push(
-          ERROR_MESSAGES.RANK_OR_CATEGORY
-        );
+      if (!isConscriptCategory && NON_VOLUNTEER_RANK_CODES.includes(code)) {
+        errors.push(ERROR_MESSAGES.RANK_OR_CATEGORY);
       }
     }
 
@@ -1203,6 +1220,16 @@ function EditSoldierModal({
     setSaving(true);
 
     try {
+      const { data: deletedNumbers } = await supabase.rpc(
+        "get_deleted_military_numbers",
+        { p_numbers: [trimmedMilId] }
+      );
+
+      if ((deletedNumbers ?? []).length > 0) {
+        setFormErrors([ERROR_MESSAGES.DELETED_NUMBER]);
+        return;
+      }
+
       const { data, error } =
         await supabase
           .from(PERSONNEL_TABLE_NAME)
@@ -1272,6 +1299,8 @@ function EditSoldierModal({
         classification,
 
         errors: [],
+
+        deleted_number: false,
 
         checked: true,
       });
@@ -1967,11 +1996,17 @@ export function GroupReviewPage() {
       | undefined;
 
   const [rows, setRows] =
-    useState<ReviewRow[]>(() =>
-      buildReviewRows(
-        state?.rows ?? []
-      )
-    );
+    useState<ReviewRow[]>(() => {
+      const source = state?.rows ?? [];
+
+      // ✅ راجع من الـ Stepper: الصفوف المحفوظة فيها تعديلاتك
+      // (id / checked محفوظين)، فنستخدمها زي ما هي
+      if ((state as any)?.resumed) {
+        return source as ReviewRow[];
+      }
+
+      return buildReviewRows(source);
+    });
 
   const [loading, setLoading] =
     useState(false);
@@ -1988,6 +2023,8 @@ export function GroupReviewPage() {
   const [categories, setCategories] =
     useState<PersonnelCategory[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [educationLevels, setEducationLevels] = useState<CodedRef[]>([]);
+  const [administrations, setAdministrations] = useState<CodedRef[]>([]);
   const [referenceLoading, setReferenceLoading] =
     useState(true);
 
@@ -2006,6 +2043,13 @@ export function GroupReviewPage() {
   useEffect(() => {
     setDirty(rows.length > 0);
   }, [rows.length, setDirty]);
+
+  // ✅ أي تعديل في الصفوف (تعديل / حذف / تحديد) بيتحفظ في الـ store
+  useEffect(() => {
+    if (rows.length > 0) {
+      patchGroupFlow({ rows });
+    }
+  }, [rows]);
 
   useEffect(() => {
     return () => setDirty(false);
@@ -2041,6 +2085,8 @@ export function GroupReviewPage() {
         statusesResult,
         categoriesResult,
         jobsResult,
+        educationResult,
+        administrationsResult,
       ] = await Promise.all([
         supabase
           .from("ranks")
@@ -2086,6 +2132,10 @@ export function GroupReviewPage() {
           .from("jobs")
           .select("id,name")
           .order("name", { ascending: true }),
+
+        supabase.from("education_levels").select("id,code"),
+
+        supabase.from("external_administrations").select("id,code"),
       ]);
 
       if (ranksResult.error) {
@@ -2120,6 +2170,8 @@ export function GroupReviewPage() {
         categoriesResult.data ?? []
       );
             setJobs(jobsResult.error ? [] : jobsResult.data ?? []);
+      setEducationLevels(educationResult.error ? [] : (educationResult.data ?? []) as CodedRef[]);
+      setAdministrations(administrationsResult.error ? [] : (administrationsResult.data ?? []) as CodedRef[]);
     } catch (error) {
 
 
@@ -2373,6 +2425,12 @@ export function GroupReviewPage() {
             : null,
           discharge_date: conscript ? row.discharge_date : null,
           is_active: true,
+          // من الرقم العسكري، زي الإضافة الفردية بالظبط
+          // الخانة ٦ = المستوى التعليمي، الخانتين ٧-٨ = الإدارة
+          education_level_id:
+            educationLevels.find((e) => e.code === row.military_number?.[5])?.id ?? null,
+          administration_id:
+            administrations.find((a) => a.code === row.military_number?.substring(6, 8))?.id ?? null,
         };
 
         // job_id بيتحط بس لو المستخدم اختار وظيفة. الصفوف من غير وظيفة
@@ -2430,6 +2488,7 @@ await logActivity({
 
 // ✅ الاعتماد نجح فعليًا والبيانات اتحفظت في قاعدة البيانات
 setDirty(false);
+resetAddSoldierFlow();
 
 navigate(
   "/dashboard/add-soldier/group-success",
@@ -2537,7 +2596,14 @@ navigate(
       </h1>
 
       <div className="flex justify-center">
-        <Stepper />
+        <Stepper
+          onBack={() => {
+            setDirty(false);
+            navigate("/dashboard/add-soldier", {
+              state: { resumed: true },
+            });
+          }}
+        />
       </div>
 
       <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full overflow-hidden">

@@ -4,6 +4,7 @@ import { ArrowRight, Plus, Trash2, Upload, Printer, FileText, Download, Check } 
 import logoImg from "../../assets/af406d517dfa4e5b22e9993bd61d8e4e002646b6.png";
 import { usePermissions } from "../../lib/usePermissions";
 import { RELIGIONS, EDUCATION_STAGES } from "../../lib/socialConstants";
+import { todayLocalIso } from "../../lib/dates";
 import {
   fetchMaritalStatuses,
   fetchAllRankOptions,
@@ -73,7 +74,7 @@ const inputClass =
 
 const addBtnStyle: React.CSSProperties = { background: "#DCF4DF", ...F, fontSize: 14, color: "#2d3648" };
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayLocalIso();
 
 /* =========================================================
    مكونات صغيرة مشتركة

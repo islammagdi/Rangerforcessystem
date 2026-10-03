@@ -8,6 +8,13 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, X } from "lucide-react";
+import {
+  getLetterDraft,
+  isLetterDraftDirty,
+  resetLetterDraft,
+  saveLetterDraft,
+  DRAFT_TTL_DAYS,
+} from "./letterDraft";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
@@ -55,6 +62,10 @@ export function UnsavedChangesProvider({
 }) {
   const [isDirty, setIsDirty] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  // ✅ هل فيه خطاب شغال عليه ولسه متحفظش كمسودة (بيتحدد وقت ظهور الرسالة)
+  const [canSaveDraft, setCanSaveDraft] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftError, setDraftError] = useState("");
   const [isPerformingSensitiveOperation, setPerformingSensitiveOperation] =
     useState(false);
 
@@ -70,6 +81,8 @@ export function UnsavedChangesProvider({
     (action: () => void) => {
       if (isDirty) {
         pendingActionRef.current = action;
+        setCanSaveDraft(isLetterDraftDirty(getLetterDraft()));
+        setDraftError("");
         setShowModal(true);
       } else {
         action();
@@ -101,13 +114,37 @@ export function UnsavedChangesProvider({
     const action = pendingActionRef.current;
     pendingActionRef.current = null;
 
+    // ✅ مغادرة مسار الخطاب = تصفير الحالة المشتركة
+    const hadLetterInProgress = Boolean(getLetterDraft().letterTypeId);
+
     // بنأجل التنفيذ خطوة عشان الـ state يتحدث الأول
-    if (action) {
-      setTimeout(action, 0);
+    setTimeout(() => {
+      if (hadLetterInProgress) resetLetterDraft();
+      action?.();
+    }, 0);
+  }
+
+  async function handleSaveDraftAndLeave() {
+    if (savingDraft) return;
+
+    setSavingDraft(true);
+    setDraftError("");
+
+    const result = await saveLetterDraft();
+
+    setSavingDraft(false);
+
+    if (!result.ok) {
+      // نفضل في الصفحة ونعرض الخطأ، والمستخدم يقدر يختار يغادر بدون حفظ
+      setDraftError(result.error);
+      return;
     }
+
+    handleConfirmLeave();
   }
 
   function handleCancelLeave() {
+    if (savingDraft) return;
     setShowModal(false);
     pendingActionRef.current = null;
   }
@@ -174,22 +211,54 @@ return (
                   lineHeight: 1.8,
                 }}
               >
-                التغييرات اللي عملتها في هذه الصفحة هتُفقد لو غادرتها الآن.
-                هل تريد المتابعة بدون حفظ؟
+                {canSaveDraft
+                  ? `الخطاب اللي بتشتغل عليه لسه متحفظش. تقدر تحفظه كمسودة وتكمّله بعدين من صفحة السجل (بتفضل متاحة ${DRAFT_TTL_DAYS} أيام).`
+                  : "التغييرات اللي عملتها في هذه الصفحة هتُفقد لو غادرتها الآن. هل تريد المتابعة بدون حفظ؟"}
               </p>
 
-              <div className="flex items-center gap-2.5 justify-start flex-row-reverse">
+                  {draftError && (
+                <p
+                  className="text-right"
+                  style={{ ...F, fontSize: 13, color: "#b91c1c", lineHeight: 1.6 }}
+                >
+                  {draftError}
+                </p>
+              )}
+
+              <div className="flex flex-col gap-2.5">
+                {canSaveDraft && (
+                  <button
+                    type="button"
+                    disabled={savingDraft}
+                    onClick={() => void handleSaveDraftAndLeave()}
+                    className="px-5 py-2.5 rounded-[8px]"
+                    style={{
+                      background:
+                        "linear-gradient(to bottom, #00b867, #00522e)",
+                      opacity: savingDraft ? 0.6 : 1,
+                      ...F,
+                      fontSize: 14,
+                      color: "#fff",
+                    }}
+                  >
+                    {savingDraft ? "جاري حفظ المسودة..." : "حفظ كمسودة والمغادرة"}
+                  </button>
+                )}
+
                 <button
                   type="button"
+                  disabled={savingDraft}
                   onClick={handleCancelLeave}
                   autoFocus
-                  className="px-5 py-2.5 rounded-[8px] flex-1 sm:flex-initial"
+                  className="px-5 py-2.5 rounded-[8px] border"
                   style={{
-                    background:
-                      "linear-gradient(to bottom, #00b867, #00522e)",
+                    borderColor: canSaveDraft ? "#2d3648" : "transparent",
+                    background: canSaveDraft
+                      ? "#fff"
+                      : "linear-gradient(to bottom, #00b867, #00522e)",
                     ...F,
                     fontSize: 14,
-                    color: "#fff",
+                    color: canSaveDraft ? "#2d3648" : "#fff",
                   }}
                 >
                   البقاء في الصفحة
@@ -197,8 +266,9 @@ return (
 
                 <button
                   type="button"
+                  disabled={savingDraft}
                   onClick={handleConfirmLeave}
-                  className="px-5 py-2.5 rounded-[8px] border flex-1 sm:flex-initial"
+                  className="px-5 py-2.5 rounded-[8px] border"
                   style={{
                     borderColor: "#f4b5ae",
                     background: "#fce8f1",

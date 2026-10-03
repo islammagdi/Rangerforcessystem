@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 
-const DISCHARGED_STATUS_ID = "ac8ddfa3-1578-455b-9b6a-b056260fcb1f";
 
 export interface DischargedPersonRow {
   id: string;
@@ -47,14 +46,15 @@ export function useDashboardStats() {
         data: { user },
       } = await supabase.auth.getUser();
 
+      
+
       const [dischargedResult, lettersResult, activitiesResult] =
         await Promise.all([
           // بدل count بس: بنجيب الصفوف نفسها (id + اسم + رقم عسكري)
           supabase
             .from("personnel")
             .select("id, full_name, military_number")
-            .eq("service_status_id", DISCHARGED_STATUS_ID)
-            .gte("updated_at", startIso),
+            .gte("discharged_at", startIso),
 
           // بدل count بس: بنجيب الخطابات نفسها مع نوع الخطاب
           supabase

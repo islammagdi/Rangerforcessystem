@@ -1165,17 +1165,15 @@ export async function fetchOutgoingMailPermissions(
   let isOfficeSpecialist = false;
 
   if (issuingOfficeId && roleIds.length > 0) {
-    const { data: officeRole, error } = await supabase
+    // المكتب ممكن يكون مربوط بأكتر من دور
+    const { data: officeRoles, error } = await supabase
       .from("office_roles")
       .select("role_id")
-      .eq("office_id", issuingOfficeId)
-      .maybeSingle();
+      .eq("office_id", issuingOfficeId);
 
     if (error) throw error;
 
-    if (officeRole && roleIds.includes(officeRole.role_id)) {
-      isOfficeSpecialist = true;
-    }
+    isOfficeSpecialist = (officeRoles ?? []).some((or: any) => roleIds.includes(or.role_id));
   }
 
   return { isBranchHead, isOfficeSpecialist };
@@ -1364,4 +1362,23 @@ export async function fetchTodayLettersCount(): Promise<number> {
   if (error) throw error;
 
   return (data ?? 0) as number;
+}
+// ربط مكتب بدور (الدور ممكن يكون له أكثر من مكتب)
+export async function addOfficeRoleLink(roleId: string, officeId: string) {
+  const { error } = await supabase
+    .from("office_roles")
+    .insert({ role_id: roleId, office_id: officeId });
+
+  if (error) throw error;
+}
+
+// فك ربط مكتب من دور
+export async function removeOfficeRoleLink(roleId: string, officeId: string) {
+  const { error } = await supabase
+    .from("office_roles")
+    .delete()
+    .eq("role_id", roleId)
+    .eq("office_id", officeId);
+
+  if (error) throw error;
 }

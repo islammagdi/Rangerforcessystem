@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { ChevronDown, Trash2 } from "lucide-react";
 
@@ -6,6 +6,13 @@ import { supabase } from "../../lib/supabase";
 import { STAGE_MONTHS } from "../../lib/trainingRecommendations";
 import type { SoldierData } from "../data/soldiersData";
 import { useUnsavedChanges } from "../../lib/unsavedChanges";
+import {
+  useLetterDraft,
+  patchLetterDraft,
+  getLetterDraft,
+  isLetterDraftDirty,
+} from "../../lib/letterDraft";
+import { SaveDraftButton } from "../components/SaveDraftButton";
 import {
   mapLetterTypeRow,
   getLetterScopedFields,
@@ -172,7 +179,13 @@ function StepDots({ dark }: { dark?: boolean }) {
   );
 }
 
-function LetterStepper({ activeStep }: { activeStep: 1 | 2 | 3 | 4 }) {
+function LetterStepper({
+  activeStep,
+  onStepClick,
+}: {
+  activeStep: 1 | 2 | 3 | 4;
+  onStepClick?: (step: 1 | 2 | 3 | 4) => void;
+}) {
   const steps = [
     { num: "01", label: "تحديد نوع الخطاب" },
     { num: "02", label: "تحديد الأفراد" },
@@ -190,7 +203,18 @@ function LetterStepper({ activeStep }: { activeStep: 1 | 2 | 3 | 4 }) {
         return (
           <div key={step.num} className="flex items-start">
             {isDone ? (
-              <GreenCheckBubble label={step.label} />
+              onStepClick ? (
+                <button
+                  type="button"
+                  onClick={() => onStepClick(stepNum as 1 | 2 | 3 | 4)}
+                  className="bg-transparent p-0 cursor-pointer hover:opacity-80 transition-opacity"
+                  title="الرجوع لهذه الخطوة"
+                >
+                  <GreenCheckBubble label={step.label} />
+                </button>
+              ) : (
+                <GreenCheckBubble label={step.label} />
+              )
             ) : (
               <NumberBubble num={step.num} label={step.label} active={isActive} />
             )}
@@ -432,7 +456,14 @@ export function LetterDataPage() {
     soldiers?: SoldierData[];
   } | null;
 
-  const incomingSoldiers: SoldierData[] = state?.soldiers ?? [];
+  // ✅ مصدر الحقيقة = المسودة المشتركة (state بتاع الـ navigate بقى احتياطي)
+  const draft = useLetterDraft();
+  const draftAtMount = getLetterDraft();
+
+  const incomingSoldiers: SoldierData[] =
+    draftAtMount.soldiers.length > 0
+      ? (draftAtMount.soldiers as SoldierData[])
+      : state?.soldiers ?? [];
 
   // ─────────────────────────────────────────────────────────
   // Supabase Data (units / administrations / letter type config)
@@ -524,9 +555,12 @@ export function LetterDataPage() {
   // ─────────────────────────────────────────────────────────
   // Destination (حقل ثابت — إجباري لكل الأنواع)
   // ─────────────────────────────────────────────────────────
-
-  const [destination, setDestination] = useState("");
-  const [destinationId, setDestinationId] = useState("");
+  const [destination, setDestination] = useState(
+    () => draftAtMount.destination
+  );
+  const [destinationId, setDestinationId] = useState(
+    () => draftAtMount.destinationId
+  );
 
   function handleDestinationChange(name: string) {
     const unit = units.find((item) => item.name === name);
@@ -545,7 +579,7 @@ export function LetterDataPage() {
 
   const [letterFieldValues, setLetterFieldValues] = useState<
     Record<string, string>
-  >({});
+  >(() => draftAtMount.letterFieldValues);
 
   function handleLetterFieldChange(key: string, value: string) {
     setLetterFieldValues((prev) => ({ ...prev, [key]: value }));
@@ -563,11 +597,11 @@ export function LetterDataPage() {
 
   const [soldierFieldGeneralValues, setSoldierFieldGeneralValues] = useState<
     Record<string, string>
-  >({});
+  >(() => draftAtMount.soldierFieldGeneralValues);
 
   const [soldierFieldOverrides, setSoldierFieldOverrides] = useState<
     Record<string, Record<string, string>>
-  >({});
+  >(() => draftAtMount.soldierFieldOverrides);
 
   const [localSoldiers, setLocalSoldiers] =
     useState<SoldierData[]>(incomingSoldiers);
@@ -589,41 +623,37 @@ export function LetterDataPage() {
     };
   }, [setPerformingSensitiveOperation]);
 
-  const isDirty = useMemo(() => {
-    const hasDestination = destination.trim() !== "";
-
-    const hasLetterFieldValues = Object.values(letterFieldValues).some(
-      (v) => (v ?? "").trim() !== ""
-    );
-
-    const hasSoldierGeneralValues = Object.values(
-      soldierFieldGeneralValues
-    ).some((v) => (v ?? "").trim() !== "");
-
-    const hasSoldierOverrides = Object.values(soldierFieldOverrides).some(
-      (fieldOverrides) =>
-        Object.values(fieldOverrides).some((v) => (v ?? "").trim() !== "")
-    );
-
-    return (
-      localSoldiers.length > 0 ||
-      hasDestination ||
-      hasLetterFieldValues ||
-      hasSoldierGeneralValues ||
-      hasSoldierOverrides
-    );
+   // ✅ مزامنة كل بيانات الصفحة مع المسودة المشتركة: الرجوع لخطوة الأفراد
+  // ما يضيّعش حاجة، و"حفظ كمسودة" بيحفظ كل ده
+  useEffect(() => {
+    patchLetterDraft({
+      letterTypeId: state?.letterTypeId ?? getLetterDraft().letterTypeId,
+      letterTypeCode: state?.letterTypeCode ?? getLetterDraft().letterTypeCode,
+      letterTypeName: state?.letterTypeName ?? getLetterDraft().letterTypeName,
+      soldiers: localSoldiers,
+      destination,
+      destinationId,
+      letterFieldValues,
+      soldierFieldGeneralValues,
+      soldierFieldOverrides,
+      currentStep: 3,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    localSoldiers.length,
+    localSoldiers,
     destination,
+    destinationId,
     letterFieldValues,
     soldierFieldGeneralValues,
     soldierFieldOverrides,
   ]);
 
+  // ✅ فيه تعديل غير محفوظ = الحالة الحالية مختلفة عن آخر مسودة اتحفظت
+  const isDirty = isLetterDraftDirty(draft);
+
   useEffect(() => {
     setDirty(isDirty);
   }, [isDirty, setDirty]);
-
   useEffect(() => {
     return () => setDirty(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -676,6 +706,32 @@ export function LetterDataPage() {
   function handleRemoveSoldier(id: string) {
     setLocalSoldiers((prev) => prev.filter((s) => s.id !== id));
   }
+
+  // ✅ الرجوع لخطوة الأفراد لإضافة/تعديل من غير ما نخسر أي بيانات
+  function goToSoldiersStep() {
+    setDirty(false);
+
+    navigate("/dashboard/issue-letter/soldiers", {
+      state: {
+        letterTypeId: state?.letterTypeId,
+        letterTypeCode: state?.letterTypeCode,
+        letterTypeName: state?.letterTypeName,
+      },
+    });
+  }
+
+  function goToStep(step: 1 | 2 | 3 | 4) {
+    if (step === 1) {
+      setDirty(false);
+      navigate("/dashboard/issue-letter", { state: { keepDraft: true } });
+    } else if (step === 2) {
+      goToSoldiersStep();
+    }
+  }
+
+  const problemSoldiers = localSoldiers.filter(
+    (s) => draft.soldierProblems[s.id]
+  );
 
   // ─────────────────────────────────────────────────────────
   // Options للحقول من نوع select_unit / select_administration
@@ -746,6 +802,9 @@ export function LetterDataPage() {
 
     if (localSoldiers.length === 0) {
       e.soldiers = "يجب اختيار فرد واحد على الأقل";
+    } else if (localSoldiers.some((s) => draft.soldierProblems[s.id])) {
+      e.soldiers =
+        "يوجد أفراد غير مؤهلين. أزلهم من الجدول أو ارجع لخطوة الأفراد قبل المتابعة.";
     }
 
     letterFields.forEach((field) => {
@@ -1141,7 +1200,7 @@ export function LetterDataPage() {
       </h1>
 
       <div className="flex justify-center">
-        <LetterStepper activeStep={3} />
+        <LetterStepper activeStep={3} onStepClick={goToStep} />
       </div>
 
       <p
@@ -1271,6 +1330,43 @@ export function LetterDataPage() {
 
           <div className="w-full h-px bg-[#eff0f6]" />
 
+          {/* شريط أدوات الأفراد */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span
+              style={{ ...F, fontWeight: 700, fontSize: 15, color: "#2d3648" }}
+            >
+              الأفراد ({localSoldiers.length})
+            </span>
+
+            <button
+              type="button"
+              onClick={goToSoldiersStep}
+              className="min-h-[42px] px-4 rounded-[8px] transition-opacity hover:opacity-80"
+              style={{ border: "2px solid #769D7B" }}
+            >
+              <span style={{ ...F, fontSize: 14, color: "#4f7a55" }}>
+                تعديل الأفراد / إضافة أفراد
+              </span>
+            </button>
+          </div>
+
+          {problemSoldiers.length > 0 && (
+            <div
+              className="flex flex-col gap-2 px-4 py-3 rounded-[10px]"
+              style={{ background: "#fef2f2", border: "1px solid #fecaca" }}
+            >
+              <p style={{ ...F, fontWeight: 700, color: "#991b1b" }}>
+                أفراد لم يعودوا مؤهلين، يرجى إزالتهم قبل المتابعة
+              </p>
+
+              {problemSoldiers.map((s) => (
+                <p key={s.id} style={{ ...F, fontSize: 13, color: "#b91c1c" }}>
+                  {s.name}: {draft.soldierProblems[s.id]}
+                </p>
+              ))}
+            </div>
+          )}
+
           {/* Soldiers Table */}
 
           {localSoldiers.length > 0 && (
@@ -1344,7 +1440,7 @@ export function LetterDataPage() {
             </p>
           )}
 
-          <div className="w-full flex items-start pt-1">
+                 <div className="w-full flex flex-wrap items-start gap-3 pt-1">
             <button
               type="button"
               onClick={handleSubmit}
@@ -1358,6 +1454,8 @@ export function LetterDataPage() {
                 المعاينه والحفظ النهائي
               </span>
             </button>
+
+            <SaveDraftButton />
           </div>
         </div>
       </div>

@@ -16,6 +16,7 @@ import {
   type RoleOption,
   COLUMN_TYPE_LABELS,
 } from "../../lib/sheets";
+import { DropdownColumnConfig } from "../components/sheets/DropdownColumnConfig";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
@@ -24,7 +25,16 @@ const F: React.CSSProperties = {
 interface ColumnDraft {
   name: string;
   column_type: SheetColumnType;
+  dropdown_source: string | null;
+  dropdown_options: string[];
 }
+
+const EMPTY_COLUMN: ColumnDraft = {
+  name: "",
+  column_type: "TEXT",
+  dropdown_source: null,
+  dropdown_options: [],
+};
 function CreateSheetModal({
   onClose,
   onCreated,
@@ -33,9 +43,7 @@ function CreateSheetModal({
   onCreated: () => void;
 }) {
   const [name, setName] = useState("");
-  const [columns, setColumns] = useState<ColumnDraft[]>([
-    { name: "", column_type: "TEXT" },
-  ]);
+  const [columns, setColumns] = useState<ColumnDraft[]>([{ ...EMPTY_COLUMN }]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -58,22 +66,15 @@ function CreateSheetModal({
   }
 
   function addColumnDraft() {
-    setColumns((prev) => [...prev, { name: "", column_type: "TEXT" }]);
+    setColumns((prev) => [...prev, { ...EMPTY_COLUMN }]);
   }
-
   function removeColumnDraft(index: number) {
     setColumns((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function updateColumnDraft(
-    index: number,
-    field: keyof ColumnDraft,
-    value: string
-  ) {
+  function updateColumnDraft(index: number, patch: Partial<ColumnDraft>) {
     setColumns((prev) =>
-      prev.map((col, i) =>
-        i === index ? { ...col, [field]: value } : col
-      )
+      prev.map((col, i) => (i === index ? { ...col, ...patch } : col))
     );
   }
 
@@ -87,6 +88,18 @@ function CreateSheetModal({
 
     if (validColumns.length === 0) {
       setError("أضف عمود واحد على الأقل");
+      return;
+    }
+
+    const emptyDropdown = validColumns.find(
+      (c) =>
+        c.column_type === "DROPDOWN" &&
+        !c.dropdown_source &&
+        c.dropdown_options.length === 0
+    );
+
+    if (emptyDropdown) {
+      setError(`أضف قيم للقائمة المنسدلة في عمود "${emptyDropdown.name}" أو اختر جدول كمصدر`);
       return;
     }
 
@@ -115,6 +128,12 @@ function CreateSheetModal({
         columns: validColumns.map((c) => ({
           name: c.name.trim(),
           column_type: c.column_type,
+          dropdown_source:
+            c.column_type === "DROPDOWN" ? c.dropdown_source : null,
+          dropdown_options:
+            c.column_type === "DROPDOWN" && !c.dropdown_source
+              ? c.dropdown_options
+              : null,
         })),
         createdBy: user?.id ?? null,
         createdByName: userName,
@@ -218,45 +237,64 @@ function CreateSheetModal({
               </button>
             </div>
 
-            {columns.map((col, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={col.name}
-                  onChange={(e) =>
-                    updateColumnDraft(index, "name", e.target.value)
-                  }
-                  placeholder={`اسم العمود ${index + 1}`}
-                  dir="rtl"
-                  className="flex-1 h-[42px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867]"
-                  style={{ ...F, fontSize: 14, color: "#2d3648" }}
-                />
+             {columns.map((col, index) => (
+              <div key={index} className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={col.name}
+                    onChange={(e) =>
+                      updateColumnDraft(index, { name: e.target.value })
+                    }
+                    placeholder={`اسم العمود ${index + 1}`}
+                    dir="rtl"
+                    className="flex-1 h-[42px] rounded-[8px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867]"
+                    style={{ ...F, fontSize: 14, color: "#2d3648" }}
+                  />
 
-                <select
-                  value={col.column_type}
-                  onChange={(e) =>
-                    updateColumnDraft(index, "column_type", e.target.value)
-                  }
-                  dir="rtl"
-                  className="w-[110px] h-[42px] rounded-[8px] border border-[#e2e7f0] px-2 text-right outline-none focus:border-[#00b867] bg-white"
-                  style={{ ...F, fontSize: 13, color: "#2d3648" }}
-                >
-                  {Object.entries(COLUMN_TYPE_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-
-                {columns.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeColumnDraft(index)}
-                    className="w-[36px] h-[36px] rounded-[6px] flex items-center justify-center shrink-0"
-                    style={{ background: "#fce8f1" }}
+                  <select
+                    value={col.column_type}
+                    onChange={(e) =>
+                      updateColumnDraft(index, {
+                        column_type: e.target.value as SheetColumnType,
+                        dropdown_source: null,
+                        dropdown_options: [],
+                      })
+                    }
+                    dir="rtl"
+                    className="w-[130px] h-[42px] rounded-[8px] border border-[#e2e7f0] px-2 text-right outline-none focus:border-[#00b867] bg-white"
+                    style={{ ...F, fontSize: 13, color: "#2d3648" }}
                   >
-                    <Trash2 size={14} color="#e3282c" />
-                  </button>
+                    {Object.entries(COLUMN_TYPE_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+
+                  {columns.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeColumnDraft(index)}
+                      className="w-[36px] h-[36px] rounded-[6px] flex items-center justify-center shrink-0"
+                      style={{ background: "#fce8f1" }}
+                    >
+                      <Trash2 size={14} color="#e3282c" />
+                    </button>
+                  )}
+                </div>
+
+                {col.column_type === "DROPDOWN" && (
+                  <DropdownColumnConfig
+                    source={col.dropdown_source}
+                    options={col.dropdown_options}
+                    onChange={({ source, options }) =>
+                      updateColumnDraft(index, {
+                        dropdown_source: source,
+                        dropdown_options: options,
+                      })
+                    }
+                  />
                 )}
               </div>
             ))}

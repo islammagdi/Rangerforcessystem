@@ -241,10 +241,10 @@ export function LoginForm() {
       }
 
       // ============================================
-      // 5. Get Role
+      // 5. Get Roles (المستخدم ممكن يكون له أكتر من دور)
       // ============================================
 
-      const { data: userRole, error: roleError } = await supabase
+      const { data: userRoles, error: roleError } = await supabase
         .from("user_roles")
         .select(
           `
@@ -256,8 +256,7 @@ export function LoginForm() {
             )
           `
         )
-        .eq("user_id", data.user.id)
-        .maybeSingle();
+        .eq("user_id", data.user.id);
 
       if (roleError) {
         console.error("ROLE ERROR:", roleError);
@@ -271,7 +270,11 @@ export function LoginForm() {
         return;
       }
 
-      if (!userRole) {
+      const roles = (userRoles ?? [])
+        .map((row: any) => (Array.isArray(row.roles) ? row.roles[0] : row.roles))
+        .filter(Boolean) as { id: string; name: string; code: string }[];
+
+      if (roles.length === 0) {
         await supabase.auth.signOut();
 
         setErrors({
@@ -282,22 +285,14 @@ export function LoginForm() {
       }
 
       // ============================================
-      // 6. Extract Role
+      // 6-7. Save User Data
       // ============================================
 
-      const role = Array.isArray(userRole.roles)
-        ? userRole.roles[0]
-        : userRole.roles;
+      const roleCode = roles.map((r) => r.code).join(",");
+      const roleName = roles.map((r) => r.name).join("، ");
 
-      const roleCode = (role as any)?.code;
-      const roleName = (role as any)?.name;
-
-      // ============================================
-      // 7. Save User Data
-      // ============================================
-
-      sessionStorage.setItem("user_role", roleCode ?? "");
-      sessionStorage.setItem("user_role_name", roleName ?? "");
+      sessionStorage.setItem("user_role", roleCode);
+      sessionStorage.setItem("user_role_name", roleName);
       sessionStorage.setItem("user_id", data.user.id);
       sessionStorage.setItem("username", profile.username);
 

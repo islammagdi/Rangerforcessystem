@@ -47,6 +47,7 @@ type Profile = {
   full_name?: string | null;
   rank_name?: string | null;
   login_code?: string | null;
+  office_name?: string | null;
 };
 
 type Role = {
@@ -67,6 +68,10 @@ export function ManageUsersPage() {
   const [saving, setSaving] = useState(false);
   const [searching, setSearching] = useState(false);
 
+  // فلاتر جدول المستخدمين
+  const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+
   const [showModal, setShowModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
 
@@ -86,7 +91,7 @@ export function ManageUsersPage() {
   const [selectedUser, setSelectedUser] =
     useState<Profile | null>(null);
 
-  const [editRole, setEditRole] = useState("");
+  const [editRoles, setEditRoles] = useState<string[]>([]);
   const [editUsername, setEditUsername] = useState("");
 
   const [error, setError] = useState("");
@@ -235,6 +240,27 @@ export function ManageUsersPage() {
         (rolesData || []) as Role[];
 
       // -------------------------------------------------
+      // المكتب المختص (من الـ View user_offices)
+      // -------------------------------------------------
+
+      const { data: officesData, error: officesError } = await supabase
+        .from("user_offices")
+        .select("user_id, office_name")
+        .in("user_id", profileIds);
+
+      if (officesError) {
+        console.error("LOAD USER OFFICES ERROR:", officesError);
+      }
+
+      const officeMap = new Map<string, string>();
+
+      (officesData || []).forEach((row: any) => {
+        if (row.office_name && !officeMap.has(row.user_id)) {
+          officeMap.set(row.user_id, row.office_name);
+        }
+      });
+
+      // -------------------------------------------------
       // ربط الأدوار
       // -------------------------------------------------
 
@@ -288,6 +314,9 @@ export function ManageUsersPage() {
 
           user_roles:
             userRolesMap.get(profile.id) || [],
+
+          office_name:
+            officeMap.get(profile.id) || null,
         }));
 
       setUsers(loadedUsers);
@@ -668,11 +697,7 @@ export function ManageUsersPage() {
        user.personnel?.full_name || user.username
     );
 
-    const currentRole =
-      user.user_roles?.[0]?.role_id ||
-      "";
-
-    setEditRole(currentRole);
+    setEditRoles((user.user_roles ?? []).map((r) => r.role_id));
 
     setError("");
     setSuccess("");
@@ -685,7 +710,7 @@ export function ManageUsersPage() {
     setShowEditModal(false);
     setSelectedUser(null);
     setEditUsername("");
-    setEditRole("");
+    setEditRoles([]);
     setError("");
     setSuccess("");
   }
@@ -704,10 +729,8 @@ export function ManageUsersPage() {
       return;
     }
 
-    if (!editRole) {
-      setError(
-        "اختر الصلاحية"
-      );
+    if (editRoles.length === 0) {
+      setError("اختر دور واحد على الأقل");
       return;
     }
 
@@ -741,41 +764,16 @@ export function ManageUsersPage() {
       }
 
       // -------------------------------------------------
-      // حذف الدور القديم
+      // الأدوار (كلها مرة واحدة، من غير ما المستخدم يفضل لحظة من غير دور)
       // -------------------------------------------------
 
-      const {
-        error: deleteRoleError,
-      } = await supabase
-        .from("user_roles")
-        .delete()
-        .eq(
-          "user_id",
-          selectedUser.id
-        );
+      const { error: rolesError } = await supabase.rpc("set_user_roles", {
+        p_user_id: selectedUser.id,
+        p_role_ids: editRoles,
+      });
 
-      if (deleteRoleError) {
-        throw deleteRoleError;
-      }
-
-      // -------------------------------------------------
-      // إضافة الدور الجديد
-      // -------------------------------------------------
-
-      const {
-        error: roleError,
-      } = await supabase
-        .from("user_roles")
-        .insert({
-          user_id:
-            selectedUser.id,
-
-          role_id:
-            editRole,
-        });
-
-      if (roleError) {
-        throw roleError;
+      if (rolesError) {
+        throw rolesError;
       }
 
       setSuccess(
@@ -820,110 +818,15 @@ export function ManageUsersPage() {
     setSuccess("");
 
     try {
-      const {
-        data,
-        error: functionError,
-      } = await supabase.functions.invoke(
-        "reset-user-password",
-        {
-          body: {
-            user_id: selectedUser.id,
-          },
-        }
-      );
+      const { error: resetError } = await supabase.rpc("reset_user_password", {
+        p_user_id: selectedUser.id,
+      });
 
-      if (functionError) {
-        console.error(
-          "RESET PASSWORD FUNCTION ERROR:",
-          functionError
-        );
-
-        const context =
-          (functionError as any)?.context;
-
-        if (context) {
-          try {
-            const errorBody =
-              await context.json();
-
-            console.error(
-              "RESET PASSWORD RESPONSE:",
-              errorBody
-            );
-
-            throw new Error(
-              errorBody?.error ||
-                errorBody?.message ||
-                functionError.message
-            );
-          } catch (contextError: any) {
-            if (
-              contextError?.message &&
-              contextError.message !==
-                functionError.message
-            ) {
-              throw contextError;
-            }
-
-            throw new Error(
-              functionError.message
-            );
-          }
-        }
-
-        throw new Error(
-          functionError.message
-        );
+      if (resetError) {
+        throw resetError;
       }
 
-      console.log(
-        "RESET PASSWORD RESPONSE:",
-        data
-      );
-
-      if (!data?.success) {
-        throw new Error(
-          data?.error ||
-            data?.message ||
-            "فشل إعادة تعيين كلمة المرور"
-        );
-      }
-
-   if (!data?.success) {
-  throw new Error(
-    data?.error ||
-      data?.message ||
-      "فشل إعادة تعيين كلمة المرور"
-  );
-}
-
-// ✅ إجبار المستخدم على تغيير كلمة المرور في أول تسجيل دخول
-const { error: forceChangeError } = await supabase
-  .from("profiles")
-  .update({
-    must_change_password: true,
-    updated_at: new Date().toISOString(),
-  })
-  .eq("id", selectedUser.id);
-
-if (forceChangeError) {
-  console.error(
-    "FORCE PASSWORD CHANGE FLAG ERROR:",
-    forceChangeError
-  );
-  // مش هنوقف العملية بسبب دي، بس نبلّغ المستخدم إن فيه تحذير بسيط
-  setSuccess(
-    "تم إعادة تعيين كلمة المرور، لكن حدث خطأ بسيط أثناء ضبط إجبار تغييرها — يُفضّل التأكد يدويًا."
-  );
-} else {
-  setSuccess("تم إعادة تعيين كلمة المرور بنجاح");
-}
-    } catch (err: any) {
-      console.error(
-        "RESET PASSWORD ERROR:",
-        err
-      );
-
+      setSuccess("تم إعادة تعيين كلمة المرور بنجاح");
       setError(
         err?.message ||
           "حدث خطأ أثناء إعادة تعيين كلمة المرور"
@@ -975,6 +878,39 @@ if (forceChangeError) {
   // =====================================================
   // JSX
   // =====================================================
+
+  // =====================================================
+  // فلترة المستخدمين (بالاسم / المعرف / الدور)
+  // =====================================================
+
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+
+  const filteredUsers = users.filter((user) => {
+    const name = (
+      user.personnel?.full_name ||
+      user.full_name ||
+      ""
+    ).toLowerCase();
+
+    const identifier = (
+      user.personnel?.military_number ||
+      user.login_code ||
+      ""
+    ).toLowerCase();
+
+    const matchesSearch =
+      !normalizedSearch ||
+      name.includes(normalizedSearch) ||
+      identifier.includes(normalizedSearch);
+
+    const matchesRole =
+      !roleFilter ||
+      Boolean(user.user_roles?.some((item) => item.role_id === roleFilter));
+
+    return matchesSearch && matchesRole;
+  });
+
+  const hasActiveFilters = Boolean(normalizedSearch || roleFilter);
 
   return (
     <div
@@ -1084,6 +1020,51 @@ if (forceChangeError) {
             تحديث القائمة
           </button>
         </div>
+        {/* البحث والفلترة */}
+        <div className="px-6 py-4 border-b border-[#e2e8f0] flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search
+              size={18}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-[#94a3b8] pointer-events-none"
+            />
+
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="ابحث بالاسم أو المعرف"
+              className="w-full h-11 rounded-xl border border-[#cbd5e1] pr-11 pl-4 outline-none focus:border-[#00B867] focus:ring-2 focus:ring-[#00B867]/10"
+            />
+          </div>
+
+          <select
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            className="h-11 sm:w-[240px] rounded-xl border border-[#cbd5e1] bg-white px-4 outline-none focus:border-[#00B867]"
+          >
+            <option value="">كل الأدوار</option>
+
+            {roles.map((role) => (
+              <option key={role.id} value={role.id}>
+                {role.name}
+              </option>
+            ))}
+          </select>
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchTerm("");
+                setRoleFilter("");
+              }}
+              className="h-11 px-4 rounded-xl border border-[#cbd5e1] text-[#475569] hover:bg-gray-50 flex items-center justify-center gap-2 transition-colors"
+            >
+              <X size={16} />
+              مسح الفلاتر
+            </button>
+          )}
+        </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
@@ -1096,17 +1077,17 @@ if (forceChangeError) {
           <div className="py-20 text-center text-[#64748b]">
             لا يوجد مستخدمون حتى الآن
           </div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="py-20 text-center text-[#64748b]">
+            لا توجد نتائج مطابقة للبحث
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[950px]">
               <thead>
                 <tr className="bg-[#f8fafc] text-[#64748b] text-sm">
                   <th className="text-right px-5 py-4">
-                    اسم المستخدم
-                  </th>
-
-                  <th className="text-right px-5 py-4">
-                    الاسم الكامل
+                    المعرف
                   </th>
 
                   <th className="text-right px-5 py-4">
@@ -1114,11 +1095,15 @@ if (forceChangeError) {
                   </th>
 
                   <th className="text-right px-5 py-4">
-                 المعرف
+                    الاسم الكامل
                   </th>
 
                   <th className="text-right px-5 py-4">
                     الصلاحية
+                  </th>
+
+                  <th className="text-right px-5 py-4">
+                    المكتب المختص
                   </th>
 
                   <th className="text-right px-5 py-4">
@@ -1136,19 +1121,15 @@ if (forceChangeError) {
               </thead>
 
               <tbody>
-                {users.map((user) => (
+                {filteredUsers.map((user) => (
                   <tr
                     key={user.id}
                     className="border-t border-[#e2e8f0] hover:bg-[#fafdfb]"
                   >
-                    <td className="px-5 py-4 font-medium text-[#081021]">
-                      {user.username}
-                    </td>
-
                     <td className="px-5 py-4 text-[#334155]">
-                      {user.personnel?.full_name ||
-                        user.full_name ||
-                        "غير مرتبط"}
+                      {user.personnel?.military_number ||
+                        user.login_code ||
+                        "—"}
                     </td>
 
                     <td className="px-5 py-4 text-[#334155]">
@@ -1157,16 +1138,38 @@ if (forceChangeError) {
                         "غير محدد"}
                     </td>
 
-               <td className="px-5 py-4 text-[#334155]">
-  {user.personnel?.military_number ||
-    user.login_code ||
-    "—"}
-</td>
+                    <td className="px-5 py-4 font-medium text-[#081021]">
+                      {user.personnel?.full_name ||
+                        user.full_name ||
+                        "غير مرتبط"}
+                    </td>
+                    <td className="px-5 py-4">
+                      {(user.user_roles ?? []).length === 0 ? (
+                        <span className="inline-flex rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
+                          بدون صلاحية
+                        </span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {(user.user_roles ?? []).map((r) => (
+                            <span
+                              key={r.role_id}
+                              className="inline-flex rounded-full bg-[#eefbf3] px-3 py-1 text-xs font-medium text-[#008c52]"
+                            >
+                              {r.roles?.name ?? "-"}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
 
                     <td className="px-5 py-4">
-                      <span className="inline-flex rounded-full bg-[#eefbf3] px-3 py-1 text-xs font-medium text-[#008c52]">
-                        {getRoleName(user)}
-                      </span>
+                      {user.office_name ? (
+                        <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                          {user.office_name}
+                        </span>
+                      ) : (
+                        <span className="text-[#94a3b8] text-sm">—</span>
+                      )}
                     </td>
 
                     <td className="px-5 py-4 text-[#64748b] text-sm">
@@ -1673,32 +1676,48 @@ if (forceChangeError) {
                 </p>
 
                 <label className="block text-sm font-medium text-[#334155] mb-2 mt-4">
-                  الصلاحية
+                  الأدوار ({editRoles.length})
                 </label>
 
-                <select
-                  value={editRole}
-                  onChange={(e) =>
-                    setEditRole(
-                      e.target.value
-                    )
-                  }
-                  disabled={saving}
-                  className="w-full h-12 rounded-xl border border-[#cbd5e1] bg-white px-4 outline-none focus:border-[#00B867] disabled:bg-gray-100"
-                >
-                  <option value="">
-                    اختر الصلاحية
-                  </option>
+                <div className="flex flex-wrap gap-2">
+                  {roles.map((role) => {
+                    const checked = editRoles.includes(role.id);
 
-                  {roles.map((role) => (
-                    <option
-                      key={role.id}
-                      value={role.id}
-                    >
-                      {role.name}
-                    </option>
-                  ))}
-                </select>
+                    return (
+                      <label
+                        key={role.id}
+                        className={[
+                          "flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors",
+                          checked
+                            ? "bg-[#DCF4DF] border-[#00B867]"
+                            : "bg-[#f7f9fc] border-[#e2e8f0] hover:bg-[#f1f5f9]",
+                          saving ? "opacity-60 cursor-not-allowed" : "",
+                        ].join(" ")}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={saving}
+                          onChange={() =>
+                            setEditRoles((prev) =>
+                              prev.includes(role.id)
+                                ? prev.filter((id) => id !== role.id)
+                                : [...prev, role.id]
+                            )
+                          }
+                          className="w-4 h-4 accent-[#00B867]"
+                        />
+                        <span className={`text-sm ${checked ? "font-bold text-[#344736]" : "text-[#334155]"}`}>
+                          {role.name}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <p className="text-xs text-[#94a3b8] mt-2">
+                  المستخدم بياخد صلاحيات كل الأدوار المحددة مع بعض.
+                </p>
 
                 {/* Reset Password */}
 
@@ -1761,7 +1780,7 @@ if (forceChangeError) {
                   disabled={
                     saving ||
                     !editUsername.trim() ||
-                    !editRole
+                    editRoles.length === 0
                   }
                   className="px-6 h-11 rounded-xl bg-[#00B867] hover:bg-[#009d59] text-white flex items-center gap-2 disabled:opacity-50"
                 >

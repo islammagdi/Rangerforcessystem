@@ -26,7 +26,16 @@ import {
   X,
     Briefcase, // ✅ جديد
     Network, // ✅ جديد - الهيكل التنظيمي
-    TrendingUp 
+    UserCheck,
+    Percent,
+    TrendingUp ,
+    ListChecks,
+    CalendarClock,
+    Award,
+    SlidersHorizontal,
+    UserMinus,
+    ChevronsUp,
+    ArchiveRestore
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { supabase } from "../../../lib/supabase";
@@ -89,6 +98,15 @@ const LABEL_TO_PATH: Record<string, string> = {
   "إدارة الوظائف": "/dashboard/manage-jobs", // ✅ جديد
   "الهيكل التنظيمي": "/dashboard/units-tree", // ✅ جديد
     "نشرات الترقي": "/dashboard/promotion-notifications",
+    "تسجيل وصول المجندين": "/dashboard/recruit-arrivals",
+    "الأفراد المستحقين للترقية": "/dashboard/promotion-eligibility-report",
+    "نسبة العجز": "/dashboard/deficit-rate",
+    "نوبتجية الفرع": "/dashboard/branch-duty",
+    "المراسم العسكرية": "/dashboard/military-ceremonies",
+    "إعدادات الموقف العام": "/dashboard/dashboard-settings",
+    "ملفات إنهاء الخدمة": "/dashboard/nco-discharges",
+    "ترقي المجندين": "/dashboard/conscript-promotions",
+    "الأفراد المحذوفين": "/dashboard/deleted-personnel",
 };
 
 // =====================================================
@@ -244,6 +262,7 @@ export function Sidebar({
   // ===================================================
   const { loading: permsLoading, hasPermission } = usePermissions();
   const { count: pendingTasksCount } = usePendingMailTasksCount();
+  console.log("deficit_rate:view =>", hasPermission("deficit_rate:view"));
 
   // ===================================================
   // Active Label
@@ -381,50 +400,39 @@ export function Sidebar({
         permission: "units_report:view",
       },
 
-      // -------------------------------
-      // الخطابات
+        // -------------------------------
+      // التقارير والخطابات
       // -------------------------------
       {
         icon: <Mail size={18} />,
         label: "إصدار خطاب",
-        section: "الخطابات",
+        section: "التقارير والخطابات",
         permission: "issue_letter:view",
       },
       {
         icon: <BookOpen size={18} />,
         label: "سجل الخطابات",
-        section: "الخطابات",
+        section: "التقارير والخطابات",
         permission: "letters_archive:view",
       },
       {
         icon: <FileSpreadsheet size={18} />,
         label: "كشوف التوصيات",
-        section: "الخطابات",
+        section: "التقارير والخطابات",
         permission: "training_recommendations:view",
       },
-            {
+      {
         icon: <ClipboardList size={18} />,
         label: "كشوفات",
-        section: "الخطابات",
+        section: "التقارير والخطابات",
         permission: "sheets:view",
       },
-
-      // -------------------------------
-      // اليوميات
-      // -------------------------------
       {
         icon: <FileText size={18} />,
         label: "اليوميات",
-        section: "اليوميات",
+        section: "التقارير والخطابات",
         permission: "daily_reports:view",
       },
-      {
-        icon: <Users size={18} />,
-        label: "دفعات الرديف",
-        section: "اليوميات",
-        permission: "reserve_batches:view",
-      },
-
       // -------------------------------
       // الأرشيف
       // -------------------------------
@@ -439,6 +447,46 @@ export function Sidebar({
         label: "الفاكسات - الوارد",
         section: "الأرشيف",
         permission: "archive_incoming:view",
+      },
+
+      // -------------------------------
+      // التسجيل وانهاء الخدمة
+      // -------------------------------
+      {
+        icon: <Users size={18} />,
+        label: "دفعات الرديف",
+        section: "التسجيل وانهاء الخدمة",
+        permission: "reserve_batches:view",
+      },
+      {
+        icon: <UserMinus size={18} />,
+        label: "ملفات إنهاء الخدمة",
+        section: "التسجيل وانهاء الخدمة",
+        permission: "nco_discharge:view",
+      },
+      {
+        icon: <ChevronsUp size={18} />,
+        label: "ترقي المجندين",
+        section: "التسجيل وانهاء الخدمة",
+        permission: "conscript_promotion:view",
+      },
+            {
+        icon: <ArchiveRestore size={18} />,
+        label: "الأفراد المحذوفين",
+        section: "ادارة المنظومة",
+        permission: "personnel:restore",
+      },
+      {
+        icon: <UserCheck size={18} />,
+        label: "تسجيل وصول المجندين",
+        section: "التسجيل وانهاء الخدمة",
+        permission: "recruit_arrivals:view",
+      },
+      {
+        icon: <Percent size={18} />,
+        label: "نسبة العجز",
+        section: "التسجيل وانهاء الخدمة",
+        permission: "deficit_rate:view",
       },
 
       // -------------------------------
@@ -535,6 +583,18 @@ export function Sidebar({
         permission: "incidents_record:view",
       },
       {
+        icon: <Award size={18} />,
+        label: "المراسم العسكرية",
+        section: "الإدارة العسكرية",
+        permission: "military_ceremonies:view",
+      },
+      {
+        icon: <CalendarClock size={18} />,
+        label: "نوبتجية الفرع",
+        section: "الأرشيف",
+        permission: "branch_duty:view",
+      },
+      {
         icon: <Briefcase size={18} />,
         label: "إدارة الوظائف",
         section: "ادارة المنظومة",
@@ -546,6 +606,12 @@ export function Sidebar({
         section: "ادارة المنظومة",
         permission: "units_tree:view",
       },
+      {
+        icon: <SlidersHorizontal size={18} />,
+        label: "إعدادات الموقف العام",
+        section: "ادارة المنظومة",
+        permission: "dashboard_settings:manage",
+      },
             // -------------------------------
       // الترقي
       // -------------------------------
@@ -555,6 +621,12 @@ export function Sidebar({
         section: "الترقي",
         permission: "promotion_notifications:view",
       },
+      {
+  icon: <ListChecks size={18} />,
+  label: "الأفراد المستحقين للترقية",
+  section: "الترقي",
+  permission: "promotion_notifications:view",
+},
     ],
     []
   );
@@ -573,7 +645,7 @@ export function Sidebar({
   // Group By Section
   // ===================================================
 
-const sections = ["الافراد", "الخطابات", "الأرشيف", "اليوميات", "الخدمة الاجتماعية", "الإدارة العسكرية", "الترقي", "ادارة المنظومة"];
+const sections = ["الافراد", "التقارير والخطابات", "الأرشيف", "التسجيل وانهاء الخدمة", "الخدمة الاجتماعية", "الإدارة العسكرية", "الترقي", "ادارة المنظومة"];
   function getSectionItems(section: string) {
     return visibleNavItems.filter((item) => item.section === section);
   }

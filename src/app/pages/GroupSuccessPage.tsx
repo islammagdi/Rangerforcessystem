@@ -662,7 +662,7 @@ export function GroupSuccessPage() {
                   textAlign: "right",
                 }}
               >
-                للمنظومة المستخدم الحالي
+                  المستخدم الحالي للمنظومة
               </p>
               <div className="w-full rounded-[12px] border border-[#e7e7e7] bg-white flex items-center">
                 <div className="flex items-center gap-3 px-3 py-3 flex-wrap">

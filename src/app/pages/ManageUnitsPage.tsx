@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Search, Plus, Pencil, Power, X, Download } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import * as XLSX from "xlsx";
+import { todayLocalIso } from "../../lib/dates";
 const UNIT_HIERARCHY_ORDER: string[] = [
   "قيادة قوات الصاعقة",
   "سريه القياده",
@@ -700,7 +701,7 @@ export function ManageUnitsPage() {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "الوحدات");
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocalIso();
     XLSX.writeFile(workbook, `كشف_الوحدات_${today}.xlsx`);
 
     setShowExportModal(false);

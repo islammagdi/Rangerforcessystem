@@ -199,6 +199,7 @@ while (true) {
       )
     `)
     .eq("is_active", true)
+    .order("id", { ascending: true })
     .range(from, from + PAGE_SIZE - 1);
 
   if (error) {

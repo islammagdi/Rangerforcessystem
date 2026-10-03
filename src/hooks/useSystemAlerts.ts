@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
-
+import { todayLocalIso } from "../lib/dates";
 export interface SystemAlert {
   type: "critical" | "warning";
   text: string;
@@ -14,7 +14,7 @@ export function useSystemAlerts() {
 
   useEffect(() => {
     async function load() {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayLocalIso();
 
       // ✅ دلوقتي بنجيب أقدم تاريخ تسريح متجاوز (مش بس العدد)
       // عشان نعرف أنهي دفعة نفتحها أوتوماتيك لما المستخدم يدوس

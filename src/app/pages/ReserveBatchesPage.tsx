@@ -11,10 +11,18 @@ import {
   AlertTriangle,
   ArrowLeftRight,
   Search,
+  Undo2,
+  History,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { usePermissions } from "../../lib/usePermissions";
 import { useUnsavedChanges } from "../../lib/unsavedChanges";
+import { fetchAllRows, fetchByIdsInChunks } from "../../lib/fetchAllRows";
+import {
+  ReserveBatchProcedures,
+  CertificateDialog,
+} from "../components/reserve/ReserveBatchProcedures";
+import { todayLocalIso } from "../../lib/dates";
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
@@ -54,16 +62,62 @@ type Soldier = {
   status: SoldierStatus;
   model1sReview: Model1sReviewState; // ✅ جديد
   model1sNotes: string; // ✅ جديد
+  unitId: string | null;
+  mobilization1: string;
+  mobilization2: string;
+  sentToRecordsAt: string | null;
+  certificateId: string | null;
+  certificateNumber: string | null;
+  certificateDate: string | null;
+  transfers: TransferRecord[];
 };
 
-const DISCHARGED_STATUS_ID =
-  "ac8ddfa3-1578-455b-9b6a-b056260fcb1f";
+type TransferRecord = {
+  id: string;
+  fromBatchId: string | null;
+  fromDate: string | null;
+  toDate: string;
+  direction: "postpone" | "advance";
+  reasonName: string;
+  referenceNumber: string | null;
+  referenceDate: string | null;
+  penaltyDays: number | null;
+  notes: string | null;
+  removedFromShipment: boolean;
+  createdAt: string;
+};
+
+type TransferReason = {
+  code: string;
+  name: string;
+  direction: "postpone" | "advance" | "any";
+  requires_reference: boolean;
+  asks_penalty_days: boolean;
+};
+
+type TransferPayload = {
+  toBatchId: string;
+  targetLabel: string;
+  reasonCode: string;
+  reasonName: string;
+  referenceNumber: string;
+  referenceDate: string;
+  penaltyDays: number | null;
+  notes: string;
+  revertsTransferId: string | null;
+};
+
+type RevertTarget = { soldier: Soldier; transfer: TransferRecord };
+
+
 const FIELD_LABELS: Record<string, string> = {
   receivedKariza: "استلام الكارنيه",
   receivedLicense: "استلام الرخصة",
   receivedLiteracy: "استلام محو الأمية",
   model1sReview: "مراجعة النموذج (1س)",
   model1sNotes: "ملاحظات النموذج (1س)",
+  mobilization1: "التعبئة الأولى",
+  mobilization2: "التعبئة الثانية",
 };
 /* =========================================================
    أهلية الرخصة
@@ -718,15 +772,16 @@ function ProgressCard({
 /* =========================================================
    END SERVICE DIALOG
    ========================================================= */
-
 function EndServiceDialog({
   onCancel,
   onConfirm,
   saving,
+  missingCertificates = 0,
 }: {
   onCancel: () => void;
   onConfirm: () => void;
   saving: boolean;
+  missingCertificates?: number;
 }) {
   return createPortal(
     <div
@@ -780,6 +835,21 @@ function EndServiceDialog({
           الأفراد المحددين؟
         </p>
 
+        {missingCertificates > 0 && (
+          <p
+            className="rounded-[8px] px-3 py-2"
+            style={{
+              ...F,
+              fontSize: 13,
+              color: "#8a6500",
+              background: "#fff8e8",
+              textAlign: "right",
+            }}
+          >
+            تنبيه: {missingCertificates.toLocaleString("ar-EG")} من الأفراد المحددين لم تُسجل لهم شهادة إنهاء الخدمة بعد.
+          </p>
+        )}
+
         <div className="flex items-center gap-2 justify-start">
           <button
             type="button"
@@ -823,141 +893,376 @@ function EndServiceDialog({
    ========================================================= */
 
 function TransferDialog({
-  batches,
-  selectedBatchId,
+  currentBatch,
+  count,
+  revert,
   onCancel,
   onConfirm,
   saving,
 }: {
-  batches: ReserveBatch[];
-   selectedBatchId: string;
+  currentBatch: ReserveBatch;
+  count: number;
+  revert: RevertTarget | null;
   onCancel: () => void;
-  onConfirm: (
-    batchId: string
-  ) => void;
+  onConfirm: (payload: TransferPayload) => void;
   saving: boolean;
 }) {
-  const [targetBatch, setTargetBatch] =
-    useState("");
+  const [allBatches, setAllBatches] = useState<ReserveBatch[]>([]);
+  const [reasons, setReasons] = useState<TransferReason[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const options = batches
-  .filter(
-    (batch) =>
-      batch.is_active &&
-      batch.id !== selectedBatchId
-  )
-  .map((batch) => ({
-    value: batch.id,
-    label:
-      batch.name ||
-      `دفعة ${formatBatchDate(batch.batch_date)}`,
-  }));
+  const [targetBatch, setTargetBatch] = useState(revert?.transfer.fromBatchId ?? "");
+  const [reasonCode, setReasonCode] = useState(revert ? "PENALTY_REMOVED" : "");
+  const [referenceNumber, setReferenceNumber] = useState("");
+  const [referenceDate, setReferenceDate] = useState("");
+  const [penaltyDays, setPenaltyDays] = useState("");
+  const [notes, setNotes] = useState("");
+  const [localError, setLocalError] = useState("");
 
-  const selectedTarget =
-    batches.find(
-      (b) => b.id === targetBatch
-    );
+  useEffect(() => {
+    void (async () => {
+      const [batchesRes, reasonsRes] = await Promise.all([
+        supabase
+          .from("reserve_batches")
+          .select("id, batch_date, name, is_active")
+          .order("batch_date", { ascending: true }),
+        supabase
+          .from("reserve_batch_transfer_reasons")
+          .select("code, name, direction, requires_reference, asks_penalty_days")
+          .eq("is_active", true)
+          .order("sort_order", { ascending: true }),
+      ]);
+
+      setAllBatches(
+        (batchesRes.data ?? []).map((b: any) => ({
+          id: b.id,
+          batch_date: b.batch_date,
+          name: b.name,
+          is_active: b.is_active === true,
+        }))
+      );
+      setReasons((reasonsRes.data ?? []) as TransferReason[]);
+      setLoading(false);
+    })();
+  }, []);
+
+  const batchLabel = (b: ReserveBatch) => b.name || `دفعة ${formatBatchDate(b.batch_date)}`;
+
+  const target = allBatches.find((b) => b.id === targetBatch);
+
+  const direction: "postpone" | "advance" | null = target
+    ? target.batch_date > currentBatch.batch_date
+      ? "postpone"
+      : "advance"
+    : null;
+
+  const availableReasons = reasons.filter(
+    (r) => !direction || r.direction === "any" || r.direction === direction
+  );
+
+  const reason = reasons.find((r) => r.code === reasonCode);
+
+  // لو الاتجاه اتغير والسبب المختار مبقاش مناسب، نفضّيه
+  useEffect(() => {
+    if (reasonCode && direction && reason && reason.direction !== "any" && reason.direction !== direction) {
+      setReasonCode("");
+    }
+  }, [direction, reasonCode, reason]);
+
+  const todayStr = todayLocalIso();
+  const isPastTarget = target ? target.batch_date < todayStr : false;
+
+  const options = allBatches
+    .filter((b) => b.id !== currentBatch.id)
+    .map((b) => ({
+      value: b.id,
+      label: `${batchLabel(b)} ${b.batch_date < currentBatch.batch_date ? "(سابقة)" : "(لاحقة)"}${
+        b.is_active ? "" : " - غير نشطة"
+      }`,
+    }));
+
+  const selectedLabel = options.find((o) => o.value === targetBatch)?.label ?? "";
+
+  function submit() {
+    setLocalError("");
+
+    if (!target) return setLocalError("اختر دفعة الترحيل.");
+    if (!reason) return setLocalError("اختر سبب الترحيل.");
+    if (reason.requires_reference && !referenceNumber.trim())
+      return setLocalError("رقم الإشارة / القرار مطلوب للسبب ده.");
+    if (reason.code === "OTHER" && !notes.trim()) return setLocalError("اكتب تفاصيل السبب في الملاحظات.");
+
+    onConfirm({
+      toBatchId: target.id,
+      targetLabel: batchLabel(target),
+      reasonCode: reason.code,
+      reasonName: reason.name,
+      referenceNumber: referenceNumber.trim(),
+      referenceDate,
+      penaltyDays: reason.asks_penalty_days && penaltyDays.trim() ? Number(penaltyDays) : null,
+      notes: notes.trim(),
+      revertsTransferId: revert?.transfer.id ?? null,
+    });
+  }
+
+  const inputStyle: React.CSSProperties = { ...F, fontSize: 14, color: "#2d3648" };
+  const inputClass = "w-full h-[44px] rounded-[8px] border border-[#e2e7f0] px-3 outline-none focus:border-[#00b867]";
 
   return createPortal(
-    <div
-      className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/50 p-4"
-      dir="rtl"
-    >
+    <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/50 p-4" dir="rtl">
       <div
-        className="bg-white rounded-[24px] p-6 w-full max-w-sm flex flex-col gap-6 shadow-2xl"
-        onClick={(e) =>
-          e.stopPropagation()
-        }
+        className="bg-white rounded-[24px] p-6 w-full max-w-md flex flex-col gap-4 shadow-2xl max-h-[92vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center">
-          <div
-            className="w-10 h-10 flex items-center justify-center rounded-full"
-            style={{
-              background: "#dcfce7",
-            }}
-          >
-            <ArrowLeftRight
-              size={20}
-              style={{
-                color: "#00b867",
-              }}
-            />
+          <div className="w-10 h-10 flex items-center justify-center rounded-full" style={{ background: "#dcfce7" }}>
+            {revert ? (
+              <Undo2 size={20} style={{ color: "#00b867" }} />
+            ) : (
+              <ArrowLeftRight size={20} style={{ color: "#00b867" }} />
+            )}
           </div>
-
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={saving}
-            className="text-[#aaa] hover:text-[#555]"
-          >
+          <button type="button" onClick={onCancel} disabled={saving} className="text-[#aaa] hover:text-[#555]">
             <X size={20} />
           </button>
         </div>
 
-        <div className="flex flex-col gap-1.5 items-center text-center">
-          <p
-            style={{
-              ...F,
-              fontSize: 18,
-              color: "#122b16",
-              fontWeight: 700,
-            }}
-          >
-            ترحيل دفعة
+        <div className="flex flex-col gap-1 items-center text-center">
+          <p style={{ ...F, fontSize: 18, color: "#122b16", fontWeight: 700 }}>
+            {revert ? "إلغاء ترحيل الفرد" : "ترحيل أفراد لدفعة أخرى"}
           </p>
-
-          <p
-            style={{
-              ...F,
-              fontSize: 13,
-              color: "#404040",
-            }}
-          >
-            يرجى اختيار دفعة الترحيل
-            الجديدة للأفراد
+          <p style={{ ...F, fontSize: 13, color: "#404040" }}>
+            {revert
+              ? `${revert.soldier.militaryId} - ${revert.soldier.name}`
+              : `عدد الأفراد المحددين: ${count.toLocaleString("ar-EG")}`}
           </p>
         </div>
 
-        <GenericDropdown
-          value={
-            selectedTarget
-              ? selectedTarget.name ||
-                `دفعة ${formatBatchDate(
-                  selectedTarget.batch_date
-                )}`
-              : ""
-          }
-          options={options}
-          onChange={setTargetBatch}
-          placeholder="اختر تاريخ التسريح"
-        />
+        {loading ? (
+          <div className="py-6 text-center" style={{ ...F, fontSize: 14, color: "#a1aebe" }}>
+            جاري التحميل...
+          </div>
+        ) : (
+          <>
+            {/* الدفعة */}
+            <div className="flex flex-col gap-1.5">
+              <label style={{ ...F, fontSize: 13, color: "#717d96" }}>دفعة الترحيل *</label>
+              <GenericDropdown
+                value={selectedLabel}
+                options={options}
+                onChange={setTargetBatch}
+                placeholder="اختر الدفعة"
+              />
+            </div>
 
-        <button
-          type="button"
-          disabled={
-            !targetBatch || saving
-          }
-          onClick={() =>
-            onConfirm(targetBatch)
-          }
-          className="w-full h-[52px] rounded-[8px] flex items-center justify-center disabled:opacity-50"
-          style={{
-            background:
-              "linear-gradient(to bottom, #00b867, #00522e)",
-          }}
-        >
-          <span
-            style={{
-              ...F,
-              fontSize: 16,
-              color: "#fff",
-            }}
-          >
-            {saving
-              ? "جاري الترحيل..."
-              : "حفظ وترحيل الأفراد"}
+            {direction && (
+              <div
+                className="rounded-[10px] px-3 py-2 flex flex-col gap-1"
+                style={{
+                  background: direction === "postpone" ? "#fff8e8" : "#e8f0fe",
+                  color: direction === "postpone" ? "#8a6500" : "#172e78",
+                }}
+              >
+                <span style={{ ...F, fontSize: 13, fontWeight: 700 }}>
+                  {direction === "postpone"
+                    ? "تأجيل لدفعة لاحقة"
+                    : "تقديم لدفعة سابقة"}{" "}
+                  ({formatBatchDate(currentBatch.batch_date)} ← {formatBatchDate(target!.batch_date)})
+                </span>
+                {isPastTarget && (
+                  <span style={{ ...F, fontSize: 12 }}>
+                    تاريخ الدفعة دي عدّى، يعني الفرد هيبقى مستحق الخروج بأثر رجعي، ولازم تستكمل إجراءاته فيها.
+                  </span>
+                )}
+                {target && !target.is_active && (
+                  <span style={{ ...F, fontSize: 12 }}>
+                    الدفعة دي غير نشطة، وهتتفعل تاني تلقائيًا علشان الفرد يظهر فيها.
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* السبب */}
+            <div className="flex flex-col gap-1.5">
+              <label style={{ ...F, fontSize: 13, color: "#717d96" }}>سبب الترحيل *</label>
+              <select
+                value={reasonCode}
+                onChange={(e) => setReasonCode(e.target.value)}
+                disabled={!direction}
+                className={`${inputClass} bg-white disabled:bg-[#f5f6f8]`}
+                style={inputStyle}
+              >
+                <option value="">{direction ? "اختر السبب" : "اختر الدفعة الأول"}</option>
+                {availableReasons.map((r) => (
+                  <option key={r.code} value={r.code}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* المرجع */}
+            {reason && (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-col gap-1.5">
+                  <label style={{ ...F, fontSize: 13, color: "#717d96" }}>
+                    رقم الإشارة / القرار {reason.requires_reference ? "*" : ""}
+                  </label>
+                  <input
+                    type="text"
+                    value={referenceNumber}
+                    onChange={(e) => setReferenceNumber(e.target.value)}
+                    className={inputClass}
+                    style={inputStyle}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label style={{ ...F, fontSize: 13, color: "#717d96" }}>تاريخها</label>
+                  <input
+                    type="date"
+                    value={referenceDate}
+                    onChange={(e) => setReferenceDate(e.target.value)}
+                    className={inputClass}
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+            )}
+
+            {reason?.asks_penalty_days && (
+              <div className="flex flex-col gap-1.5">
+                <label style={{ ...F, fontSize: 13, color: "#717d96" }}>مدة المؤثر (بالأيام)</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={penaltyDays}
+                  onChange={(e) => setPenaltyDays(e.target.value)}
+                  className={inputClass}
+                  style={inputStyle}
+                />
+              </div>
+            )}
+
+            {reason && (
+              <div className="flex flex-col gap-1.5">
+                <label style={{ ...F, fontSize: 13, color: "#717d96" }}>
+                  ملاحظات {reason.code === "OTHER" ? "*" : "(اختياري)"}
+                </label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  className="w-full rounded-[8px] border border-[#e2e7f0] px-3 py-2 outline-none focus:border-[#00b867] resize-none"
+                  style={inputStyle}
+                />
+              </div>
+            )}
+
+            <p style={{ ...F, fontSize: 12, color: "#94a3b8" }}>
+              بيانات الكارنيه والرخصة والنموذج (1س) والتعبئة بتنتقل مع الفرد للدفعة الجديدة.
+            </p>
+
+            {localError && (
+              <p style={{ ...F, fontSize: 13, color: "#9d2e15", fontWeight: 700 }}>{localError}</p>
+            )}
+
+            <button
+              type="button"
+              disabled={saving || !targetBatch || !reasonCode}
+              onClick={submit}
+              className="w-full h-[52px] rounded-[8px] flex items-center justify-center disabled:opacity-50"
+              style={{ background: "linear-gradient(to bottom, #00b867, #00522e)" }}
+            >
+              <span style={{ ...F, fontSize: 16, color: "#fff" }}>
+                {saving ? "جاري الترحيل..." : revert ? "إلغاء الترحيل وإعادة الفرد" : "حفظ وترحيل الأفراد"}
+              </span>
+            </button>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/* =========================================================
+   TRANSFER HISTORY DIALOG
+   ========================================================= */
+
+function TransferHistoryDialog({
+  soldier,
+  onClose,
+}: {
+  soldier: Soldier;
+  onClose: () => void;
+}) {
+  return createPortal(
+    <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/50 p-4" dir="rtl" onClick={onClose}>
+      <div
+        className="bg-white rounded-[16px] p-5 w-full max-w-lg flex flex-col gap-4 shadow-2xl max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2">
+          <History size={18} style={{ color: "#2d3648" }} />
+          <span className="flex-1" style={{ ...F, fontSize: 17, fontWeight: 700, color: "#2d3648" }}>
+            سجل الترحيلات - {soldier.militaryId}
           </span>
-        </button>
+          <button type="button" onClick={onClose} className="text-[#aaa] hover:text-[#555]">
+            <X size={20} />
+          </button>
+        </div>
+
+        {soldier.transfers.map((t) => (
+          <div
+            key={t.id}
+            className="rounded-[12px] border p-3 flex flex-col gap-1"
+            style={{ borderColor: t.direction === "postpone" ? "#f4d58d" : "#c7d7fe" }}
+          >
+            <div className="flex items-center gap-2 flex-wrap">
+              <span
+                className="px-2 py-0.5 rounded-full"
+                style={{
+                  ...F,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  background: t.direction === "postpone" ? "#fff8e8" : "#e8f0fe",
+                  color: t.direction === "postpone" ? "#8a6500" : "#172e78",
+                }}
+              >
+                {t.direction === "postpone" ? "تأجيل" : "تقديم"}
+              </span>
+              <span style={{ ...F, fontSize: 14, fontWeight: 700, color: "#2d3648" }}>
+                {t.fromDate ? formatBatchDate(t.fromDate) : "-"} ← {formatBatchDate(t.toDate)}
+              </span>
+              <span className="mr-auto" style={{ ...F, fontSize: 11, color: "#94a3b8" }}>
+                {new Date(t.createdAt).toLocaleDateString("ar-EG")}
+              </span>
+            </div>
+
+            <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>السبب: {t.reasonName}</span>
+
+            {(t.referenceNumber || t.referenceDate) && (
+              <span style={{ ...F, fontSize: 12, color: "#717d96" }}>
+                المرجع: {t.referenceNumber || "-"}
+                {t.referenceDate ? ` بتاريخ ${formatBatchDate(t.referenceDate)}` : ""}
+              </span>
+            )}
+
+            {t.penaltyDays && (
+              <span style={{ ...F, fontSize: 12, color: "#717d96" }}>
+                مدة المؤثر: {t.penaltyDays.toLocaleString("ar-EG")} يوم
+              </span>
+            )}
+
+            {t.notes && <span style={{ ...F, fontSize: 12, color: "#717d96" }}>ملاحظات: {t.notes}</span>}
+
+            {t.removedFromShipment && (
+              <span style={{ ...F, fontSize: 11, color: "#9a3412" }}>
+                اتشال من إرسالية السجلات العسكرية بتاعة الدفعة القديمة.
+              </span>
+            )}
+          </div>
+        ))}
       </div>
     </div>,
     document.body
@@ -1198,7 +1503,9 @@ export function ReserveBatchesPage() {
         original.receivedLicense !== soldier.receivedLicense ||
         original.receivedLiteracy !== soldier.receivedLiteracy ||
         original.model1sReview !== soldier.model1sReview ||
-        (original.model1sNotes ?? "") !== (soldier.model1sNotes ?? "")
+        (original.model1sNotes ?? "") !== (soldier.model1sNotes ?? "") ||
+        original.mobilization1 !== soldier.mobilization1 ||
+        original.mobilization2 !== soldier.mobilization2
       );
     });
   }, [soldierData]);
@@ -1206,6 +1513,13 @@ export function ReserveBatchesPage() {
   useEffect(() => {
     setDirty(isDirty);
   }, [isDirty, setDirty]);
+
+  // رسالة الخطأ بتختفي لوحدها بعد ٨ ثواني
+  useEffect(() => {
+    if (!batchError) return;
+    const timer = window.setTimeout(() => setBatchError(""), 8000);
+    return () => window.clearTimeout(timer);
+  }, [batchError]);
 
   useEffect(() => {
     return () => setDirty(false);
@@ -1227,13 +1541,25 @@ export function ReserveBatchesPage() {
     { id: "literacy", label: "استلام محو الأمية" },
     { id: "model1s", label: "مراجعة النموذج (1س)" },
     { id: "model1sNotes", label: "ملاحظات النموذج (1س)" },
+    { id: "mobilization1", label: "التعبئة الأولى" },
+    { id: "mobilization2", label: "التعبئة الثانية" },
+    { id: "records", label: "الإرسال للسجلات" },
+    { id: "certificate", label: "شهادة إنهاء الخدمة" },
+    { id: "transfer", label: "الترحيل" },
     { id: "status", label: "حالة الفرد" },
   ];
 
   const [selectedPrintColumns, setSelectedPrintColumns] =
     useState<Set<string>>(new Set(PRINT_COLUMNS.map((c) => c.id)));
-
   const [showPrintDialog, setShowPrintDialog] = useState(false);
+
+  // شهادة إنهاء الخدمة
+  const [certTarget, setCertTarget] = useState<Soldier | null>(null);
+
+  // الترحيل
+  const [revertTarget, setRevertTarget] = useState<RevertTarget | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<Soldier | null>(null);
+  const [savingCert, setSavingCert] = useState(false);
 
   // ✅ فلتر الوحدة: يعمل على الوحدات الموجودة فعليًا داخل الأفراد
   // المحمّلين حاليًا في الجدول (مش استعلام منفصل لجدول units).
@@ -1367,35 +1693,42 @@ export function ReserveBatchesPage() {
     setUnitFilter("");
     setMilitarySearch("");
 
-    const { data, error } =
-      await supabase
-        .from("personnel")
-        .select(`
-          id,
-          military_number,
-          full_name,
-          discharge_date,
-          is_active,
-          service_status_id,
-          rank_id,
-          primary_unit_id,
-          education_level_id,
-          units:primary_unit_id (
+    let data: any[] = [];
+    let error: any = null;
+
+    try {
+      data = await fetchAllRows((from, to) =>
+        supabase
+          .from("personnel")
+          .select(`
             id,
-            name
-          ),
-          education_level:education_levels!education_level_id (
-            id,
-            requires_literacy_certificate
-          )
-        `)
-        .eq(
-          "discharge_date",
-          selectedBatchObject.batch_date
-        )
-        .order("full_name", {
-          ascending: true,
-        });
+            military_number,
+            full_name,
+            discharge_date,
+            is_active,
+            service_status_id,
+            rank_id,
+            primary_unit_id,
+            education_level_id,
+            units:primary_unit_id (
+              id,
+              name
+            ),
+            education_level:education_levels!education_level_id (
+              id,
+              requires_literacy_certificate
+            ),
+            rank:ranks ( name ),
+            service_status:service_statuses ( code )
+          `)
+          .eq("discharge_date", selectedBatchObject.batch_date)
+          .order("full_name", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to)
+      );
+    } catch (err) {
+      error = err;
+    }
 
     if (error) {
       console.error(
@@ -1429,27 +1762,26 @@ export function ReserveBatchesPage() {
           person.id
       );
 
-    const {
-      data: documents,
-      error: documentsError,
-    } = await supabase
-      .from(
-        "reserve_batch_documents"
-      )
-      .select(`
-        personnel_id,
-        document_type,
-        status,
-        notes
-      `)
-      .eq(
-        "reserve_batch_id",
-        selectedBatchObject.id
-      )
-      .in(
-        "personnel_id",
-        personnelIds
+    // كل مستندات الدفعة على صفحات (من غير .in علشان طول الرابط)
+    let documents: any[] = [];
+    let documentsError: any = null;
+
+    try {
+      const personnelIdSet = new Set(personnelIds);
+
+      const allBatchDocuments = await fetchAllRows((from, to) =>
+        supabase
+          .from("reserve_batch_documents")
+          .select("id, personnel_id, document_type, status, notes")
+          .eq("reserve_batch_id", selectedBatchObject.id)
+          .order("id", { ascending: true })
+          .range(from, to)
       );
+
+      documents = allBatchDocuments.filter((d: any) => personnelIdSet.has(d.personnel_id));
+    } catch (err) {
+      documentsError = err;
+    }
 
     if (documentsError) {
       console.error(
@@ -1530,6 +1862,74 @@ export function ReserveBatchesPage() {
       }
     );
 
+    // أرقام التعبئة + الشهادات
+    const [mobilizationRows, certificateRows, transferRows] = await Promise.all([
+      fetchAllRows((from, to) =>
+        supabase
+          .from("reserve_batch_mobilization")
+          .select("personnel_id, first_number, second_number")
+          .eq("reserve_batch_id", selectedBatchObject.id)
+          .order("personnel_id", { ascending: true })
+          .range(from, to)
+      ).catch(() => [] as any[]),
+
+      fetchByIdsInChunks(personnelIds, (chunk, from, to) =>
+        supabase
+          .from("service_end_certificates")
+          .select("id, personnel_id, certificate_number, certificate_date")
+          .in("personnel_id", chunk)
+          .order("id", { ascending: true })
+          .range(from, to)
+      ).catch(() => [] as any[]),
+
+      fetchByIdsInChunks(personnelIds, (chunk, from, to) =>
+        supabase
+          .from("personnel_batch_transfers")
+          .select(
+            "id, personnel_id, from_batch_id, from_date, to_date, direction, reference_number, reference_date, penalty_days, notes, removed_from_shipment, created_at, reason:reason_code(name)"
+          )
+          .in("personnel_id", chunk)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: true })
+          .range(from, to)
+      ).catch(() => [] as any[]),
+    ]);
+
+    const mobilizationRes = { data: mobilizationRows };
+    const certificatesRes = { data: certificateRows };
+    const transfersRes = { data: transferRows };
+
+    const transfersMap = new Map<string, TransferRecord[]>();
+    (transfersRes.data ?? []).forEach((row: any) => {
+      const reasonRow = Array.isArray(row.reason) ? row.reason[0] : row.reason;
+      const list = transfersMap.get(row.personnel_id) ?? [];
+      list.push({
+        id: row.id,
+        fromBatchId: row.from_batch_id,
+        fromDate: row.from_date,
+        toDate: row.to_date,
+        direction: row.direction,
+        reasonName: reasonRow?.name ?? "-",
+        referenceNumber: row.reference_number,
+        referenceDate: row.reference_date,
+        penaltyDays: row.penalty_days,
+        notes: row.notes,
+        removedFromShipment: row.removed_from_shipment === true,
+        createdAt: row.created_at,
+      });
+      transfersMap.set(row.personnel_id, list);
+    });
+    const mobilizationMap = new Map<string, { first: string; second: string }>();
+    (mobilizationRes.data ?? []).forEach((row: any) =>
+      mobilizationMap.set(row.personnel_id, {
+        first: row.first_number ?? "",
+        second: row.second_number ?? "",
+      })
+    );
+
+    const certificateMap = new Map<string, any>();
+    (certificatesRes.data ?? []).forEach((row: any) => certificateMap.set(row.personnel_id, row));
+
     const mapped: Soldier[] =
       personnel.map(
         (person: any) => {
@@ -1545,7 +1945,9 @@ export function ReserveBatchesPage() {
               person.military_number ||
               "-",
 
-            rank: "جندي",
+            rank:
+              (Array.isArray(person.rank) ? person.rank[0]?.name : person.rank?.name) ||
+              "جندي",
 
             name:
               person.full_name ||
@@ -1584,8 +1986,9 @@ export function ReserveBatchesPage() {
             // اللي ممكن يكون غير متزامن مع service_status_id لو اتعدّل
             // الفرد من صفحة تانية (زي صفحة تعديل بيانات الفرد).
             status:
-              person.service_status_id ===
-              DISCHARGED_STATUS_ID
+              (Array.isArray(person.service_status)
+                ? person.service_status[0]?.code
+                : person.service_status?.code) === "DISCHARGED"
                 ? "منتهي خدمته"
                 : "بالخدمة",
 
@@ -1599,6 +2002,15 @@ export function ReserveBatchesPage() {
             model1sNotes:
               docs?.model1sNotes ||
               "",
+
+            unitId: person.units?.id ?? person.primary_unit_id ?? null,
+            mobilization1: mobilizationMap.get(person.id)?.first ?? "",
+            mobilization2: mobilizationMap.get(person.id)?.second ?? "",
+            sentToRecordsAt: null, // بيتحدّث من قسم إجراءات الدفعة
+            certificateId: certificateMap.get(person.id)?.id ?? null,
+            certificateNumber: certificateMap.get(person.id)?.certificate_number ?? null,
+            certificateDate: certificateMap.get(person.id)?.certificate_date ?? null,
+            transfers: transfersMap.get(person.id) ?? [],
           };
         }
       );
@@ -1873,6 +2285,80 @@ const filteredSoldierData = useMemo(() => {
      حفظ التعديلات
      ========================================================= */
 
+  function updateSoldierMobilization(
+    id: string,
+    field: "mobilization1" | "mobilization2",
+    value: string
+  ) {
+    setSoldierData((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)));
+  }
+
+  // تاريخ الإرسال للسجلات (بيوصل من قسم إجراءات الدفعة)
+  function applyRecordsMap(map: Record<string, string>) {
+    setSoldierData((prev) => prev.map((s) => ({ ...s, sentToRecordsAt: map[s.id] ?? null })));
+  }
+
+  async function recordCertificate(number: string, date: string) {
+    if (!certTarget || !selectedBatchObject) return;
+
+    setSavingCert(true);
+    setBatchError("");
+
+    const { data, error } = await supabase.rpc("record_reserve_batch_certificate", {
+      p_batch_id: selectedBatchObject.id,
+      p_personnel_id: certTarget.id,
+      p_number: number,
+      p_date: date,
+    });
+
+    setSavingCert(false);
+
+    if (error) {
+      setBatchError(error.message);
+      return;
+    }
+
+    const targetId = certTarget.id;
+    const patch = { certificateId: data as string, certificateNumber: number, certificateDate: date };
+
+    setSoldierData((prev) => prev.map((s) => (s.id === targetId ? { ...s, ...patch } : s)));
+    const original = originalSoldierDataRef.current.get(targetId);
+    if (original) originalSoldierDataRef.current.set(targetId, { ...original, ...patch });
+
+    const { userId, userName } = await getCurrentUserInfo();
+    await logActivity({
+      userId,
+      userName,
+      actionType: "UPDATE",
+      action: "تسجيل شهادة إنهاء خدمة",
+      entity: "service_end_certificates",
+      details: `${certTarget.militaryId} - شهادة رقم ${number}`,
+    });
+
+    setCertTarget(null);
+    setSuccessMsg("تم تسجيل شهادة إنهاء الخدمة.");
+    setTimeout(() => setSuccessMsg(""), 3000);
+  }
+
+  async function deleteCertificate(soldier: Soldier) {
+    if (!soldier.certificateId) return;
+    if (!window.confirm(`حذف شهادة إنهاء الخدمة رقم ${soldier.certificateNumber} للفرد ${soldier.militaryId}؟`)) return;
+
+    const { error } = await supabase.rpc("delete_reserve_batch_certificate", {
+      p_certificate_id: soldier.certificateId,
+    });
+
+    if (error) {
+      setBatchError(error.message);
+      return;
+    }
+
+    const patch = { certificateId: null, certificateNumber: null, certificateDate: null };
+    setSoldierData((prev) => prev.map((s) => (s.id === soldier.id ? { ...s, ...patch } : s)));
+    const original = originalSoldierDataRef.current.get(soldier.id);
+    if (original) originalSoldierDataRef.current.set(soldier.id, { ...original, ...patch });
+  }
+
    async function handleSaveChanges() {
     if (!selectedBatchObject) {
       setBatchError("يرجى اختيار دفعة أولاً");
@@ -2006,21 +2492,69 @@ const filteredSoldierData = useMemo(() => {
         }
       });
 
-      if (documentsToSave.length === 0) {
+      // أرقام التعبئة (اللي اتغيرت بس)
+      const canUpdateMobilization = hasPermission("reserve_batches:update_mobilization");
+
+      const mobilizationToSave = canUpdateMobilization
+        ? soldierData
+            .filter((soldier) => {
+              const original = originalSoldierDataRef.current.get(soldier.id);
+              return (
+                original &&
+                (original.mobilization1 !== soldier.mobilization1 ||
+                  original.mobilization2 !== soldier.mobilization2)
+              );
+            })
+            .map((soldier) => {
+              const original = originalSoldierDataRef.current.get(soldier.id)!;
+
+              if (original.mobilization1 !== soldier.mobilization1) {
+                changeLines.push(
+                  `تحديث بيانات ${soldier.militaryId} حقل ${FIELD_LABELS.mobilization1} من ${original.mobilization1 || "لا يوجد"} إلي ${soldier.mobilization1 || "لا يوجد"}`
+                );
+              }
+
+              if (original.mobilization2 !== soldier.mobilization2) {
+                changeLines.push(
+                  `تحديث بيانات ${soldier.militaryId} حقل ${FIELD_LABELS.mobilization2} من ${original.mobilization2 || "لا يوجد"} إلي ${soldier.mobilization2 || "لا يوجد"}`
+                );
+              }
+
+              return {
+                reserve_batch_id: selectedBatchObject.id,
+                personnel_id: soldier.id,
+                first_number: soldier.mobilization1.trim() || null,
+                second_number: soldier.mobilization2.trim() || null,
+                updated_at: new Date().toISOString(),
+              };
+            })
+        : [];
+
+      if (mobilizationToSave.length > 0) {
+        const { error: mobilizationError } = await supabase
+          .from("reserve_batch_mobilization")
+          .upsert(mobilizationToSave, { onConflict: "reserve_batch_id,personnel_id" });
+
+        if (mobilizationError) throw mobilizationError;
+      }
+
+      if (documentsToSave.length === 0 && !canUpdateMobilization) {
         setSuccessMsg("لا توجد لديك صلاحية لحفظ أي تعديلات");
         setTimeout(() => setSuccessMsg(""), 3000);
         setSaving(false);
         return;
       }
 
-      const { error } = await supabase
-        .from("reserve_batch_documents")
-        .upsert(documentsToSave, {
-          onConflict: "personnel_id,reserve_batch_id,document_type",
-        });
+      if (documentsToSave.length > 0) {
+        const { error } = await supabase
+          .from("reserve_batch_documents")
+          .upsert(documentsToSave, {
+            onConflict: "personnel_id,reserve_batch_id,document_type",
+          });
 
-      if (error) {
-        throw error;
+        if (error) {
+          throw error;
+        }
       }
 
       // ✅ نسجّل في سجل العمليات بس لو فيه تغييرات فعلية حصلت
@@ -2075,6 +2609,17 @@ const filteredSoldierData = useMemo(() => {
       return;
     }
 
+    const withoutCertificate = soldierData.filter(
+      (s) => checkedRows.has(s.id) && !s.certificateNumber
+    );
+
+    if (withoutCertificate.length > 0) {
+      setBatchError(
+        `لا يمكن إنهاء الخدمة: ${withoutCertificate.length.toLocaleString("ar-EG")} من الأفراد المحددين لم تُسجل لهم شهادة إنهاء الخدمة بعد.`
+      );
+      return;
+    }
+
     setBatchError("");
     setShowEndDialog(true);
   }
@@ -2085,22 +2630,15 @@ const filteredSoldierData = useMemo(() => {
 
   async function confirmEndService() {
     if (!selectedBatchObject) {
-      setBatchError(
-        "لم يتم اختيار الدفعة"
-      );
+      setBatchError("لم يتم اختيار الدفعة");
       return;
     }
 
-    const ids =
-      Array.from(checkedRows);
+    const ids = Array.from(checkedRows);
 
     if (ids.length === 0) {
       setShowEndDialog(false);
-
-      setBatchError(
-        "يرجى تحديد فرد واحد على الأقل"
-      );
-
+      setBatchError("يرجى تحديد فرد واحد على الأقل");
       return;
     }
 
@@ -2108,269 +2646,50 @@ const filteredSoldierData = useMemo(() => {
     setBatchError("");
 
     try {
-      const {
-        error: personnelError,
-      } = await supabase
-        .from("personnel")
-        .update({
-          is_active: false,
-
-          service_status_id:
-            DISCHARGED_STATUS_ID,
-
-          updated_at:
-            new Date().toISOString(),
-        })
-        .in("id", ids);
-
-      if (personnelError) {
-        throw personnelError;
-      }
-
-      const {
-        data: existingDocuments,
-        error:
-          documentsFetchError,
-      } = await supabase
-        .from(
-          "reserve_batch_documents"
-        )
-        .select(`
-          personnel_id,
-          document_type,
-          status
-        `)
-        .eq(
-          "reserve_batch_id",
-          selectedBatchObject.id
-        )
-        .in(
-          "personnel_id",
-          ids
-        );
-
-      if (documentsFetchError) {
-        throw documentsFetchError;
-      }
-
-      const existingMap = new Map<
-        string,
-        {
-          kariza?: string;
-          license?: string;
-          literacy?: string;
-        }
-      >();
-
-      (
-        existingDocuments ?? []
-      ).forEach((doc: any) => {
-        if (
-          !existingMap.has(
-            doc.personnel_id
-          )
-        ) {
-          existingMap.set(
-            doc.personnel_id,
-            {}
-          );
-        }
-
-        const item =
-          existingMap.get(
-            doc.personnel_id
-          )!;
-
-        if (
-          doc.document_type ===
-          "KARIZA"
-        ) {
-          item.kariza =
-            doc.status;
-        }
-
-        if (
-          doc.document_type ===
-          "LICENSE"
-        ) {
-          item.license =
-            doc.status;
-        }
-
-        if (
-          doc.document_type ===
-          "LITERACY"
-        ) {
-          item.literacy =
-            doc.status;
-        }
+      // كل التحقق والتنفيذ وسجل العمليات بيحصل في قاعدة البيانات
+      const { data, error } = await supabase.rpc("end_reserve_batch_service", {
+        p_batch_id: selectedBatchObject.id,
+        p_personnel_ids: ids,
       });
 
-      const documentsToUpsert: any[] =
-        [];
+      if (error) throw error;
 
-      ids.forEach(
-        (personnelId) => {
-          const existing =
-            existingMap.get(
-              personnelId
-            );
+      const result = (data ?? {}) as { ended?: number; already_discharged?: number };
+      const ended = result.ended ?? 0;
+      const already = result.already_discharged ?? 0;
 
-          documentsToUpsert.push({
-            personnel_id:
-              personnelId,
+      if (ended > 0) {
+        const { userName } = await getCurrentUserInfo();
 
-            reserve_batch_id:
-              selectedBatchObject.id,
-
-            document_type:
-              "KARIZA",
-
-            status:
-              existing?.kariza ||
-              "PENDING",
-
-            updated_at:
-              new Date().toISOString(),
-          });
-        }
-      );
-
-      const selectedPersonnel =
-        soldierData.filter(
-          (soldier) =>
-            ids.includes(soldier.id)
-        );
-      // ✅ سطور التغيير - بس للأفراد اللي فعلاً هتتغير حالتهم
-      const changeLines = selectedPersonnel
-        .filter((s) => s.status !== "منتهي خدمته")
-        .map(
-          (s) =>
-            `تحديث بيانات ${s.militaryId} حقل حالة الفرد من ${s.status} إلي منتهي خدمته`
-        );
-        selectedPersonnel.forEach(
-        (soldier) => {
-          if (
-            hasLicenseEligibility(
-              soldier.militaryId
-            )
-          ) {
-            const existing =
-              existingMap.get(
-                soldier.id
-              );
-
-            documentsToUpsert.push({
-              personnel_id:
-                soldier.id,
-
-              reserve_batch_id:
-                selectedBatchObject.id,
-
-              document_type:
-                "LICENSE",
-
-              status:
-                existing?.license ||
-                "PENDING",
-
-              updated_at:
-                new Date().toISOString(),
-            });
-          }
-
-          if (soldier.requiresLiteracy) {
-            const existing =
-              existingMap.get(
-                soldier.id
-              );
-
-            documentsToUpsert.push({
-              personnel_id:
-                soldier.id,
-
-              reserve_batch_id:
-                selectedBatchObject.id,
-
-              document_type:
-                "LITERACY",
-
-              status:
-                existing?.literacy ||
-                "PENDING",
-
-              updated_at:
-                new Date().toISOString(),
-            });
-          }
-        }
-      );
-
-      const {
-        error:
-          documentsUpsertError,
-      } = await supabase
-        .from(
-          "reserve_batch_documents"
-        )
-        .upsert(
-          documentsToUpsert,
-          {
-            onConflict:
-              "personnel_id,reserve_batch_id,document_type",
-          }
-        );
-
-      if (documentsUpsertError) {
-        throw documentsUpsertError;
+        await createNotification({
+          title: "تم إنهاء خدمة أفراد",
+          body: `تم إنهاء خدمة ${ended} فردًا من دفعة ${
+            selectedBatchObject.name || formatBatchDate(selectedBatchObject.batch_date)
+          }`,
+          type: "warning",
+          entityType: "reserve_batch",
+          entityId: selectedBatchObject.id,
+          userName,
+        });
       }
-      const { userId, userName } = await getCurrentUserInfo();
-await logActivity({
-  userId,
-  userName,
-  actionType: "UPDATE",
-  action: "إنهاء خدمة أفراد",
-  entity: "personnel",
-  details: changeLines.join("\n"),
-});
-await createNotification({
-  title: "تم إنهاء خدمة أفراد",
-  body: `تم إنهاء خدمة ${selectedPersonnel.length} فردًا من دفعة ${
-    selectedBatchObject.name ||
-    formatBatchDate(selectedBatchObject.batch_date)
-  }`,
-  type: "warning",
-  entityType: "reserve_batch",
-  entityId: selectedBatchObject.id,
-  userName,
-});
 
       setShowEndDialog(false);
-
       setCheckedRows(new Set());
 
       setSuccessMsg(
-        "تم إنهاء خدمة الأفراد المحددين وتحديث حالتهم بنجاح"
+        ended > 0
+          ? `تم إنهاء خدمة ${ended.toLocaleString("ar-EG")} فرد بنجاح${
+              already > 0 ? `، و${already.toLocaleString("ar-EG")} كانت خدمتهم منتهية بالفعل.` : "."
+            }`
+          : "كل الأفراد المحددين خدمتهم منتهية بالفعل."
       );
 
-      setTimeout(
-        () => setSuccessMsg(""),
-        3000
-      );
+      setTimeout(() => setSuccessMsg(""), 5000);
 
       await loadSoldiers();
     } catch (error: any) {
-      console.error(
-        "end service error:",
-        error
-      );
-
-      setBatchError(
-        `حدث خطأ أثناء إنهاء الخدمة: ${
-          error?.message ||
-          "خطأ غير معروف"
-        }`
-      );
+      console.error("end service error:", error);
+      setBatchError(`حدث خطأ أثناء إنهاء الخدمة: ${error?.message || "خطأ غير معروف"}`);
     } finally {
       setSaving(false);
     }
@@ -2394,6 +2713,7 @@ await createNotification({
     }
 
     setBatchError("");
+    setRevertTarget(null);
     setShowTransferDialog(true);
   }
 
@@ -2401,33 +2721,14 @@ await createNotification({
      تأكيد الترحيل
      ========================================================= */
 
-  async function confirmTransfer(
-    targetBatchId: string
-  ) {
-    const targetBatch =
-      batches.find(
-        (b) =>
-          b.id ===
-          targetBatchId
-      );
+   async function confirmTransfer(payload: TransferPayload) {
+    if (!selectedBatchObject) return;
 
-    if (!targetBatch) {
-      setBatchError(
-        "يرجى اختيار دفعة الترحيل"
-      );
-      return;
-    }
-
-    const ids =
-      Array.from(checkedRows);
+    const ids = revertTarget ? [revertTarget.soldier.id] : Array.from(checkedRows);
 
     if (ids.length === 0) {
       setShowTransferDialog(false);
-
-      setBatchError(
-        "يرجى تحديد فرد واحد على الأقل"
-      );
-
+      setBatchError("يرجى تحديد فرد واحد على الأقل");
       return;
     }
 
@@ -2435,83 +2736,70 @@ await createNotification({
     setBatchError("");
 
     try {
-      const { error } =
-        await supabase
-          .from("personnel")
-          .update({
-            discharge_date:
-              targetBatch.batch_date,
+      const { data, error } = await supabase.rpc("transfer_personnel_batch", {
+        p_personnel_ids: ids,
+        p_to_batch_id: payload.toBatchId,
+        p_reason_code: payload.reasonCode,
+        p_reference_number: payload.referenceNumber || null,
+        p_reference_date: payload.referenceDate || null,
+        p_penalty_days: payload.penaltyDays,
+        p_notes: payload.notes || null,
+        p_reverts_transfer_id: payload.revertsTransferId,
+      });
 
-            updated_at:
-              new Date().toISOString(),
-          })
-          .in("id", ids);
+      if (error) throw error;
 
-      if (error) {
-        throw error;
-      }
-const transferredSoldiers = soldierData.filter((s) =>
-  ids.includes(s.id)
-);
-// ✅ سطور التغيير - دفعة الترحيل القديمة والجديدة لكل فرد
-const changeLines = transferredSoldiers.map(
-  (s) =>
-    `تحديث بيانات ${s.militaryId} حقل دفعة الترحيل من ${selectedBatchLabel} إلي ${
-      targetBatch.name || formatBatchDate(targetBatch.batch_date)
-    }`
-);
-const { userId, userName } = await getCurrentUserInfo();
+      const result = (data ?? {}) as { moved?: number; removed_from_shipments?: number };
 
-await logActivity({
-  userId,
-  userName,
-  actionType: "UPDATE",
-  action: "ترحيل أفراد إلى دفعة أخرى",
-  entity: "personnel",
-  details: changeLines.join("\n"),
-});
-await createNotification({
-  title: "تم ترحيل أفراد",
-  body: `تم ترحيل ${transferredSoldiers.length} فردًا إلى ${
-    targetBatch.name || formatBatchDate(targetBatch.batch_date)
-  }`,
-  type: "info",
-  entityType: "reserve_batch",
-  entityId: targetBatch.id,
-  userName,
-});
+      const transferredSoldiers = soldierData.filter((s) => ids.includes(s.id));
+
+      const changeLines = transferredSoldiers.map(
+        (s) =>
+          `تحديث بيانات ${s.militaryId} حقل دفعة الترحيل من ${selectedBatchLabel} إلي ${payload.targetLabel} - السبب: ${payload.reasonName}${
+            payload.referenceNumber ? ` - المرجع: ${payload.referenceNumber}` : ""
+          }`
+      );
+
+      const { userId, userName } = await getCurrentUserInfo();
+
+      await logActivity({
+        userId,
+        userName,
+        actionType: "UPDATE",
+        action: revertTarget ? "إلغاء ترحيل فرد" : "ترحيل أفراد إلى دفعة أخرى",
+        entity: "personnel",
+        details: changeLines.join("\n"),
+      });
+
+      await createNotification({
+        title: revertTarget ? "تم إلغاء ترحيل فرد" : "تم ترحيل أفراد",
+        body: `تم ترحيل ${transferredSoldiers.length} فردًا إلى ${payload.targetLabel} (${payload.reasonName})`,
+        type: "info",
+        entityType: "reserve_batch",
+        entityId: payload.toBatchId,
+        userName,
+      });
 
       setShowTransferDialog(false);
-
+      setRevertTarget(null);
       setCheckedRows(new Set());
 
+      const removed = result.removed_from_shipments ?? 0;
+
       setSuccessMsg(
-        `تم ترحيل الأفراد إلى ${
-          targetBatch.name ||
-          formatBatchDate(
-            targetBatch.batch_date
-          )
-        } بنجاح`
+        `تم ترحيل ${(result.moved ?? ids.length).toLocaleString("ar-EG")} فرد إلى ${payload.targetLabel} بنجاح${
+          removed > 0
+            ? `، واتشال ${removed.toLocaleString("ar-EG")} منهم من إرسالية السجلات العسكرية (محتاجين يتبعتوا تاني).`
+            : "."
+        }`
       );
 
-      setTimeout(
-        () => setSuccessMsg(""),
-        3000
-      );
+      setTimeout(() => setSuccessMsg(""), 6000);
 
       await loadSoldiers();
     } catch (error: any) {
-      console.error(
-        "transfer error:",
-        error
-      );
-
-      setBatchError(
-        `حدث خطأ أثناء ترحيل الأفراد: ${
-          error?.message ||
-          "خطأ غير معروف"
-        }`
-      );
+      console.error("transfer error:", error);
+      setBatchError(`حدث خطأ أثناء ترحيل الأفراد: ${error?.message || "خطأ غير معروف"}`);
     } finally {
       setSaving(false);
     }
@@ -2645,6 +2933,67 @@ await createNotification({
         `}
       </style>
 
+      {/* ✅ جدول بارتفاع الشاشة: الاسكرول الأفقي دايمًا ظاهر + رأس وأعمدة ثابتة */}
+      <style>
+        {`
+          .reserve-table-scroll thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+          }
+
+          .reserve-table-scroll .sticky-col-1,
+          .reserve-table-scroll .sticky-col-2,
+          .reserve-table-scroll .sticky-col-3 {
+            position: sticky;
+            z-index: 1;
+            background: #ffffff;
+          }
+
+          .reserve-table-scroll .sticky-col-1 { right: 0;    width: 44px;  min-width: 44px; }
+          .reserve-table-scroll .sticky-col-2 { right: 44px; width: 56px;  min-width: 56px; }
+          .reserve-table-scroll .sticky-col-3 {
+            right: 100px;
+            min-width: 150px;
+            box-shadow: -2px 0 0 #e2e7f0;
+          }
+
+          .reserve-table-scroll thead th.sticky-col-1,
+          .reserve-table-scroll thead th.sticky-col-2,
+          .reserve-table-scroll thead th.sticky-col-3 {
+            z-index: 3;
+            background: #f7f9fc;
+          }
+
+          .reserve-table-scroll tr.row-checked td.sticky-col-1,
+          .reserve-table-scroll tr.row-checked td.sticky-col-2,
+          .reserve-table-scroll tr.row-checked td.sticky-col-3 {
+            background: #f4f7ff;
+          }
+
+          .reserve-table-scroll tr:hover td.sticky-col-1,
+          .reserve-table-scroll tr:hover td.sticky-col-2,
+          .reserve-table-scroll tr:hover td.sticky-col-3 {
+            background: #fafbff;
+          }
+
+          @media print {
+            .reserve-table-scroll {
+              max-height: none !important;
+              overflow: visible !important;
+            }
+
+            .reserve-table-scroll thead th,
+            .reserve-table-scroll .sticky-col-1,
+            .reserve-table-scroll .sticky-col-2,
+            .reserve-table-scroll .sticky-col-3 {
+              position: static !important;
+              box-shadow: none !important;
+            }
+          }
+        `}
+      </style>
+
       {/* ✅ ستايل ديناميكي لإخفاء الأعمدة الغير مختارة وقت الطباعة فقط */}
       <style>
         {`
@@ -2746,46 +3095,59 @@ await createNotification({
         </button>
       </div>
 
-      {/* =====================================================
-          ERROR
-          ===================================================== */}
-
-      {batchError && (
-        <div
-          className="w-full rounded-[10px] px-4 py-3"
-          style={{
-            background: "#fce9ea",
-            color: "#9d2e15",
-            ...F,
-            fontSize: 14,
-          }}
-        >
-          {batchError}
-        </div>
-      )}
-
-      {/* =====================================================
-          SUCCESS
-          ===================================================== */}
-
-      {successMsg && (
-        <div
-          className="w-full rounded-[10px] px-4 py-3 flex items-center gap-2 justify-start"
-          style={{
-            background: "#dcfce7",
-          }}
-        >
-          <span
-            style={{
-              ...F,
-              fontSize: 14,
-              color: "#166534",
-            }}
+      {(batchError || successMsg) &&
+        createPortal(
+          <div
+            className="no-print fixed bottom-6 left-1/2 -translate-x-1/2 flex flex-col gap-2 w-[min(92vw,560px)]"
+            style={{ zIndex: 1000000 }}
+            dir="rtl"
           >
-            {successMsg}
-          </span>
-        </div>
-      )}
+            {batchError && (
+              <div
+                role="alert"
+                className="rounded-[12px] px-4 py-3 flex items-start gap-3 shadow-xl border"
+                style={{ background: "#fce9ea", borderColor: "#f5c2c7" }}
+              >
+                <AlertTriangle size={18} className="shrink-0 mt-0.5" style={{ color: "#9d2e15" }} />
+                <span className="flex-1" style={{ ...F, fontSize: 14, color: "#9d2e15", lineHeight: 1.7 }}>
+                  {batchError}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setBatchError("")}
+                  className="shrink-0 hover:opacity-70"
+                  style={{ color: "#9d2e15" }}
+                  aria-label="إغلاق"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            )}
+
+            {successMsg && (
+              <div
+                role="status"
+                className="rounded-[12px] px-4 py-3 flex items-start gap-3 shadow-xl border"
+                style={{ background: "#dcfce7", borderColor: "#bbf7d0" }}
+              >
+                <CheckSquare size={18} className="shrink-0 mt-0.5" style={{ color: "#166534" }} />
+                <span className="flex-1" style={{ ...F, fontSize: 14, color: "#166534", lineHeight: 1.7 }}>
+                  {successMsg}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSuccessMsg("")}
+                  className="shrink-0 hover:opacity-70"
+                  style={{ color: "#166534" }}
+                  aria-label="إغلاق"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            )}
+          </div>,
+          document.body
+        )}
 
       {/* =====================================================
           النتائج
@@ -3089,10 +3451,56 @@ await createNotification({
               </div>
             </div>
 
+            {/* الصف الرابع: التعبئة + الإرسال للسجلات + الشهادات */}
+
+            <div className="flex gap-4 w-full mt-4 no-print">
+              <div className="flex-1">
+                <ProgressCard
+                  icon={<CheckSquare size={20} color="#00b867" />}
+                  label="التعبئة مكتملة (الأولى والثانية)"
+                  current={soldierData.filter((s) => s.mobilization1.trim() && s.mobilization2.trim()).length}
+                  total={soldierData.length}
+                />
+              </div>
+
+              <div className="flex-1">
+                <ProgressCard
+                  icon={<CheckSquare size={20} color="#00b867" />}
+                  label="أُرسلت ملفاتهم للسجلات العسكرية"
+                  current={soldierData.filter((s) => s.sentToRecordsAt).length}
+                  total={soldierData.length}
+                />
+              </div>
+
+              <div className="flex-1">
+                <ProgressCard
+                  icon={<CheckSquare size={20} color="#00b867" />}
+                  label="وصلت شهادة إنهاء الخدمة"
+                  current={soldierData.filter((s) => s.certificateNumber).length}
+                  total={soldierData.length}
+                />
+              </div>
+            </div>
+
+            {/* إجراءات الدفعة: القرار + إخطار الوحدات + الإرسال للسجلات */}
+
+            <ReserveBatchProcedures
+              batch={selectedBatchObject}
+              soldiers={soldierData.map((s) => ({
+                id: s.id,
+                unitId: s.unitId,
+                unit: s.unit,
+                militaryId: s.militaryId,
+                name: s.name,
+              }))}
+              checkedIds={Array.from(checkedRows)}
+              canManage={hasPermission("reserve_batches:manage_procedures")}
+              onRecordsMapChange={applyRecordsMap}
+            />
+
             {/* =================================================
                 FILTERS (فلتر الوحدة + بحث الرقم العسكري)
                 ================================================= */}
-
             <div className="flex flex-wrap items-end gap-3 mt-4 no-print">
 
               {/* بحث بالرقم العسكري */}
@@ -3427,6 +3835,7 @@ await createNotification({
         </h2>
               {(hasPermission("reserve_batches:update_documents") ||
                 hasPermission("reserve_batches:update_literacy") ||
+                hasPermission("reserve_batches:update_mobilization") ||
                 hasPermission(
                   "reserve_batches:update_model1s_review"
                 )) && (
@@ -3453,7 +3862,10 @@ await createNotification({
                 TABLE
                 ================================================= */}
 
-            <div className="bg-white rounded-[12px] border border-[#e2e7f0] w-full overflow-x-auto mt-4">
+                     <div
+              className="reserve-table-scroll bg-white rounded-[12px] border border-[#e2e7f0] w-full overflow-auto mt-4"
+              style={{ maxHeight: "calc(100vh - 160px)" }}
+            >
 
               <table
                 className="w-full min-w-[1350px] border-collapse"
@@ -3465,7 +3877,7 @@ await createNotification({
                     {/* تحديد الكل */}
 
                     <th
-                      className={`${thClass} no-print`}
+                      className={`${thClass} no-print sticky-col-1`}
                       style={{
                         width: 44,
                       }}
@@ -3493,7 +3905,13 @@ await createNotification({
                                      {PRINT_COLUMNS.map((col) => (
                       <th
                         key={col.id}
-                        className={`${thClass} ${printColClass(col.id)}`}
+                        className={`${thClass} ${printColClass(col.id)} ${
+                          col.id === "index"
+                            ? "sticky-col-2"
+                            : col.id === "militaryId"
+                            ? "sticky-col-3"
+                            : ""
+                        }`}
                       >
                         <div className="flex items-center gap-1">
                           <span
@@ -3519,7 +3937,7 @@ await createNotification({
                   0 ? (
                     <tr>
                       <td
-                        colSpan={11}
+                 colSpan={PRINT_COLUMNS.length + 1}
                         className="py-10 text-center"
                         style={{
                           ...F,
@@ -3536,7 +3954,7 @@ await createNotification({
                     0 ? (
                     <tr>
                       <td
-                        colSpan={11}
+                    colSpan={PRINT_COLUMNS.length + 1}
                         className="py-10 text-center"
                         style={{
                           ...F,
@@ -3573,7 +3991,7 @@ await createNotification({
                             }
                             className={`hover:bg-[#fafbff] ${
                               isChecked
-                                ? "bg-[#f4f7ff]"
+                                ? "bg-[#f4f7ff] row-checked"
                                 : ""
                             }`}
                           >
@@ -3581,7 +3999,7 @@ await createNotification({
                             {/* Checkbox */}
 
                             <td
-                              className={`${tdClass} no-print`}
+                              className={`${tdClass} no-print sticky-col-1`}
                             >
                               <button
                                 type="button"
@@ -3612,7 +4030,7 @@ await createNotification({
                             {/* م */}
 
                             <td
-                              className={`${tdClass} ${printColClass("index")}`}
+                                                        className={`${tdClass} ${printColClass("index")} sticky-col-2`}
                             >
                               <span
                                 style={{
@@ -3627,7 +4045,7 @@ await createNotification({
                             {/* الرقم العسكري */}
 
                             <td
-                              className={`${tdClass} ${printColClass("militaryId")}`}
+                                                   className={`${tdClass} ${printColClass("militaryId")} sticky-col-3`}
                             >
                               <span
                                 style={{
@@ -3861,6 +4279,169 @@ await createNotification({
                               )}
                             </td>
 
+                                                      {/* التعبئة الأولى */}
+
+                            <td className={`${tdClass} ${printColClass("mobilization1")}`}>
+                              <input
+                                type="text"
+                                value={soldier.mobilization1}
+                                disabled={!hasPermission("reserve_batches:update_mobilization")}
+                                onChange={(e) =>
+                                  updateSoldierMobilization(soldier.id, "mobilization1", e.target.value)
+                                }
+                                placeholder="-"
+                                dir="ltr"
+                                className="w-full min-w-[110px] h-[34px] px-2 rounded-[6px] border border-[#e2e7f0] outline-none text-center disabled:bg-[#f1f3f6] disabled:cursor-not-allowed"
+                                style={{ ...F, fontSize: 12, color: "#2d3648" }}
+                              />
+                            </td>
+
+                            {/* التعبئة الثانية */}
+
+                            <td className={`${tdClass} ${printColClass("mobilization2")}`}>
+                              <input
+                                type="text"
+                                value={soldier.mobilization2}
+                                disabled={!hasPermission("reserve_batches:update_mobilization")}
+                                onChange={(e) =>
+                                  updateSoldierMobilization(soldier.id, "mobilization2", e.target.value)
+                                }
+                                placeholder="-"
+                                dir="ltr"
+                                className="w-full min-w-[110px] h-[34px] px-2 rounded-[6px] border border-[#e2e7f0] outline-none text-center disabled:bg-[#f1f3f6] disabled:cursor-not-allowed"
+                                style={{ ...F, fontSize: 12, color: "#2d3648" }}
+                              />
+                            </td>
+
+                            {/* الإرسال للسجلات */}
+
+                            <td className={`${tdClass} ${printColClass("records")}`}>
+                              {soldier.sentToRecordsAt ? (
+                                <span
+                                  className="inline-flex px-2 py-0.5 rounded-full whitespace-nowrap"
+                                  style={{ ...F, fontSize: 11, fontWeight: 700, background: "#e8f0fe", color: "#172e78" }}
+                                >
+                                  أُرسل {formatBatchDate(soldier.sentToRecordsAt)}
+                                </span>
+                              ) : (
+                                <span style={{ ...F, fontSize: 12, color: "#a1aebe" }}>لم يُرسل</span>
+                              )}
+                            </td>
+
+                            {/* شهادة إنهاء الخدمة */}
+
+                            <td className={`${tdClass} ${printColClass("certificate")}`}>
+                              {soldier.certificateNumber ? (
+                                <div className="flex items-center gap-1.5">
+                                  <div className="flex flex-col">
+                                    <span style={{ ...F, fontSize: 12, fontWeight: 700, color: "#166534" }}>
+                                      {soldier.certificateNumber}
+                                    </span>
+                                    <span style={{ ...F, fontSize: 10, color: "#717d96" }}>
+                                      {soldier.certificateDate ? formatBatchDate(soldier.certificateDate) : ""}
+                                    </span>
+                                  </div>
+                                  {hasPermission("reserve_batches:certificates") &&
+                                    soldier.status === "بالخدمة" && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void deleteCertificate(soldier)}
+                                        title="حذف الشهادة"
+                                        className="no-print text-[#991b1b] hover:opacity-70"
+                                      >
+                                        <X size={13} />
+                                      </button>
+                                    )}
+                                </div>
+                              ) : hasPermission("reserve_batches:certificates") ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setCertTarget(soldier)}
+                                  className="no-print px-2.5 h-[30px] rounded-[6px] border border-[#00b867] whitespace-nowrap"
+                                  style={{ ...F, fontSize: 11, color: "#00522e" }}
+                                >
+                                  تسجيل الشهادة
+                                </button>
+                              ) : (
+                                <span style={{ ...F, fontSize: 12, color: "#a1aebe" }}>-</span>
+                              )}
+                            </td>
+                            {/* الترحيل */}
+
+                            <td className={`${tdClass} ${printColClass("transfer")}`}>
+                              {(() => {
+                                const last = soldier.transfers.find(
+                                  (t) => t.toDate === selectedBatchObject?.batch_date
+                                );
+
+                                if (!last) {
+                                  return soldier.transfers.length > 0 ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setHistoryTarget(soldier)}
+                                      className="no-print flex items-center gap-1 hover:underline"
+                                      style={{ ...F, fontSize: 11, color: "#1f3d97" }}
+                                    >
+                                      <History size={12} />
+                                      سجل الترحيلات
+                                    </button>
+                                  ) : (
+                                    <span style={{ ...F, fontSize: 12, color: "#a1aebe" }}>-</span>
+                                  );
+                                }
+
+                                return (
+                                  <div className="flex flex-col gap-1 min-w-[170px]">
+                                    <span
+                                      className="inline-flex w-fit px-2 py-0.5 rounded-full whitespace-nowrap"
+                                      style={{
+                                        ...F,
+                                        fontSize: 11,
+                                        fontWeight: 700,
+                                        background: last.direction === "postpone" ? "#fff8e8" : "#e8f0fe",
+                                        color: last.direction === "postpone" ? "#8a6500" : "#172e78",
+                                      }}
+                                    >
+                                      {last.direction === "postpone" ? "مُرحّل من" : "مُقدّم من"}{" "}
+                                      {last.fromDate ? formatBatchDate(last.fromDate) : "-"}
+                                    </span>
+                                    <span style={{ ...F, fontSize: 11, color: "#717d96" }}>{last.reasonName}</span>
+
+                                    <div className="no-print flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => setHistoryTarget(soldier)}
+                                        className="flex items-center gap-1 hover:underline"
+                                        style={{ ...F, fontSize: 11, color: "#1f3d97" }}
+                                      >
+                                        <History size={12} />
+                                        السجل
+                                      </button>
+
+                                      {last.direction === "postpone" &&
+                                        last.fromBatchId &&
+                                        soldier.status === "بالخدمة" &&
+                                        !soldier.certificateNumber &&
+                                        hasPermission("reserve_batches:transfer") && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setRevertTarget({ soldier, transfer: last });
+                                              setShowTransferDialog(true);
+                                            }}
+                                            className="flex items-center gap-1 hover:underline"
+                                            style={{ ...F, fontSize: 11, color: "#00522e" }}
+                                          >
+                                            <Undo2 size={12} />
+                                            إلغاء الترحيل
+                                          </button>
+                                        )}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </td>
+
                             {/* حالة الفرد */}
 
                             <td
@@ -3925,33 +4506,49 @@ await createNotification({
             confirmEndService
           }
           saving={saving}
+          missingCertificates={
+            soldierData.filter(
+              (s) => checkedRows.has(s.id) && !s.certificateNumber
+            ).length
+          }
         />
       )}
 
       {/* =====================================================
           TRANSFER POPUP
           ===================================================== */}
-      {showTransferDialog && (
+      {showTransferDialog && selectedBatchObject && (
         <TransferDialog
-          batches={batches}
-          selectedBatchId={selectedBatch}
+          currentBatch={selectedBatchObject}
+          count={revertTarget ? 1 : checkedRows.size}
+          revert={revertTarget}
           onCancel={() => {
             if (!saving) {
-              setShowTransferDialog(
-                false
-              );
+              setShowTransferDialog(false);
+              setRevertTarget(null);
             }
           }}
-          onConfirm={
-            confirmTransfer
-          }
+          onConfirm={(payload) => void confirmTransfer(payload)}
           saving={saving}
         />
+      )}
+
+      {historyTarget && (
+        <TransferHistoryDialog soldier={historyTarget} onClose={() => setHistoryTarget(null)} />
       )}
 
       {/* =====================================================
           PRINT COLUMNS POPUP
           ===================================================== */}
+
+      {certTarget && (
+        <CertificateDialog
+          soldierLabel={`${certTarget.militaryId} - ${certTarget.name}`}
+          saving={savingCert}
+          onCancel={() => !savingCert && setCertTarget(null)}
+          onConfirm={(number, date) => void recordCertificate(number, date)}
+        />
+      )}
 
       {showPrintDialog && (
         <PrintColumnsDialog

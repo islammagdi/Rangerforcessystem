@@ -34,7 +34,7 @@ import {
 } from "../../lib/letterTypeEngine";
 import { STAGE_MONTHS } from "../../lib/trainingRecommendations";
 import imgEagle from "figma:asset/af406d517dfa4e5b22e9993bd61d8e4e002646b6.png";
-
+import { todayLocalIso } from "../../lib/dates";
 const PF: React.CSSProperties = {
   fontFamily: "'Times New Roman', Times, serif",
 };
@@ -1038,7 +1038,7 @@ function generatePlaceholderValue(
     case "number":
       return String(10 + variantIndex);
     case "date":
-      return new Date().toISOString().slice(0, 10);
+      return todayLocalIso();
     case "month":
       return STAGE_MONTHS[variantIndex % STAGE_MONTHS.length]?.value?.toString() ?? "";
     case "select_unit":

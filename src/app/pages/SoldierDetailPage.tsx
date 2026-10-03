@@ -8,9 +8,14 @@ import {
   Plus,
   ArrowDownUp,
   Download,
+  Award,
+  ExternalLink,
+  AlertTriangle,
+  FileText,
+  ChevronsUp,
 } from "lucide-react";
-
-import { DeleteConfirmDialog } from "../components/dashboard/DeleteConfirmDialog";
+import { CASE_STATUS_META, caseNumber, type CaseStatus } from "./NcoDischargesPage";
+import { SoftDeleteDialog } from "../components/dashboard/SoftDeleteDialog";
 import { supabase } from "../../lib/supabase";
 
 const FONT = {
@@ -46,6 +51,52 @@ type Soldier = {
     job: string;            // ✅ جديد
   isVolunteer: boolean;   // ✅ جديد
   letters: Letter[];
+  transfers: TransferItem[];
+  serviceEnd: ServiceEndSummary | null;
+  rankHistory: RankMovement[];
+};
+
+type RankMovement = {
+  id: string;
+  rankName: string | null;
+  date: string;
+  decisionNumber: string | null;
+  movementType: "promotion" | "demotion";
+  notes: string | null;
+};
+
+type ServiceEndSummary = {
+  caseId: string | null;
+  caseNumber: string | null;
+  caseStatus: CaseStatus | null;
+  reasonName: string | null;
+  decisionNumber: string | null;
+  decisionDate: string | null;
+  decisionAuthority: string | null;
+  caseCreatedAt: string | null;
+  caseCompletedAt: string | null;
+  certificateNumber: string | null;
+  certificateDate: string | null;
+  certificateSourceText: string | null;
+};
+
+const ACTIVE_CASE_STATUSES: CaseStatus[] = ["awaiting_notification", "in_progress", "submitted"];
+
+type TransferItem = {
+  id: string;
+  fromDate: string;
+  toDate: string;
+  fromBatchName: string | null;
+  toBatchName: string | null;
+  direction: "postpone" | "advance";
+  reasonName: string;
+  referenceNumber: string | null;
+  referenceDate: string | null;
+  penaltyDays: number | null;
+  notes: string | null;
+  removedFromShipment: boolean;
+  createdAt: string;
+  createdByName: string | null;
 };
 
 /* =========================================================
@@ -391,6 +442,230 @@ function LettersTable({
 }
 
 /* =========================================================
+   Rank History Table
+========================================================= */
+
+function movementLabel(type: "promotion" | "demotion", isVolunteer: boolean) {
+  if (type === "demotion") return "عزل مجند";
+  return isVolunteer ? "ترقية" : "ترقي مجند";
+}
+
+function RankHistoryTable({
+  rows,
+  isVolunteer,
+}: {
+  rows: RankMovement[];
+  isVolunteer: boolean;
+}) {
+  const thClass =
+    "px-4 py-3 text-right border-b-2 border-[#d4d8fa] whitespace-nowrap bg-white";
+  const tdClass = "px-4 py-3 text-right border-b border-[#eaecf0] align-top";
+
+  const headers = ["م", "الحركة", "الدرجة بعد الحركة", "التاريخ", "رقم القرار", "ملاحظات / السبب"];
+
+  return (
+    <div className="w-full overflow-x-auto">
+      <table className="w-full min-w-[800px]" dir="rtl">
+        <thead>
+          <tr>
+            {headers.map((h) => (
+              <th key={h} className={thClass}>
+                <span style={{ ...FONT, fontSize: 16, color: "#717d96" }}>{h}</span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={headers.length} className={`${tdClass} text-center py-8`}>
+                <span style={{ ...FONT, fontSize: 16, color: "#717d96" }}>
+                  لا توجد ترقيات مسجلة لهذا الفرد
+                </span>
+              </td>
+            </tr>
+          ) : (
+            rows.map((row, index) => (
+              <tr key={row.id} className="hover:bg-[#fafafa] transition-colors">
+                <td className={tdClass}>
+                  <span style={{ ...FONT, fontSize: 15, color: "#2d3648" }}>
+                    {(rows.length - index).toLocaleString("ar-EG")}
+                  </span>
+                </td>
+
+                <td className={tdClass}>
+                  <span
+                    className="inline-flex px-2.5 py-0.5 rounded-full whitespace-nowrap"
+                    style={{
+                      ...FONT,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      background: row.movementType === "promotion" ? "#DCF4DF" : "#fce9ea",
+                      color: row.movementType === "promotion" ? "#00522E" : "#9d2e15",
+                    }}
+                  >
+                    {movementLabel(row.movementType, isVolunteer)}
+                  </span>
+                </td>
+
+                <td className={tdClass}>
+                  <span style={{ ...FONT, fontSize: 15, fontWeight: 700, color: "#2d3648" }}>
+                    {row.rankName ?? "-"}
+                  </span>
+                </td>
+
+                <td className={tdClass}>
+                  <span className="whitespace-nowrap" style={{ ...FONT, fontSize: 15, color: "#2d3648" }}>
+                    {formatDate(row.date)}
+                  </span>
+                </td>
+
+                <td className={tdClass}>
+                  <span style={{ ...FONT, fontSize: 15, color: "#2d3648" }}>{row.decisionNumber || "-"}</span>
+                </td>
+
+                <td className={tdClass}>
+                  <span style={{ ...FONT, fontSize: 14, color: "#717d96" }}>{row.notes || "-"}</span>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* =========================================================
+   Transfers Table
+========================================================= */
+
+function batchText(name: string | null, date: string) {
+  return name ? `${name} (${formatDate(date)})` : formatDate(date);
+}
+
+function TransfersTable({ transfers }: { transfers: TransferItem[] }) {
+  const thClass =
+    "px-4 py-3 text-right border-b-2 border-[#d4d8fa] whitespace-nowrap bg-white";
+  const tdClass = "px-4 py-3 text-right border-b border-[#eaecf0] align-top";
+
+  const headers = [
+    "م",
+    "النوع",
+    "من دفعة",
+    "إلى دفعة",
+    "السبب",
+    "المرجع",
+    "مدة المؤثر",
+    "التاريخ",
+    "بواسطة",
+  ];
+
+  return (
+    <div className="w-full overflow-x-auto">
+      <table className="w-full min-w-[1000px]" dir="rtl">
+        <thead>
+          <tr>
+            {headers.map((h) => (
+              <th key={h} className={thClass}>
+                <span style={{ ...FONT, fontSize: 16, color: "#717d96" }}>{h}</span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+
+        <tbody>
+          {transfers.length === 0 ? (
+            <tr>
+              <td colSpan={headers.length} className={`${tdClass} text-center py-8`}>
+                <span style={{ ...FONT, fontSize: 16, color: "#717d96" }}>
+                  لم يتم ترحيل الفرد لأي دفعة أخرى
+                </span>
+              </td>
+            </tr>
+          ) : (
+            transfers.map((t, index) => (
+              <tr key={t.id} className="hover:bg-[#fafafa] transition-colors">
+                <td className={tdClass}>
+                  <span style={{ ...FONT, fontSize: 15, color: "#2d3648" }}>
+                    {(transfers.length - index).toLocaleString("ar-EG")}
+                  </span>
+                </td>
+
+                <td className={tdClass}>
+                  <span
+                    className="inline-flex px-2.5 py-0.5 rounded-full whitespace-nowrap"
+                    style={{
+                      ...FONT,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      background: t.direction === "postpone" ? "#fff8e8" : "#e8f0fe",
+                      color: t.direction === "postpone" ? "#8a6500" : "#172e78",
+                    }}
+                  >
+                    {t.direction === "postpone" ? "تأجيل" : "تقديم"}
+                  </span>
+                </td>
+
+                <td className={tdClass}>
+                  <span style={{ ...FONT, fontSize: 15, color: "#2d3648" }}>
+                    {batchText(t.fromBatchName, t.fromDate)}
+                  </span>
+                </td>
+
+                <td className={tdClass}>
+                  <span style={{ ...FONT, fontSize: 15, color: "#2d3648" }}>
+                    {batchText(t.toBatchName, t.toDate)}
+                  </span>
+                </td>
+
+                <td className={tdClass}>
+                  <div className="flex flex-col gap-1 min-w-[180px]">
+                    <span style={{ ...FONT, fontSize: 15, color: "#2d3648" }}>{t.reasonName}</span>
+                    {t.notes && (
+                      <span style={{ ...FONT, fontSize: 13, color: "#717d96" }}>{t.notes}</span>
+                    )}
+                    {t.removedFromShipment && (
+                      <span style={{ ...FONT, fontSize: 12, color: "#9a3412" }}>
+                        اتشال من إرسالية السجلات العسكرية بتاعة الدفعة القديمة
+                      </span>
+                    )}
+                  </div>
+                </td>
+
+                <td className={tdClass}>
+                  <span style={{ ...FONT, fontSize: 15, color: "#2d3648" }}>
+                    {t.referenceNumber || "-"}
+                    {t.referenceDate ? ` / ${formatDate(t.referenceDate)}` : ""}
+                  </span>
+                </td>
+
+                <td className={tdClass}>
+                  <span style={{ ...FONT, fontSize: 15, color: "#2d3648" }}>
+                    {t.penaltyDays ? `${t.penaltyDays.toLocaleString("ar-EG")} يوم` : "-"}
+                  </span>
+                </td>
+
+                <td className={tdClass}>
+                  <span className="whitespace-nowrap" style={{ ...FONT, fontSize: 15, color: "#2d3648" }}>
+                    {formatDate(t.createdAt)}
+                  </span>
+                </td>
+
+                <td className={tdClass}>
+                  <span style={{ ...FONT, fontSize: 15, color: "#2d3648" }}>{t.createdByName || "-"}</span>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* =========================================================
    Print
 ========================================================= */
 
@@ -656,10 +931,10 @@ function printSoldier(
               <tr>
                 <td class="label">الإدارة/السلاح</td>
                 ${
-                  soldier.isVolunteer
+                  soldier.isVolunteer && soldier.dischargeDate === "-"
                     ? `<td class="value" colspan="3">${soldier.administration || "-"}</td>`
                     : `<td class="value">${soldier.administration || "-"}</td>
-                       <td class="label">تاريخ التسريح</td>
+                       <td class="label">${soldier.isVolunteer ? "تاريخ إنهاء الخدمة" : "تاريخ التسريح"}</td>
                        <td class="value">${soldier.dischargeDate || "-"}</td>`
                 }
               </tr>
@@ -670,6 +945,112 @@ function printSoldier(
               </tr>
             </table>
           </div>
+
+          ${
+            soldier.serviceEnd
+              ? `
+          <hr class="section-divider" />
+
+          <div class="section">
+            <div class="section-title">موقف إنهاء الخدمة</div>
+
+            <table class="info-table">
+              ${
+                soldier.serviceEnd.caseId
+                  ? `
+              <tr>
+                <td class="label">رقم الملف</td>
+                <td class="value">${soldier.serviceEnd.caseNumber ?? "-"}</td>
+                <td class="label">حالة الملف</td>
+                <td class="value">${
+                  soldier.serviceEnd.caseStatus ? CASE_STATUS_META[soldier.serviceEnd.caseStatus].label : "-"
+                }</td>
+              </tr>
+              <tr>
+                <td class="label">السبب</td>
+                <td class="value">${soldier.serviceEnd.reasonName ?? "-"}</td>
+                <td class="label">القرار</td>
+                <td class="value">${soldier.serviceEnd.decisionNumber ?? "-"}${
+                      soldier.serviceEnd.decisionDate ? ` / ${formatDate(soldier.serviceEnd.decisionDate)}` : ""
+                    }</td>
+              </tr>`
+                  : ""
+              }
+              <tr>
+                <td class="label">رقم الشهادة</td>
+                <td class="value">${soldier.serviceEnd.certificateNumber ?? "لم تصدر بعد"}</td>
+                <td class="label">تاريخ الشهادة</td>
+                <td class="value">${
+                  soldier.serviceEnd.certificateDate ? formatDate(soldier.serviceEnd.certificateDate) : "-"
+                }</td>
+              </tr>
+            </table>
+          </div>`
+              : ""
+          }
+
+          ${
+            soldier.transfers.length > 0
+              ? `
+          <hr class="section-divider" />
+
+          <div class="section">
+            <div class="section-title">سجل الترحيلات</div>
+
+            <table class="info-table">
+              <tr>
+                <td class="label" style="width:auto;">النوع</td>
+                <td class="label" style="width:auto;">من دفعة</td>
+                <td class="label" style="width:auto;">إلى دفعة</td>
+                <td class="label" style="width:auto;">السبب</td>
+                <td class="label" style="width:auto;">المرجع</td>
+              </tr>
+              ${soldier.transfers
+                .map(
+                  (t) => `
+              <tr>
+                <td>${t.direction === "postpone" ? "تأجيل" : "تقديم"}</td>
+                <td>${batchText(t.fromBatchName, t.fromDate)}</td>
+                <td>${batchText(t.toBatchName, t.toDate)}</td>
+                <td>${t.reasonName}${t.penaltyDays ? ` (${t.penaltyDays} يوم)` : ""}</td>
+                <td>${t.referenceNumber || "-"}${t.referenceDate ? ` / ${formatDate(t.referenceDate)}` : ""}</td>
+              </tr>`
+                )
+                .join("")}
+            </table>
+          </div>`
+              : ""
+          }
+          ${
+            soldier.rankHistory.length > 0
+              ? `
+          <hr class="section-divider" />
+
+          <div class="section">
+            <div class="section-title">سجل الترقي</div>
+
+            <table class="info-table">
+              <tr>
+                <td class="label" style="width:auto;">الحركة</td>
+                <td class="label" style="width:auto;">الدرجة</td>
+                <td class="label" style="width:auto;">التاريخ</td>
+                <td class="label" style="width:auto;">رقم القرار</td>
+              </tr>
+              ${soldier.rankHistory
+                .map(
+                  (r) => `
+              <tr>
+                <td>${movementLabel(r.movementType, soldier.isVolunteer)}</td>
+                <td>${r.rankName ?? "-"}</td>
+                <td>${formatDate(r.date)}</td>
+                <td>${r.decisionNumber || "-"}</td>
+              </tr>`
+                )
+                .join("")}
+            </table>
+          </div>`
+              : ""
+          }
 
           <div class="footer-info">
             <div>
@@ -719,7 +1100,41 @@ const { hasPermission } = usePermissions();
   const [loading, setLoading] = useState(true);
   const [soldier, setSoldier] = useState<Soldier | null>(null);
 
-  const printerName = "مستخدم النظام";
+  const [printerName, setPrinterName] = useState("-");
+
+  // اسم المستخدم الحالي (القائم بالطباعة)
+  useEffect(() => {
+    void (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) return;
+
+      const { data } = await supabase
+        .from("profiles")
+        .select(`
+          username,
+          full_name,
+          rank_name,
+          personnel:personnel_id (
+            full_name,
+            rank:ranks ( name )
+          )
+        `)
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const profile: any = data;
+      const person = Array.isArray(profile?.personnel) ? profile.personnel[0] : profile?.personnel;
+      const rank = Array.isArray(person?.rank) ? person.rank[0] : person?.rank;
+
+      const name = person?.full_name || profile?.full_name || profile?.username || "-";
+      const rankName = rank?.name || profile?.rank_name;
+
+      setPrinterName(rankName ? `${rankName} / ${name}` : name);
+    })();
+  }, []);
 
   /* =======================================================
      Load Soldier + Letters
@@ -916,7 +1331,106 @@ const { hasPermission } = usePermissions();
         });
 
       /* ---------------------------------------------------
-         4. إنشاء بيانات الفرد النهائية
+         4. سجل الترحيلات بين دفعات الرديف
+      --------------------------------------------------- */
+
+      const { data: transfersData, error: transfersError } = await supabase.rpc(
+        "get_personnel_transfer_history",
+        { p_personnel_id: id }
+      );
+
+      if (transfersError) {
+        console.error("Error loading transfers:", transfersError);
+      }
+
+      const mappedTransfers: TransferItem[] = (transfersData ?? []).map((t: any) => ({
+        id: t.id,
+        fromDate: t.from_date,
+        toDate: t.to_date,
+        fromBatchName: t.from_batch_name,
+        toBatchName: t.to_batch_name,
+        direction: t.direction,
+        reasonName: t.reason_name ?? "-",
+        referenceNumber: t.reference_number,
+        referenceDate: t.reference_date,
+        penaltyDays: t.penalty_days,
+        notes: t.notes,
+        removedFromShipment: t.removed_from_shipment === true,
+        createdAt: t.created_at,
+        createdByName: t.created_by_name,
+      }));
+
+      /* ---------------------------------------------------
+         5. موقف إنهاء الخدمة + الشهادة
+      --------------------------------------------------- */
+
+      const { data: summaryData, error: summaryError } = await supabase.rpc(
+        "get_personnel_service_end_summary",
+        { p_personnel_id: id }
+      );
+
+      if (summaryError) {
+        console.error("Error loading service end summary:", summaryError);
+      }
+
+      const s: any = (summaryData ?? [])[0];
+
+      const certificateSourceText = !s?.certificate_number
+        ? null
+        : s.certificate_source === "reserve_batch"
+        ? `دفعة رديف${
+            s.certificate_batch_name
+              ? ` - ${s.certificate_batch_name}`
+              : s.certificate_batch_date
+              ? ` ${formatDate(s.certificate_batch_date)}`
+              : ""
+          }`
+        : s.certificate_source === "nco_discharge"
+        ? "ملف إنهاء خدمة"
+        : "أخرى";
+
+      const mappedServiceEnd: ServiceEndSummary | null =
+        s && (s.case_id || s.certificate_number)
+          ? {
+              caseId: s.case_id,
+              caseNumber: s.case_id ? caseNumber(s.case_seq, s.case_year) : null,
+              caseStatus: s.case_status,
+              reasonName: s.reason_name,
+              decisionNumber: s.decision_number,
+              decisionDate: s.decision_date,
+              decisionAuthority: s.decision_authority,
+              caseCreatedAt: s.case_created_at,
+              caseCompletedAt: s.case_completed_at,
+              certificateNumber: s.certificate_number,
+              certificateDate: s.certificate_date,
+              certificateSourceText,
+            }
+          : null;
+
+       /* ---------------------------------------------------
+         6. سجل الترقي (ترقيات وعزل)
+      --------------------------------------------------- */
+
+      const { data: rankData, error: rankError } = await supabase.rpc(
+        "get_personnel_rank_history",
+        { p_personnel_id: id }
+      );
+
+      if (rankError) {
+        console.error("Error loading rank history:", rankError);
+      }
+
+      const mappedRankHistory: RankMovement[] = (rankData ?? []).map((r: any) => ({
+        id: r.id,
+        rankName: r.rank_name,
+        date: r.promotion_date,
+        decisionNumber: r.decision_number,
+        movementType: r.movement_type === "demotion" ? "demotion" : "promotion",
+        notes: r.notes,
+      }));
+
+      /* ---------------------------------------------------
+         7. إنشاء بيانات الفرد النهائية
       --------------------------------------------------- */
 
       const mappedSoldier: Soldier = {
@@ -958,7 +1472,9 @@ const { hasPermission } = usePermissions();
         isVolunteer: raw.personnel_categories?.code === "VOLUNTEER", // ✅ جديد
 
         letters: mappedLetters,
-        
+        transfers: mappedTransfers,
+        serviceEnd: mappedServiceEnd,
+        rankHistory: mappedRankHistory,
       };
 
       console.log(
@@ -1058,33 +1574,18 @@ const { hasPermission } = usePermissions();
      Delete
   ======================================================= */
 
-  async function handleConfirmDelete() {
+  async function handleConfirmDelete(reason: string) {
     if (!soldier) return;
 
-    const { error } = await supabase
-      .from("personnel")
-      .delete()
-      .eq("id", soldier.id);
+    const { error } = await supabase.rpc("soft_delete_personnel", {
+      p_personnel_id: soldier.id,
+      p_reason: reason,
+    });
 
-    if (error) {
-      console.error(
-        "Delete personnel error:",
-        error,
-      );
-
-      alert(
-        "حدث خطأ أثناء حذف الفرد: " +
-          error.message,
-      );
-
-      return;
-    }
+    if (error) throw error; // النافذة بتعرض الرسالة
 
     setShowDelete(false);
-
-    navigate(
-      "/dashboard/individual-query",
-    );
+    navigate("/dashboard/individual-query");
   }
 
   /* =======================================================
@@ -1098,14 +1599,11 @@ const { hasPermission } = usePermissions();
     >
       {/* Delete Dialog */}
 
-      <DeleteConfirmDialog
+      <SoftDeleteDialog
         open={showDelete}
-        onCancel={() =>
-          setShowDelete(false)
-        }
-        onConfirm={
-          handleConfirmDelete
-        }
+        subtitle={`${soldier.militaryId} - ${soldier.name}`}
+        onCancel={() => setShowDelete(false)}
+        onConfirm={handleConfirmDelete}
       />
 
       {/* ===================================================
@@ -1300,8 +1798,11 @@ const { hasPermission } = usePermissions();
 
             <div className="flex flex-wrap gap-4">
               <InfoRow label="الإدارة / السلاح" value={soldier.administration} />
-  {!soldier.isVolunteer && (
-                <InfoRow label="تاريخ التسريح" value={soldier.dischargeDate} />
+              {(!soldier.isVolunteer || soldier.dischargeDate !== "-") && (
+                <InfoRow
+                  label={soldier.isVolunteer ? "تاريخ إنهاء الخدمة" : "تاريخ التسريح"}
+                  value={soldier.dischargeDate}
+                />
               )}
             </div>
 
@@ -1313,6 +1814,182 @@ const { hasPermission } = usePermissions();
 
         </div>
       </div>
+
+      {/* ===================================================
+          Rank History (سجل الترقي)
+      =================================================== */}
+
+      <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full overflow-hidden">
+        <div className="flex flex-wrap items-center justify-end gap-3 px-4 sm:px-6 py-4 border-b border-[#cbd2e0]">
+          <ChevronsUp size={18} style={{ color: "#4a5468" }} />
+          <SectionTitle>سجل الترقي</SectionTitle>
+
+          <div className="flex-1" />
+
+          {soldier.rankHistory.length > 0 && (
+            <span
+              className="px-3 py-1 rounded-full"
+              style={{ ...FONT, fontSize: 13, background: "#f7f9fc", color: "#717d96" }}
+            >
+              {soldier.rankHistory.length.toLocaleString("ar-EG")} حركة
+            </span>
+          )}
+        </div>
+
+        <RankHistoryTable rows={soldier.rankHistory} isVolunteer={soldier.isVolunteer} />
+      </div>
+
+      {/* ===================================================
+          Service End (ملف إنهاء الخدمة + الشهادة)
+      =================================================== */}
+
+      {soldier.serviceEnd && (
+        <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full overflow-hidden">
+          <div className="flex flex-wrap items-center justify-end gap-3 px-4 sm:px-6 py-4 border-b border-[#cbd2e0]">
+            <SectionTitle>موقف إنهاء الخدمة</SectionTitle>
+
+            <div className="flex-1" />
+
+            {soldier.serviceEnd.caseId && hasPermission("nco_discharge:view") && (
+              <button
+                type="button"
+                onClick={() => navigate(`/dashboard/nco-discharges/${soldier.serviceEnd!.caseId}`)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-[8px] hover:opacity-80"
+                style={{ backgroundColor: "#ebedfd" }}
+              >
+                <span style={{ ...FONT, fontSize: 14, color: "#2d3648" }}>فتح الملف</span>
+                <ExternalLink size={14} className="text-[#2d3648]" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-5 px-4 sm:px-6 py-5">
+            {/* تنبيه الملف الجاري */}
+            {soldier.serviceEnd.caseStatus &&
+              ACTIVE_CASE_STATUSES.includes(soldier.serviceEnd.caseStatus) && (
+                <div
+                  className="rounded-[12px] px-4 py-3 flex items-center gap-2"
+                  style={{ background: "#fff8e8", border: "1px solid #f4d58d" }}
+                >
+                  <AlertTriangle size={18} className="shrink-0" style={{ color: "#8a6500" }} />
+                  <span style={{ ...FONT, fontSize: 15, fontWeight: 700, color: "#8a6500" }}>
+                    الفرد عليه ملف إنهاء خدمة جاري، وخدمته في طريقها للانتهاء.
+                  </span>
+                </div>
+              )}
+
+            {/* الملف */}
+            {soldier.serviceEnd.caseId && (
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <FileText size={16} style={{ color: "#a0abc0" }} />
+                  <span style={{ ...FONT, fontSize: 15, fontWeight: 600, color: "#a0abc0" }}>
+                    ملف إنهاء الخدمة
+                  </span>
+
+                  {soldier.serviceEnd.caseStatus && (
+                    <span
+                      className="px-3 py-0.5 rounded-full"
+                      style={{
+                        ...FONT,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        background: CASE_STATUS_META[soldier.serviceEnd.caseStatus].bg,
+                        color: CASE_STATUS_META[soldier.serviceEnd.caseStatus].color,
+                      }}
+                    >
+                      {CASE_STATUS_META[soldier.serviceEnd.caseStatus].label}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-4">
+                  <InfoRow label="رقم الملف" value={soldier.serviceEnd.caseNumber ?? "-"} />
+                  <InfoRow label="سبب إنهاء الخدمة" value={soldier.serviceEnd.reasonName ?? "-"} />
+                </div>
+
+                <div className="flex flex-wrap gap-4">
+                  <InfoRow
+                    label="قرار إنهاء الخدمة"
+                    value={
+                      soldier.serviceEnd.decisionNumber
+                        ? `${soldier.serviceEnd.decisionNumber}${
+                            soldier.serviceEnd.decisionDate
+                              ? ` بتاريخ ${formatDate(soldier.serviceEnd.decisionDate)}`
+                              : ""
+                          }`
+                        : "-"
+                    }
+                  />
+                  <InfoRow label="الجهة المصدرة" value={soldier.serviceEnd.decisionAuthority ?? "-"} />
+                </div>
+
+                <div className="flex flex-wrap gap-4">
+                  <InfoRow label="تاريخ فتح الملف" value={formatDate(soldier.serviceEnd.caseCreatedAt)} />
+                  <InfoRow
+                    label="تاريخ اكتمال الملف"
+                    value={soldier.serviceEnd.caseCompletedAt ? formatDate(soldier.serviceEnd.caseCompletedAt) : "لم يكتمل بعد"}
+                  />
+                </div>
+              </div>
+            )}
+
+            {soldier.serviceEnd.caseId && (
+              <div className="w-full" style={{ borderTop: "1px solid #f0f1f5" }} />
+            )}
+
+            {/* الشهادة */}
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-2">
+                <Award size={16} style={{ color: "#a0abc0" }} />
+                <span style={{ ...FONT, fontSize: 15, fontWeight: 600, color: "#a0abc0" }}>
+                  شهادة إنهاء الخدمة
+                </span>
+              </div>
+
+              {soldier.serviceEnd.certificateNumber ? (
+                <>
+                  <div className="flex flex-wrap gap-4">
+                    <InfoRow label="رقم الشهادة" value={soldier.serviceEnd.certificateNumber} />
+                    <InfoRow label="تاريخ الشهادة" value={formatDate(soldier.serviceEnd.certificateDate)} />
+                  </div>
+
+                  <div className="flex flex-wrap gap-4">
+                    <InfoRow label="مصدر التسجيل" value={soldier.serviceEnd.certificateSourceText ?? "-"} />
+                  </div>
+                </>
+              ) : (
+                <span style={{ ...FONT, fontSize: 16, color: "#717d96" }}>لم تصدر الشهادة بعد</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================
+          Transfers (للمجندين دايمًا، ولغيرهم لو ليهم ترحيلات)
+      =================================================== */}
+
+      {(!soldier.isVolunteer || soldier.transfers.length > 0) && (
+        <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full overflow-hidden">
+          <div className="flex flex-wrap items-center justify-end gap-3 px-4 sm:px-6 py-4 border-b border-[#cbd2e0]">
+            <SectionTitle>سجل ترحيلات الفرد</SectionTitle>
+
+            <div className="flex-1" />
+
+            {soldier.transfers.length > 0 && (
+              <span
+                className="px-3 py-1 rounded-full"
+                style={{ ...FONT, fontSize: 13, background: "#f7f9fc", color: "#717d96" }}
+              >
+                {soldier.transfers.length.toLocaleString("ar-EG")} ترحيل
+              </span>
+            )}
+          </div>
+
+          <TransfersTable transfers={soldier.transfers} />
+        </div>
+      )}
 
       {/* ===================================================
           Letters

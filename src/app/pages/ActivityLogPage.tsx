@@ -19,8 +19,12 @@ interface ActivityLog {
 
 function ActivityLogPage() {
    const navigate = useNavigate();
+   const PAGE_SIZE = 100;
+
   const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
 
   // فلاتر
@@ -29,94 +33,75 @@ function ActivityLogPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  async function loadLogs() {
+  // قوائم الفلاتر: ثابتة/من المستخدمين، مش من الصفحة المحملة بس
+  const actionTypeOptions = ["CREATE", "UPDATE", "DELETE", "QUERY", "LOGIN", "LOGOUT", "PRINT"];
+  const [userNameOptions, setUserNameOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    void (async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("username")
+        .order("username", { ascending: true });
+
+      setUserNameOptions(
+        Array.from(new Set((data ?? []).map((p: any) => p.username).filter(Boolean)))
+      );
+    })();
+  }, []);
+
+  function buildQuery() {
+    let query = supabase
+      .from("audit_logs")
+      .select("id, user_id, user_name, action_type, action, entity, details, created_at", {
+        count: "exact",
+      });
+
+    if (actionTypeFilter) query = query.eq("action_type", actionTypeFilter);
+    if (userNameFilter) query = query.eq("user_name", userNameFilter);
+    if (dateFrom) query = query.gte("created_at", new Date(`${dateFrom}T00:00:00`).toISOString());
+    if (dateTo) query = query.lte("created_at", new Date(`${dateTo}T23:59:59.999`).toISOString());
+
+    return query
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false });
+  }
+
+  async function loadLogs(append = false) {
     try {
-      setLoading(true);
+      append ? setLoadingMore(true) : setLoading(true);
       setError("");
 
-      const {
-        data,
-        error: fetchError,
-      } = await supabase
-        .from("audit_logs")
-        .select(
-          "id, user_id, user_name, action_type, action, entity, details, created_at"
-        )
-        .order("created_at", {
-          ascending: false,
-        });
+      const from = append ? logs.length : 0;
+
+      const { data, error: fetchError, count } = await buildQuery().range(
+        from,
+        from + PAGE_SIZE - 1
+      );
 
       if (fetchError) {
-      
-
-        setError(
-          `حدث خطأ أثناء تحميل سجل العمليات: ${fetchError.message}`
-        );
-
+        setError(`حدث خطأ أثناء تحميل سجل العمليات: ${fetchError.message}`);
         return;
       }
 
-      setLogs(data ?? []);
-    } catch (err) {
-
-
-      setError(
-        "حدث خطأ غير متوقع أثناء تحميل سجل العمليات"
-      );
+      setLogs((prev) => (append ? [...prev, ...(data ?? [])] : data ?? []));
+      setTotal(count ?? 0);
+    } catch {
+      setError("حدث خطأ غير متوقع أثناء تحميل سجل العمليات");
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }
 
+  // أي تغيير في الفلاتر يعيد التحميل من الأول
   useEffect(() => {
-    loadLogs();
-  }, []);
+    void loadLogs(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionTypeFilter, userNameFilter, dateFrom, dateTo]);
 
-  // =====================================================
-  // قوائم الفلاتر (مستخرجة من البيانات)
-  // =====================================================
-
-  const actionTypeOptions = useMemo(() => {
-    const types = new Set(logs.map((l) => l.action_type).filter(Boolean));
-    return Array.from(types);
-  }, [logs]);
-
-  const userNameOptions = useMemo(() => {
-    const names = new Set(logs.map((l) => l.user_name).filter(Boolean));
-    return Array.from(names);
-  }, [logs]);
-
-  // =====================================================
-  // تطبيق الفلاتر
-  // =====================================================
-
-  const filteredLogs = useMemo(() => {
-    return logs.filter((log) => {
-      if (actionTypeFilter && log.action_type !== actionTypeFilter) {
-        return false;
-      }
-
-      if (userNameFilter && log.user_name !== userNameFilter) {
-        return false;
-      }
-
-      if (dateFrom) {
-        const logDate = new Date(log.created_at);
-        const fromDate = new Date(dateFrom);
-        fromDate.setHours(0, 0, 0, 0);
-        if (logDate < fromDate) return false;
-      }
-
-      if (dateTo) {
-        const logDate = new Date(log.created_at);
-        const toDate = new Date(dateTo);
-        toDate.setHours(23, 59, 59, 999);
-        if (logDate > toDate) return false;
-      }
-
-      return true;
-    });
-  }, [logs, actionTypeFilter, userNameFilter, dateFrom, dateTo]);
+  // الفلترة بقت في قاعدة البيانات
+  const filteredLogs = logs;
 
   function resetFilters() {
     setActionTypeFilter("");
@@ -312,7 +297,7 @@ function ActivityLogPage() {
 
         <button
           type="button"
-          onClick={loadLogs}
+          onClick={() => void loadLogs(false)}
           disabled={loading}
           className="
             flex items-center gap-2
@@ -434,13 +419,13 @@ function ActivityLogPage() {
           </span>
 
           <span className="font-bold text-[#081021]">
-            {filteredLogs.length}
+            {total.toLocaleString("ar-EG")}
           </span>
 
-          {filteredLogs.length !== logs.length && (
+          {logs.length < total && (
             <span className="text-sm text-[#94a3b8]">
               {" "}
-              (من أصل {logs.length})
+              (معروض {logs.length.toLocaleString("ar-EG")})
             </span>
           )}
         </div>
@@ -624,6 +609,20 @@ function ActivityLogPage() {
               </tbody>
             </table>
           </div>
+
+          {logs.length < total && (
+            <div className="flex justify-center py-4 border-t border-[#e2e8f0]">
+              <button
+                type="button"
+                onClick={() => void loadLogs(true)}
+                disabled={loadingMore}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#e2e8f0] bg-white text-[#334155] hover:bg-[#f8fafc] disabled:opacity-50"
+              >
+                {loadingMore && <RefreshCw size={15} className="animate-spin" />}
+                تحميل المزيد ({(total - logs.length).toLocaleString("ar-EG")} متبقية)
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

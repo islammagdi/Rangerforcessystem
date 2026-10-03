@@ -799,38 +799,72 @@ export function DashboardHeader({
 
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <NotificationBell />
-          {/* Avatar + dropdown */}
+                  {/* ====================================================
+              بلوك المستخدم كامل (الأفاتار + الاسم + السهم)
+              الضغط على أي جزء فيه بيفتح القائمة
+          ==================================================== */}
 
-          <div
-            className="flex items-center gap-3 relative shrink-0"
-            ref={dropdownRef}
-          >
-
+          <div className="relative shrink-0" ref={dropdownRef}>
             <button
               type="button"
-              onClick={() =>
-                setDropdownOpen(
-                  (o) => !o
-                )
-              }
-              className="bg-[#93C199] w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden relative focus:outline-none ring-offset-1 transition-shadow hover:ring-2 hover:ring-[#DCF4DF]/60"
+              onClick={() => setDropdownOpen((o) => !o)}
               aria-label="قائمة المستخدم"
+              aria-expanded={dropdownOpen}
+              className={[
+                "flex items-center gap-2 sm:gap-3 rounded-full py-1 pl-1 pr-1 sm:pl-3",
+                "transition-colors focus:outline-none",
+                dropdownOpen ? "bg-[#f5f6fb]" : "hover:bg-[#f5f6fb]",
+              ].join(" ")}
             >
-              <img
-                src={imgAvatar}
-                alt="الصورة الشخصية"
-                className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none"
+              {/* الأفاتار */}
+              <span className="bg-[#93C199] w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden relative shrink-0">
+                <img
+                  src={imgAvatar}
+                  alt="الصورة الشخصية"
+                  className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none"
+                />
+              </span>
+
+              {/* بيانات المستخدم (تختفي على الشاشات الصغيرة جداً) */}
+              <span className="hidden sm:flex flex-col items-start gap-0.5">
+                <span
+                  style={{
+                    color: "#64748b",
+                    fontFamily: "'Almarai', sans-serif",
+                    fontSize: "12px",
+                  }}
+                >
+                  مرحبا بك
+                </span>
+
+                <span
+                  className="whitespace-nowrap"
+                  style={{
+                    color: "#081021",
+                    fontFamily: "'Almarai', sans-serif",
+                    fontWeight: 700,
+                    fontSize: "14px",
+                  }}
+                >
+                  {loadingUser ? "جاري التحميل..." : `${rankName} / ${displayName}`}
+                </span>
+              </span>
+
+              <ChevronDown
+                size={18}
+                className={[
+                  "hidden sm:block text-[#081021] transition-transform duration-200",
+                  dropdownOpen ? "rotate-180" : "",
+                ].join(" ")}
               />
             </button>
 
-            {/* Dropdown menu */}
-
+            {/* القائمة */}
             {dropdownOpen && (
               <div
-                className="absolute left-0 top-[calc(100%+8px)] z-50 bg-white rounded-[12px] border border-[#eff0f6] shadow-lg overflow-hidden min-w-[180px]"
+                className="absolute left-0 top-[calc(100%+8px)] z-50 bg-white rounded-[12px] border border-[#eff0f6] shadow-lg overflow-hidden min-w-full w-max"
                 dir="rtl"
               >
-
                 <button
                   type="button"
                   onClick={() => {
@@ -839,25 +873,13 @@ export function DashboardHeader({
                   }}
                   className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#f5f6fb] transition-colors text-right"
                 >
-                  <KeyRound
-                    size={16}
-                    style={{
-                      color: "#5B795F",
-                    }}
-                    className="shrink-0"
-                  />
-
-                  <span
-                    style={{
-                      ...F,
-                      fontSize: 14,
-                      color: "#2d3648",
-                    }}
-                  >
+                  <KeyRound size={16} style={{ color: "#5B795F" }} className="shrink-0" />
+                  <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
                     تغيير كلمة المرور
                   </span>
                 </button>
-<div className="h-px bg-[#eff0f6]" />
+
+                <div className="h-px bg-[#eff0f6]" />
 
                 <button
                   type="button"
@@ -867,96 +889,18 @@ export function DashboardHeader({
                   }}
                   className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#f5f6fb] transition-colors text-right"
                 >
-                  <BookOpen
-                    size={16}
-                    style={{ color: "#5B795F" }}
-                    className="shrink-0"
-                  />
-
-                  <span
-                    style={{
-                      ...F,
-                      fontSize: 14,
-                      color: "#2d3648",
-                    }}
-                  >
+                  <BookOpen size={16} style={{ color: "#5B795F" }} className="shrink-0" />
+                  <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>
                     دليل استخدام المنظومة
                   </span>
                 </button>
+
                 <div className="h-px bg-[#eff0f6]" />
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDropdownOpen(false);
-                    setModal("picture");
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#f5f6fb] transition-colors text-right"
-                >
-                  <ImagePlus
-                    size={16}
-                    style={{
-                      color: "#5B795F",
-                    }}
-                    className="shrink-0"
-                  />
-
-                  <span
-                    style={{
-                      ...F,
-                      fontSize: 14,
-                      color: "#2d3648",
-                    }}
-                  >
-                    تغيير الصورة الشخصية
-                  </span>
-                </button>
+            
               </div>
             )}
           </div>
-
-          {/* ====================================================
-              بيانات المستخدم من Supabase
-              (تختفي على الشاشات الصغيرة جداً عشان الهيدر ميضيقش)
-          ==================================================== */}
-
-          <div className="hidden sm:flex items-center gap-2.5">
-
-            <div className="flex flex-col items-start gap-0.5">
-
-              <span
-                style={{
-                  color: "#64748b",
-                  fontFamily: "'Almarai', sans-serif",
-                  fontSize: "12px",
-                }}
-              >
-                مرحبا بك
-              </span>
-
-              <span
-                className="whitespace-nowrap"
-                style={{
-                  color: "#081021",
-                  fontFamily: "'Almarai', sans-serif",
-                  fontWeight: 700,
-                  fontSize: "14px",
-                }}
-              >
-                {loadingUser
-                  ? "جاري التحميل..."
-                  : `${rankName} / ${displayName}`}
-              </span>
-
-            </div>
-
-          </div>
-
-          <ChevronDown
-            size={18}
-            className="hidden sm:block text-[#081021]"
-          />
-
         </div>
       </header>
 

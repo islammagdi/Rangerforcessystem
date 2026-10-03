@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { ArrowRight, Search, Trash2, Send, Printer } from "lucide-react";
 import logoImg from "../../assets/af406d517dfa4e5b22e9993bd61d8e4e002646b6.png";
@@ -47,10 +47,24 @@ export function PromotionNotificationDetailPage() {
   const [pickNewRankId, setPickNewRankId] = useState("");
   const [pickNewUnitId, setPickNewUnitId] = useState("");
   const [adding, setAdding] = useState(false);
-
   const isDraft = bulletin?.status === "draft";
-const eligibleRanks = ranks.filter((r) => (r.name ?? "").trim().replace(/ى/g, "ي") !== "جندي");
+  const eligibleRanks = ranks.filter((r) => (r.name ?? "").trim().replace(/ى/g, "ي") !== "جندي");
 
+  type UnitGroup = { unitName: string; items: PromotionBulletinItem[] };
+
+  const unitGroups = useMemo<UnitGroup[]>(() => {
+    const groups = new Map<string, UnitGroup>();
+
+    items.forEach((it) => {
+      const unitName = it.new_unit_name ?? it.old_unit_name ?? "بدون وحدة محددة";
+      if (!groups.has(unitName)) {
+        groups.set(unitName, { unitName, items: [] });
+      }
+      groups.get(unitName)!.items.push(it);
+    });
+
+    return Array.from(groups.values()).sort((a, b) => a.unitName.localeCompare(b.unitName, "ar"));
+  }, [items]);
   useEffect(() => {
     if (bulletinId) load(bulletinId);
   }, [bulletinId]);
@@ -219,21 +233,45 @@ const eligibleRanks = ranks.filter((r) => (r.name ?? "").trim().replace(/ى/g, "
       return toArabicDigits(String(value));
     };
 
-    const rowsHtml = items.length
-      ? items
-          .map(
-            (it) => `
-        <tr>
-          <td>${ar(it.military_number)}</td>
-          <td>${it.full_name}</td>
-          <td>${it.old_rank_name ?? "-"}</td>
-          <td>${it.new_rank_name ?? "-"}</td>
-          <td>${it.old_unit_name ?? "-"}</td>
-          <td>${it.new_unit_name ?? "بدون نقل"}</td>
-        </tr>`
-          )
+    const groupedForPrint = new Map<string, typeof items>();
+    items.forEach((it) => {
+      const unitName = it.new_unit_name ?? it.old_unit_name ?? "بدون وحدة محددة";
+      if (!groupedForPrint.has(unitName)) groupedForPrint.set(unitName, []);
+      groupedForPrint.get(unitName)!.push(it);
+    });
+
+    const unitSectionsHtml = items.length
+      ? Array.from(groupedForPrint.entries())
+          .sort((a, b) => a[0].localeCompare(b[0], "ar"))
+          .map(([unitName, unitItems]) => {
+            const rowsHtml = unitItems
+              .map(
+                (it) => `
+              <tr>
+                <td>${ar(it.military_number)}</td>
+                <td>${it.full_name}</td>
+                <td>${it.new_rank_name ?? "-"}</td>
+                <td>${it.new_unit_name ?? "بدون نقل"}</td>
+              </tr>`
+              )
+              .join("");
+
+            return `
+                  <div class="section-title">الوحدة: ${ar(unitName)}</div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>الرقم العسكري</th>
+                    <th>الاسم</th>
+                    <th>الدرجة الجديدة</th>
+                    <th>الوحدة الجديدة</th>
+                  </tr>
+                </thead>
+                <tbody>${rowsHtml}</tbody>
+              </table>`;
+          })
           .join("")
-      : `<tr><td colspan="6" class="empty-row">لا يوجد أفراد</td></tr>`;
+      : `<div class="section-title">لا يوجد أفراد</div>`;
 
     printWindow.document.open();
     printWindow.document.write(`
@@ -246,7 +284,13 @@ const eligibleRanks = ranks.filter((r) => (r.name ?? "").trim().replace(/ى/g, "
             @page { size: A4; margin: 8mm; }
             * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
             body { margin: 0; padding: 0; font-family: 'Almarai', Arial, sans-serif; direction: rtl; color: #2d3648; }
-            .page { border: 2px solid #cbd2e0; border-radius: 10px; padding: 18px 24px; min-height: 100%; }
+            .page {
+              border: 2px solid #cbd2e0;
+              border-radius: 10px;
+              padding: 18px 24px;
+              box-decoration-break: clone;
+              -webkit-box-decoration-break: clone;
+            }
             .header { position: relative; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #cbd2e0; padding-bottom: 10px; margin-bottom: 10px; }
             .header-text { display: flex; flex-direction: column; gap: 2px; }
             .header-title { font-size: 18px; font-weight: 700; }
@@ -254,8 +298,26 @@ const eligibleRanks = ranks.filter((r) => (r.name ?? "").trim().replace(/ى/g, "
             .header-system { font-size: 12px; color: #717d96; }
             .header-logo { width: 64px; height: 64px; object-fit: contain; }
             .header-title-box { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 6px; padding: 6px 18px; font-size: 18px; font-weight: 700; text-decoration: underline; white-space: nowrap; }
-            .section-title { font-size: 15px; font-weight: 700; background: #f7f9fc; padding: 6px 10px; border-radius: 6px; margin-top: 16px; margin-bottom: 8px; }
-            table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 4px; }
+            .section-title {
+              font-size: 15px;
+              font-weight: 700;
+              background: #f7f9fc;
+              padding: 6px 10px;
+              border-radius: 6px;
+              margin-top: 16px;
+              margin-bottom: 8px;
+              page-break-after: avoid;
+              break-after: avoid-page;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 12px;
+              margin-top: 4px;
+              page-break-inside: auto;
+            }
+            thead { display: table-header-group; }
+            tr { page-break-inside: avoid; break-inside: avoid; }
             th, td { border: 1px solid #e2e7f0; padding: 6px 8px; text-align: center; }
             th { background: #f7f9fc; font-weight: 700; }
             .empty-row { color: #a1aebe; padding: 12px; }
@@ -275,19 +337,7 @@ const eligibleRanks = ranks.filter((r) => (r.name ?? "").trim().replace(/ى/g, "
 
             <div class="section-title">رقم القرار: ${ar(bulletin.decision_number)}</div>
 
-            <table>
-              <thead>
-                <tr>
-                  <th>الرقم العسكري</th>
-                  <th>الاسم</th>
-                  <th>الدرجة الحالية</th>
-                  <th>الدرجة الجديدة</th>
-                  <th>الوحدة الحالية</th>
-                  <th>الوحدة الجديدة</th>
-                </tr>
-              </thead>
-              <tbody>${rowsHtml}</tbody>
-            </table>
+            ${unitSectionsHtml}
           </div>
         </body>
       </html>
@@ -501,122 +551,119 @@ const eligibleRanks = ranks.filter((r) => (r.name ?? "").trim().replace(/ى/g, "
         </section>
       )}
 
-      <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
+           <section className="bg-white rounded-[20px] border border-[#eff0f6] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#e2e7f0]">
           <span style={{ ...F, fontSize: 16, fontWeight: 700, color: "#2d3648" }}>
             الأفراد المشمولين ({items.length})
           </span>
         </div>
 
-        <div className="p-6">
+        <div className="p-6 flex flex-col gap-5">
           {items.length === 0 ? (
             <div className="rounded-[8px] py-4 text-center" style={{ background: "#f7f9fc" }}>
               <span style={{ ...F, fontSize: 13, color: "#a1aebe" }}>لا يوجد أفراد مضافين حاليًا</span>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr>
-                    <th className="px-4 py-2.5 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]">
-                      <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الرقم العسكري</span>
-                    </th>
-                    <th className="px-4 py-2.5 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]">
-                      <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الاسم</span>
-                    </th>
-                    <th className="px-4 py-2.5 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]">
-                      <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الدرجة الحالية</span>
-                    </th>
-                    <th className="px-4 py-2.5 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]">
-                      <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الدرجة الجديدة</span>
-                    </th>
-                    <th className="px-4 py-2.5 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]">
-                      <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الوحدة الحالية</span>
-                    </th>
-                    <th className="px-4 py-2.5 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]">
-                      <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الوحدة الجديدة</span>
-                    </th>
-                    {isDraft && canEdit && <th className="px-4 py-2.5 border-b border-[#e2e7f0] bg-[#f7f9fc]" />}
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((it) => (
-                    <tr key={it.id} className="hover:bg-[#fafbff]">
-                      <td className="px-4 py-2.5 border-b border-[#eaecf0]">
-                        <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>{it.military_number ?? "-"}</span>
-                      </td>
-                      <td className="px-4 py-2.5 border-b border-[#eaecf0]">
-                        <span style={{ ...F, fontSize: 14, fontWeight: 700, color: "#2d3648" }}>{it.full_name}</span>
-                      </td>
-                      <td className="px-4 py-2.5 border-b border-[#eaecf0]">
-                        <span style={{ ...F, fontSize: 13, color: "#717d96" }}>{it.old_rank_name ?? "-"}</span>
-                      </td>
-                      <td className="px-4 py-2.5 border-b border-[#eaecf0]">
-                        {isDraft && canEdit ? (
-                          <select
-                            value={it.new_rank_id}
-                            onChange={(e) => handleUpdateItemRank(it.id, e.target.value)}
-                            dir="rtl"
-                            className="h-[38px] rounded-[8px] border border-[#e2e7f0] px-2 outline-none focus:border-[#00b867] bg-white"
-                            style={{ ...F, fontSize: 13 }}
-                          >
-                            {eligibleRanks.map((r) => (
-                              <option key={r.id} value={r.id}>
-                                {r.name}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span
-                            className="inline-flex items-center px-2.5 py-0.5 rounded-full"
-                            style={{ background: "#dcfce7", ...F, fontSize: 12, fontWeight: 700, color: "#166534" }}
-                          >
-                            {it.new_rank_name ?? "-"}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5 border-b border-[#eaecf0]">
-                        <span style={{ ...F, fontSize: 13, color: "#717d96" }}>{it.old_unit_name ?? "-"}</span>
-                      </td>
-                      <td className="px-4 py-2.5 border-b border-[#eaecf0]">
-                        {isDraft && canEdit ? (
-                          <select
-                            value={it.new_unit_id ?? ""}
-                            onChange={(e) => handleUpdateItemUnit(it.id, e.target.value)}
-                            dir="rtl"
-                            className="h-[38px] rounded-[8px] border border-[#e2e7f0] px-2 outline-none focus:border-[#00b867] bg-white"
-                            style={{ ...F, fontSize: 13 }}
-                          >
-                            <option value="">بدون نقل</option>
-                            {units.map((u) => (
-                              <option key={u.id} value={u.id}>
-                                {u.name}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>
-                            {it.new_unit_name ?? "بدون نقل"}
-                          </span>
-                        )}
-                      </td>
-                      {isDraft && canEdit && (
-                        <td className="px-4 py-2.5 border-b border-[#eaecf0]">
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteItem(it.id)}
-                            className="w-8 h-8 rounded-[6px] flex items-center justify-center"
-                            style={{ background: "#fce8f1" }}
-                          >
-                            <Trash2 size={14} color="#e3282c" />
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            unitGroups.map((group) => (
+              <div key={group.unitName} className="flex flex-col gap-3">
+                <div className="bg-white rounded-[16px] border border-[#eff0f6] p-5">
+                  <span style={{ ...F, fontSize: 13, color: "#717d96" }}>الوحدة: </span>
+                  <span style={{ ...F, fontSize: 14, fontWeight: 700, color: "#2d3648" }}>{group.unitName}</span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr>
+                        <th className="px-4 py-2.5 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]">
+                          <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الرقم العسكري</span>
+                        </th>
+                        <th className="px-4 py-2.5 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]">
+                          <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الاسم</span>
+                        </th>
+                        <th className="px-4 py-2.5 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]">
+                          <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الدرجة الجديدة</span>
+                        </th>
+                        <th className="px-4 py-2.5 text-right border-b border-[#e2e7f0] bg-[#f7f9fc]">
+                          <span style={{ ...F, fontSize: 12, color: "#717d96" }}>الوحدة الجديدة</span>
+                        </th>
+                        {isDraft && canEdit && <th className="px-4 py-2.5 border-b border-[#e2e7f0] bg-[#f7f9fc]" />}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.items.map((it) => (
+                        <tr key={it.id} className="hover:bg-[#fafbff]">
+                          <td className="px-4 py-2.5 border-b border-[#eaecf0]">
+                            <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>{it.military_number ?? "-"}</span>
+                          </td>
+                          <td className="px-4 py-2.5 border-b border-[#eaecf0]">
+                            <span style={{ ...F, fontSize: 14, fontWeight: 700, color: "#2d3648" }}>{it.full_name}</span>
+                          </td>
+                          <td className="px-4 py-2.5 border-b border-[#eaecf0]">
+                            {isDraft && canEdit ? (
+                              <select
+                                value={it.new_rank_id}
+                                onChange={(e) => handleUpdateItemRank(it.id, e.target.value)}
+                                dir="rtl"
+                                className="h-[38px] rounded-[8px] border border-[#e2e7f0] px-2 outline-none focus:border-[#00b867] bg-white"
+                                style={{ ...F, fontSize: 13 }}
+                              >
+                                {eligibleRanks.map((r) => (
+                                  <option key={r.id} value={r.id}>
+                                    {r.name}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span
+                                className="inline-flex items-center px-2.5 py-0.5 rounded-full"
+                                style={{ background: "#dcfce7", ...F, fontSize: 12, fontWeight: 700, color: "#166534" }}
+                              >
+                                {it.new_rank_name ?? "-"}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5 border-b border-[#eaecf0]">
+                            {isDraft && canEdit ? (
+                              <select
+                                value={it.new_unit_id ?? ""}
+                                onChange={(e) => handleUpdateItemUnit(it.id, e.target.value)}
+                                dir="rtl"
+                                className="h-[38px] rounded-[8px] border border-[#e2e7f0] px-2 outline-none focus:border-[#00b867] bg-white"
+                                style={{ ...F, fontSize: 13 }}
+                              >
+                                <option value="">بدون نقل</option>
+                                {units.map((u) => (
+                                  <option key={u.id} value={u.id}>
+                                    {u.name}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span style={{ ...F, fontSize: 13, color: "#2d3648" }}>
+                                {it.new_unit_name ?? "بدون نقل"}
+                              </span>
+                            )}
+                          </td>
+                          {isDraft && canEdit && (
+                            <td className="px-4 py-2.5 border-b border-[#eaecf0]">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteItem(it.id)}
+                                className="w-8 h-8 rounded-[6px] flex items-center justify-center"
+                                style={{ background: "#fce8f1" }}
+                              >
+                                <Trash2 size={14} color="#e3282c" />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))
           )}
         </div>
 

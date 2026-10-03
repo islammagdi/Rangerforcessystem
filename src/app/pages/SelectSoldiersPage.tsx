@@ -10,6 +10,13 @@ import {
   type LetterTypeConfig,
 } from "../../lib/letterTypeEngine";
 import { useUnsavedChanges } from "../../lib/unsavedChanges";
+import {
+  useLetterDraft,
+  patchLetterDraft,
+  getLetterDraft,
+  isLetterDraftDirty,
+} from "../../lib/letterDraft";
+import { SaveDraftButton } from "../components/SaveDraftButton";
 
 function normalizeDigits(value: string): string {
   const arabicIndicDigits = "٠١٢٣٤٥٦٧٨٩";
@@ -133,8 +140,10 @@ function StepDots({ dark }: { dark?: boolean }) {
 
 function LetterStepper({
   activeStep,
+  onStepClick,
 }: {
   activeStep: 1 | 2 | 3 | 4;
+  onStepClick?: (step: 1 | 2 | 3 | 4) => void;
 }) {
   const steps = [
     { num: "01", label: "تحديد نوع الخطاب" },
@@ -159,7 +168,18 @@ function LetterStepper({
             className="flex items-start"
           >
             {done ? (
-              <GreenCheckBubble label={step.label} />
+              onStepClick ? (
+                <button
+                  type="button"
+                  onClick={() => onStepClick(number as 1 | 2 | 3 | 4)}
+                  className="bg-transparent p-0 cursor-pointer hover:opacity-80 transition-opacity"
+                  title="الرجوع لهذه الخطوة"
+                >
+                  <GreenCheckBubble label={step.label} />
+                </button>
+              ) : (
+                <GreenCheckBubble label={step.label} />
+              )
             ) : (
               <NumberBubble
                 num={step.num}
@@ -315,7 +335,15 @@ export function SelectSoldiersPage() {
   const letterType = state?.letterType ?? "attachment";
 
   const [militaryNumber, setMilitaryNumber] = useState("");
-  const [soldiers, setSoldiers] = useState<SoldierData[]>([]);
+  // ✅ الأفراد بيتقروا من المسودة المشتركة، فلو رجعت من خطوة بيانات
+  // الخطاب القايمة تفضل موجودة
+  const draft = useLetterDraft();
+  const [soldiers, setSoldiers] = useState<SoldierData[]>(() => {
+    const current = getLetterDraft();
+    return current.letterTypeId === state?.letterTypeId
+      ? (current.soldiers as SoldierData[])
+      : [];
+  });
 
   // ✅ بيانات نوع الخطاب (بما فيها قواعد الأهلية) — بتتجاب مرة
   // واحدة وقت تحميل الصفحة
@@ -358,9 +386,24 @@ export function SelectSoldiersPage() {
 // ─────────────────────────────────────────────────────────
 const { setDirty, setPerformingSensitiveOperation } = useUnsavedChanges();
 
+// ✅ مزامنة الأفراد مع المسودة المشتركة
 useEffect(() => {
-  setDirty(soldiers.length > 0);
-}, [soldiers.length, setDirty]);
+  patchLetterDraft({
+    soldiers,
+    currentStep: 2,
+    letterTypeId: state?.letterTypeId ?? getLetterDraft().letterTypeId,
+    letterTypeCode: state?.letterTypeCode ?? getLetterDraft().letterTypeCode,
+    letterTypeName: state?.letterTypeName ?? getLetterDraft().letterTypeName,
+  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [soldiers]);
+
+// ✅ فيه تعديل غير محفوظ = الحالة الحالية مختلفة عن آخر مسودة اتحفظت
+const hasUnsavedChanges = isLetterDraftDirty(draft);
+
+useEffect(() => {
+  setDirty(hasUnsavedChanges);
+}, [hasUnsavedChanges, setDirty]);
 
 useEffect(() => {
   return () => setDirty(false);
@@ -642,6 +685,9 @@ useEffect(() => {
   function handleNext() {
     if (!soldiers.length) return;
 
+    // ✅ ممنوع المتابعة لو فيه فرد لسه غير مؤهل بعد إعادة الفحص
+    if (soldiers.some((s) => getLetterDraft().soldierProblems[s.id])) return;
+
     // ✅ الأفراد هيتنقلوا كـ state لصفحة "بيانات الخطاب"، فمن هنا
     // بقت مسؤولية التتبّع بتاعة الصفحة الجاية
     setDirty(false);
@@ -658,6 +704,18 @@ useEffect(() => {
         },
       },
     );
+  }
+
+  // ✅ أفراد المسودة اللي بقوا غير مؤهلين بعد إعادة الفحص عند الفتح
+  const problemSoldiers = soldiers.filter(
+    (s) => draft.soldierProblems[s.id]
+  );
+
+  function goToStep(step: 1 | 2 | 3 | 4) {
+    if (step === 1) {
+      setDirty(false);
+      navigate("/dashboard/issue-letter", { state: { keepDraft: true } });
+    }
   }
 
   const pageTitle = state?.letterTypeName
@@ -722,7 +780,7 @@ useEffect(() => {
       </h1>
 
       <div className="flex justify-center">
-        <LetterStepper activeStep={2} />
+        <LetterStepper activeStep={2} onStepClick={goToStep} />
       </div>
 
       <div className="flex flex-col gap-5 w-full max-w-[760px] mx-auto">
@@ -1081,14 +1139,44 @@ useEffect(() => {
           />
         )}
 
+        {problemSoldiers.length > 0 && (
+          <div
+            className="flex flex-col gap-2 px-4 py-3 rounded-[10px]"
+            style={{ background: "#fef2f2", border: "1px solid #fecaca" }}
+          >
+            <p style={{ ...F, fontWeight: 700, color: "#991b1b" }}>
+              أفراد لم يعودوا مؤهلين، يرجى إزالتهم قبل المتابعة
+            </p>
+
+            {problemSoldiers.map((s) => (
+              <div key={s.id} className="flex items-center justify-between gap-3">
+                <p style={{ ...F, fontSize: 13, color: "#b91c1c" }}>
+                  {s.name}: {draft.soldierProblems[s.id]}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => handleRemove(s.id)}
+                  className="shrink-0 px-3 py-1.5 rounded-[6px]"
+                  style={{ background: "#fce8f1" }}
+                >
+                  <span style={{ ...F, fontSize: 13, color: "#e3282c" }}>
+                    إزالة
+                  </span>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <button
           type="button"
-          disabled={soldiers.length === 0}
+          disabled={soldiers.length === 0 || problemSoldiers.length > 0}
           onClick={handleNext}
           className="w-full min-h-[52px] rounded-[8px]"
           style={{
             background:
-              soldiers.length > 0
+              soldiers.length > 0 && problemSoldiers.length === 0
                 ? "linear-gradient(to bottom,#00b867,#00522e)"
                 : "#edf0f7",
           }}
@@ -1098,7 +1186,7 @@ useEffect(() => {
               ...F,
               fontSize: 16,
               color:
-                soldiers.length > 0
+                soldiers.length > 0 && problemSoldiers.length === 0
                   ? "#fff"
                   : "#cbd2e0",
             }}
@@ -1106,6 +1194,10 @@ useEffect(() => {
             الانتقال لبيانات الخطاب
           </span>
         </button>
+
+        <div className="flex justify-start">
+          <SaveDraftButton />
+        </div>
       </div>
     </div>
   );

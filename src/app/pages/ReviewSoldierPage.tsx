@@ -4,6 +4,7 @@ import { LoadingOverlay } from "../components/LoadingOverlay";
 import { supabase } from "../../lib/supabase";
 import { logActivity } from "../../lib/logActivity";
 import { useUnsavedChanges } from "../../lib/unsavedChanges";
+import { resetAddSoldierFlow } from "../../lib/addSoldierFlow";
 
 // ============================================================================
 // Style
@@ -39,6 +40,10 @@ interface ReviewFormData {
   attachment_unit_name: string;
     job_id?: string | null;
   job_name?: string;
+  administration_id?: string | null;
+  administration_name?: string;
+  education_level_id?: string | null;
+  education_level_name?: string;
 }
 
 interface InsertedPersonnel {
@@ -165,6 +170,19 @@ export function ReviewSoldierPage() {
       // 2. فحص الرقم العسكري قبل الحفظ
       // =====================================================
 
+      const { data: deletedNumbers } = await supabase.rpc(
+        "get_deleted_military_numbers",
+        { p_numbers: [militaryNumber] }
+      );
+
+      if ((deletedNumbers ?? []).length > 0) {
+        setError(
+          `الرقم العسكري ${militaryNumber} لفرد محذوف من المنظومة. استرجعه من صفحة «الأفراد المحذوفين» بدل إضافته من جديد.`
+        );
+        setIsLoading(false);
+        return;
+      }
+
       const {
         data: existingPersonnel,
         error: checkError,
@@ -234,9 +252,12 @@ export function ReviewSoldierPage() {
         discharge_date: dischargeDate,
         job_id: form.job_id || null,
 
+        // من الرقم العسكري (اتحسبوا في صفحة الإضافة)
+        administration_id: form.administration_id || null,
+        education_level_id: form.education_level_id || null,
+
         is_active: true,
       };
-
       console.log(
         "PERSONNEL PAYLOAD:",
         payload
@@ -350,6 +371,8 @@ await logActivity({
     primaryUnit: form.primary_unit_name,
     attachmentUnit: form.attachment_unit_name,
         job: form.job_name || null,
+        administration: form.administration_name || null,
+        educationLevel: form.education_level_name || null,
     dischargeDate,
   }),
 });
@@ -381,6 +404,7 @@ await logActivity({
       // ✅ الحفظ نجح فعليًا في قاعدة البيانات، فمن هنا فصاعدًا
       // مفيش داعي نحذّر المستخدم لو غادر الصفحة
       setDirty(false);
+      resetAddSoldierFlow();
 
       navigate(
         "/dashboard/add-soldier/success",
@@ -498,6 +522,17 @@ await logActivity({
         قيد قوة جديدة
       </h1>
 
+      <div className="flex justify-center">
+        <ReviewStepper
+          onBack={() => {
+            setDirty(false);
+            navigate("/dashboard/add-soldier", {
+              state: { resumed: true },
+            });
+          }}
+        />
+      </div>
+
       {/* Main Card */}
 
       <div
@@ -602,6 +637,16 @@ await logActivity({
               value={form.job_name || "لا يوجد"}
             />
 
+            <InfoRow
+              label="الإدارة / السلاح"
+              value={form.administration_name || "غير محدد"}
+            />
+
+            <InfoRow
+              label="المستوى التعليمي"
+              value={form.education_level_name || "غير محدد"}
+            />
+
             {form.personnel_category !== "متطوع" && (
               <InfoRow
                 label="تاريخ التسريح"
@@ -686,8 +731,65 @@ await logActivity({
 }
 
 // ============================================================================
-// Info Row
+// Stepper (01 قابلة للضغط)
 // ============================================================================
+
+function ReviewStepper({ onBack }: { onBack: () => void }) {
+  const dots = (dark: boolean) => (
+    <div className="flex items-center gap-[3px] mt-4 mx-2">
+      {Array.from({ length: 16 }).map((_, i) => (
+        <span
+          key={i}
+          className="w-[3px] h-[3px] rounded-full"
+          style={{ background: dark ? "#1A202C" : "#A1AEBE" }}
+        />
+      ))}
+    </div>
+  );
+
+  return (
+    <div className="flex items-start justify-center" dir="rtl">
+      <button
+        type="button"
+        onClick={onBack}
+        title="الرجوع لإدخال البيانات"
+        className="flex flex-col items-center gap-2 bg-transparent p-0 cursor-pointer hover:opacity-80 transition-opacity"
+      >
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center"
+          style={{ background: "linear-gradient(to bottom,#00b867,#00522e)" }}
+        >
+          <span style={{ color: "#fff", fontSize: 16 }}>✓</span>
+        </div>
+        <span style={{ ...F, fontSize: 14, color: "#00864d", whiteSpace: "nowrap" }}>
+          ادخال البيانات
+        </span>
+      </button>
+
+      {dots(true)}
+
+      <div className="flex flex-col items-center gap-2">
+        <div className="w-8 h-8 rounded-full flex items-center justify-center border-2 border-[#344736] bg-white">
+          <span style={{ ...F, fontSize: 14, color: "#344736" }}>02</span>
+        </div>
+        <span style={{ ...F, fontSize: 14, color: "#344736", whiteSpace: "nowrap" }}>
+          المراجعة
+        </span>
+      </div>
+
+      {dots(false)}
+
+      <div className="flex flex-col items-center gap-2">
+        <div className="w-8 h-8 rounded-full flex items-center justify-center border-2 border-[#a1aebe] bg-white">
+          <span style={{ ...F, fontSize: 14, color: "#2d3648" }}>03</span>
+        </div>
+        <span style={{ ...F, fontSize: 14, color: "#465668", whiteSpace: "nowrap" }}>
+          اعتماد
+        </span>
+      </div>
+    </div>
+  );
+}
 
 function InfoRow({
   label,

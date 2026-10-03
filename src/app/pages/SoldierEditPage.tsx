@@ -27,11 +27,17 @@ const ATTACHMENT_STATUS_NAME = "ملحق";
 const VOLUNTEER_CATEGORY_NAME = "متطوع";
 const CONSCRIPT_CATEGORY_NAME = "مجند";
 
-// ✅ FIX: نفس الـ UUID المستخدم في ReserveBatchesPage لموقف "منتهي خدمته"
-// (نفس القيمة الموجودة هناك DISCHARGED_STATUS_ID)
-// استخدمنا نفس الـ ID الجاهز بدل الاعتماد على عمود "code" غير مؤكد وجوده
-// في جدول service_statuses، عشان نضمن التطابق 100% مع باقي الصفحات.
-const DISCHARGED_STATUS_ID = "ac8ddfa3-1578-455b-9b6a-b056260fcb1f";
+// درجات المجند، والدرجات الممنوعة على المتطوع (نفس قواعد صفحة الإضافة)
+const CONSCRIPT_RANK_CODES = ["SOLDIER", "CONSCRIPT_CORPORAL"];
+const NON_VOLUNTEER_RANK_CODES = ["SOLDIER", "CONSCRIPT_CORPORAL", "HONORARY_LIEUTENANT"];
+
+function rankCodeOf(rank?: { name: string; code?: string | null } | null): string {
+  const code = rank?.code?.trim().toUpperCase();
+  if (code) return code;
+  if (isSoldierRankName(rank?.name)) return "SOLDIER";
+  if ((rank?.name ?? "").trim() === "عريف مجند") return "CONSCRIPT_CORPORAL";
+  return "";
+}
 
 // طول الرقم العسكري المطلوب بالظبط
 const MILITARY_NUMBER_LENGTH = 13;
@@ -52,6 +58,7 @@ function formatBatchDate(date: string) {
 type Option = {
   id: string;
   name: string;
+  code?: string | null;
 };
 
 type Soldier = {
@@ -1046,26 +1053,20 @@ function isoToDisplayDate(iso: string | null | undefined): string {
 // ⚠️ افتراض: الاسم مخزّن في user_metadata.full_name (نمط شائع في Supabase Auth).
 // لو عندك عمود اسم مختلف أو جدول "profiles" منفصل، عدّل الدالة دي بس
 // وباقي الكود هيفضل شغال زي ما هو.
-async function getCurrentUserDisplayName(): Promise<string> {
-  try {
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser();
+async function getCurrentUserInfo(): Promise<{ userId: string | null; userName: string }> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-    if (error || !user) {
-      return "مستخدم غير معروف";
-    }
+  if (!user) return { userId: null, userName: "غير معروف" };
 
-    const metaName =
-      (user.user_metadata as any)?.full_name ||
-      (user.user_metadata as any)?.name;
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("username")
+    .eq("id", user.id)
+    .maybeSingle();
 
-    return metaName || user.email || "مستخدم غير معروف";
-  } catch (err) {
-    console.error("Error getting current user:", err);
-    return "مستخدم غير معروف";
-  }
+  return { userId: user.id, userName: profile?.username ?? "غير معروف" };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1112,6 +1113,7 @@ export function SoldierEditPage() {
     null
   );
   const [jobId, setJobId] = useState<string | null>(null);
+  const [dischargedStatusId, setDischargedStatusId] = useState<string | null>(null);
   // ───────────────────────────────────────────────────────────
   // States
   // ───────────────────────────────────────────────────────────
@@ -1184,16 +1186,6 @@ export function SoldierEditPage() {
     };
   }, [setPerformingSensitiveOperation]);
 
-  // ─────────────────────────────────────────────────────
-  // تحديد أن هذه عملية حساسة
-  // ─────────────────────────────────────────────────────
-  useEffect(() => {
-    setPerformingSensitiveOperation(true);
-
-    return () => {
-      setPerformingSensitiveOperation(false);
-    };
-  }, [setPerformingSensitiveOperation]);
   // هل الموقف الخدمي الحالي المختار = "ملحق"؟
   const selectedServiceStatusName =
     serviceStatusOptions.find((o) => o.id === serviceStatusId)?.name ??
@@ -1210,10 +1202,16 @@ export function SoldierEditPage() {
   const isConscriptCategory = selectedCategoryName === CONSCRIPT_CATEGORY_NAME;
 const filteredRankOptions = useMemo(() => {
   return rankOptions.filter((rank) => {
-    const soldier = isSoldierRankName(rank.name);
-    return isConscriptCategory ? soldier : !soldier;
+    const code = rankCodeOf(rank);
+    return isConscriptCategory
+      ? CONSCRIPT_RANK_CODES.includes(code)
+      : !NON_VOLUNTEER_RANK_CODES.includes(code);
   });
 }, [rankOptions, isConscriptCategory]);
+
+// فرد خدمته منتهية: الموقف الخدمي مقفول (الرجوع للخدمة مش من هنا)
+const isCurrentlyDischarged =
+  !!dischargedStatusId && soldier?.serviceStatusId === dischargedStatusId;
   // ───────────────────────────────────────────────────────────
   // Load Dropdown Data
   // ───────────────────────────────────────────────────────────
@@ -1230,8 +1228,8 @@ const filteredRankOptions = useMemo(() => {
       ] = await Promise.all([
         supabase
           .from("ranks")
-          .select("id,name")
-          .order("name", { ascending: true }),
+          .select("id,name,code")
+          .order("sort_order", { ascending: true }),
 
         supabase
           .from("personnel_categories")
@@ -1246,7 +1244,8 @@ const filteredRankOptions = useMemo(() => {
 
         supabase
           .from("service_statuses")
-          .select("id,name")
+          .select("id,name,code")
+          .eq("is_active", true)
           .order("name", { ascending: true }),
 
         supabase
@@ -1290,9 +1289,10 @@ const filteredRankOptions = useMemo(() => {
         }))
       );
       setRankOptions(
-        (ranksResult.data ?? []).map((row) => ({
+        (ranksResult.data ?? []).map((row: any) => ({
           id: row.id,
           name: row.name,
+          code: row.code,
         }))
       );
 
@@ -1323,11 +1323,23 @@ const filteredRankOptions = useMemo(() => {
         allUnits.map((unit) => ({ id: unit.id, name: unit.name }))
       );
 
+      const statuses = (serviceStatusesResult.data ?? []) as {
+        id: string;
+        name: string;
+        code: string | null;
+      }[];
+
+      const discharged = statuses.find(
+        (s) => s.code?.trim().toUpperCase() === "DISCHARGED"
+      );
+
+      setDischargedStatusId(discharged?.id ?? null);
+
+      // "منتهي خدمته" مش اختيار هنا: إنهاء الخدمة من صفحاته المخصصة بس
       setServiceStatusOptions(
-        (serviceStatusesResult.data ?? []).map((row) => ({
-          id: row.id,
-          name: row.name,
-        }))
+        statuses
+          .filter((s) => s.id !== discharged?.id)
+          .map((s) => ({ id: s.id, name: s.name, code: s.code }))
       );
 
       // ✅ خيارات دفعات الرديف - نستخدم batch_date نفسه كـ "id" لأنه
@@ -1562,11 +1574,13 @@ function handleCategoryChange(option: Option) {
   // إعادة ضبط الدرجة لو بقت غير متوافقة مع الفئة الجديدة
   const willBeConscript = option.name === CONSCRIPT_CATEGORY_NAME;
   const currentRank = rankOptions.find((r) => r.id === rankId);
-
   if (currentRank) {
-    const rankIsSoldier = isSoldierRankName(currentRank.name);
+    const code = rankCodeOf(currentRank);
+    const allowed = willBeConscript
+      ? CONSCRIPT_RANK_CODES.includes(code)
+      : !NON_VOLUNTEER_RANK_CODES.includes(code);
 
-    if (willBeConscript !== rankIsSoldier) {
+    if (!allowed) {
       setRankId(null);
     }
   }
@@ -1652,17 +1666,38 @@ function handleCategoryChange(option: Option) {
         setError("حدث خطأ أثناء التحقق من الرقم العسكري");
         return;
       }
-
       if (duplicateData) {
         setMilitaryNumberError("هذا الرقم العسكري مستخدم بالفعل لفرد آخر");
         return;
       }
 
-      // ✅ FIX: لو الموقف الخدمي المختار هو "منتهي خدمته" (نفس الـ ID
-      // المستخدم في ReserveBatchesPage)، بنحدد is_active = false تلقائيًا.
-      // ده هو سبب المشكلة الأصلية: الصفحة دي كانت بتعدّل service_status_id
-      // بس من غير ما تلمس is_active، فيحصل تعارض بين الحقلين في باقي الصفحات.
-      const isDischargedStatus = serviceStatusId === DISCHARGED_STATUS_ID;
+      const militaryNumberChanged = trimmedMilitaryNumber !== soldier.militaryId;
+
+      // رقم محجوز لفرد محذوف
+      if (militaryNumberChanged) {
+        const { data: deletedNumbers } = await supabase.rpc(
+          "get_deleted_military_numbers",
+          { p_numbers: [trimmedMilitaryNumber] }
+        );
+
+        if ((deletedNumbers ?? []).length > 0) {
+          setMilitaryNumberError("هذا الرقم العسكري لفرد محذوف (يُسترجع من صفحة الأفراد المحذوفين)");
+          return;
+        }
+      }
+
+      // المستوى التعليمي من الرقم الجديد (الخانة ٦)
+      let educationPatch: Record<string, string | null> = {};
+
+      if (militaryNumberChanged) {
+        const { data: educationLevel } = await supabase
+          .from("education_levels")
+          .select("id")
+          .eq("code", trimmedMilitaryNumber[5])
+          .maybeSingle();
+
+        educationPatch = { education_level_id: educationLevel?.id ?? null };
+      }
 
       // تحديث نفس الفرد باستخدام IDs مباشرة
       const { error: updateError } = await supabase
@@ -1678,11 +1713,9 @@ function handleCategoryChange(option: Option) {
             ? attachmentUnitId
             : null,
           discharge_date: isVolunteerCategory ? null : dischargeDateIso,
-          // ✅ FIX: تحديث is_active بما يتوافق مع الموقف الخدمي المختار
-          // عشان تفضل كل الصفحات (Dashboard / تفاصيل الفرد / دفعات الرديف)
-          // متوافقة مع بعضها دايمًا
-                    job_id: jobId, // ✅ جديد
-          is_active: !isDischargedStatus,
+          job_id: jobId,
+          ...educationPatch,
+          // is_active مبيتغيرش من هنا: بيتغير مع إنهاء الخدمة من صفحاته بس
         })
         .eq("id", soldier.id);
 
@@ -1698,9 +1731,10 @@ function handleCategoryChange(option: Option) {
 
       // ✅ FIX: نجيب اسم المستخدم الحالي (اللي بيعمل التعديل فعليًا)
       // بدل ما نسجّل اسم الفرد اللي بيتم تعديل بياناته (soldier.name).
-      const currentUserName = await getCurrentUserDisplayName();
+      const { userId, userName: currentUserName } = await getCurrentUserInfo();
 
       await logActivity({
+        userId,
         userName: currentUserName,
         actionType: "UPDATE",
         action: "تعديل بيانات فرد",
@@ -2075,10 +2109,20 @@ await createNotification({
 
                     <EditDropdown
                       options={serviceStatusOptions}
-                      value={serviceStatusId}
+                      value={isCurrentlyDischarged ? null : serviceStatusId}
                       onChange={handleServiceStatusChange}
-                      placeholder="اختر الموقف الخدمي"
+                      disabled={isCurrentlyDischarged}
+                      placeholder={isCurrentlyDischarged ? "منتهي خدمته" : "اختر الموقف الخدمي"}
                     />
+
+                    {isCurrentlyDischarged && (
+                      <p
+                        className="text-right mt-1"
+                        style={{ ...FONT, fontSize: 12, color: "#717d96", lineHeight: 1.6 }}
+                      >
+                        خدمة الفرد منتهية، والموقف الخدمي مش بيتعدل من هنا.
+                      </p>
+                    )}
                   </div>
                 }
               />

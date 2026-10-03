@@ -46,7 +46,7 @@ const canCreate = hasPermission("archive_outgoing:create");
   const [offices, setOffices] = useState<MailOffice[]>([]);
   const [loadingOffices, setLoadingOffices] = useState(true);
   const [faxDate, setFaxDate] = useState(
-    new Date().toISOString().split("T")[0]
+    todayLocalIso()
   );
 
   const [officeId, setOfficeId] = useState("");

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Search, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router";
 import { supabase } from "../../lib/supabase";
-import { fetchAllRows } from "../../lib/supabase";
+import { fetchAllRows } from "../../lib/fetchAllRows";
 
 
 
@@ -426,7 +426,8 @@ const [sortBy, setSortBy] = useState("التبعية");
         .select(
           "id,primary_unit_id,attachment_unit_id,personnel_category_id,service_status_id,is_active"
         )
-        .eq("is_active", true)
+         .eq("is_active", true)
+        .order("id", { ascending: true })
         .range(from, to)
     );
 

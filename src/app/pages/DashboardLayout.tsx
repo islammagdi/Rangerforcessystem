@@ -59,9 +59,17 @@ const PAGE_TITLES: Record<string, string> = {
 "/dashboard/incidents-record": "سجل الحوادث",
  "/dashboard/manage-jobs": "إدارة الوظائف", // ✅ جديدب
  "/dashboard/units-tree": "الهيكل التنظيمي", // ✅ جديد
-   "/dashboard/promotion-notifications": "نشرات الترقي",
+"/dashboard/promotion-notifications": "نشرات الترقي",
+  "/dashboard/recruit-arrivals": "تسجيل وصول المجندين",
+   "/dashboard/promotion-eligibility-report": "الأفراد المستحقين للترقية",
+   "/dashboard/deficit-rate": "نسبة العجز",
+   "/dashboard/branch-duty": "نوبتجية الفرع",
+   "/dashboard/military-ceremonies": "المراسم العسكرية",
+   "/dashboard/dashboard-settings": "إعدادات الموقف العام",
+      "/dashboard/nco-discharges": "ملفات إنهاء الخدمة",
+   "/dashboard/conscript-promotions": "ترقي المجندين",
+   "/dashboard/deleted-personnel": "الأفراد المحذوفين",
 };
-
 // ============================================================
 // صلاحيات الوصول لكل مسار (بدل الأدوار الثابتة)
 // ============================================================
@@ -113,7 +121,17 @@ const PATH_PERMISSION_MAP: { prefix: string; permission: string }[] = [
   { prefix: "/dashboard/incidents-record", permission: "incidents_record:view" },
     { prefix: "/dashboard/manage-jobs", permission: "manage_jobs:view" }, // ✅ جديد
     { prefix: "/dashboard/units-tree", permission: "units_tree:view" }, // ✅ جديد
-    { prefix: "/dashboard/promotion-notifications", permission: "promotion_notifications:view" },
+    { prefix: "/dashboard/promotion-eligibility-report", permission: "promotion_notifications:view" },
+       { prefix: "/dashboard/promotion-notifications", permission: "promotion_notifications:view" },
+    { prefix: "/dashboard/recruit-arrivals", permission: "recruit_arrivals:view" },
+    { prefix: "/dashboard/deficit-rate", permission: "deficit_rate:view" },
+    { prefix: "/dashboard/branch-duty", permission: "branch_duty:view" },
+    { prefix: "/dashboard/military-ceremonies", permission: "military_ceremonies:view" },
+    { prefix: "/dashboard/dashboard-settings", permission: "dashboard_settings:manage" },
+    { prefix: "/dashboard/nco-discharges", permission: "nco_discharge:view" },
+    { prefix: "/dashboard/conscript-promotions", permission: "conscript_promotion:view" },
+     { prefix: "/dashboard/deleted-personnel", permission: "personnel:restore" },
+
 ];
 // قواعد خاصة بمسارات "التعديل" — بتتحقق قبل القاعدة العامة، عشان
 // تفرّق بين صفحة عرض بيانات الفرد (تكفيها individual_query:view)
@@ -263,6 +281,15 @@ if (pathname.includes("/manage-letter-types")) {
   if (pathname.includes("/promotion-notifications")) {
   return "نشرات الترقي";
 }
+  if (pathname.includes("/recruit-arrivals")) {
+    return "تسجيل وصول المجندين";
+  }
+  if (pathname.includes("/military-ceremonies/")) {
+    return "المراسم العسكرية / تفاصيل الزيارة";
+  }
+  if (pathname.includes("/nco-discharges/")) {
+    return "ملفات إنهاء الخدمة / تفاصيل الملف";
+  }
   // القيمة الافتراضية
   return "الموقف العام";
 }
@@ -450,6 +477,9 @@ else if (label === "الهيكل التنظيمي") {
 }
 else if (label === "نشرات الترقي") {
   navigate("/dashboard/promotion-notifications");
+}
+else if (label === "الأفراد المستحقين للترقية") {
+  navigate("/dashboard/promotion-eligibility-report");
 }
   }
 

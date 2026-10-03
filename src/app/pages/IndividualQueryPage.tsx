@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { usePermissions } from "../../lib/usePermissions";
 import { logActivity } from "../../lib/logActivity";
-import { DeleteConfirmDialog } from "../components/dashboard/DeleteConfirmDialog";
+import { SoftDeleteDialog } from "../components/dashboard/SoftDeleteDialog";
 import { supabase } from "../../lib/supabase";
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -140,6 +140,8 @@ const CATEGORIES = [
   { id: "volunteer", label: "متطوع" },
 ];
 
+const MAX_RESULTS = 500;
+
 const STATUS_FILTER_OPTIONS: StatusFilter[] = [
   "الكل",
   "علي القوة",
@@ -148,6 +150,7 @@ const STATUS_FILTER_OPTIONS: StatusFilter[] = [
 
 const RANK_OPTIONS = [
   "جميع الدرجات",
+  "عريف مجند",
   "جندى",
   "عريف",
   "رقيب",
@@ -196,12 +199,12 @@ function normalizeStatus(
 
   const normalized = value.trim();
 
-  if (
-    normalized === "ملحق" ||
-    normalized === "قوة الوحدة" ||
-    normalized === "قوة الوحده"
-  ) {
+  if (normalized === "ملحق" || normalized === "ملحق علي القوة") {
     return "ملحق";
+  }
+
+  if (normalized === "قوة الوحدة" || normalized === "قوة الوحده" || normalized === "قوه الوحده") {
+    return "علي القوة";
   }
 
   if (
@@ -1000,6 +1003,10 @@ const { hasPermission } = usePermissions();
   const [hasSearched, setHasSearched] =
     useState(false);
 
+  // العدد الحقيقي للنتائج (ممكن يبقى أكبر من MAX_RESULTS)
+  const [totalMatches, setTotalMatches] =
+    useState(0);
+
   // ═══════════════════════════════════════════════════════════════════════════
   // Raw Results
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1310,7 +1317,7 @@ const { hasPermission } = usePermissions();
             name,
             code
           )
-        `);
+        `, { count: "exact" });
 
       // ═════════════════════════════════════════════════════════════════════
       // Category
@@ -1392,7 +1399,13 @@ const { hasPermission } = usePermissions();
       const {
         data,
         error,
-      } = await query;
+        count,
+      } = await query
+        .order("full_name", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(MAX_RESULTS);
+
+      setTotalMatches(count ?? 0);
 
       if (error) {
         throw error;
@@ -1530,87 +1543,24 @@ const { hasPermission } = usePermissions();
     setDeleteTargetId(id);
   }
 
-  async function confirmDelete() {
-    if (!deleteTargetId) {
-      return;
-    }
+  async function confirmDelete(reason: string) {
+    if (!deleteTargetId) return;
 
-    try {
-      const deletedRecord =
-        results.find(
-          (record) =>
-            record.id ===
-            deleteTargetId
-        );
+    const { error } = await supabase.rpc("soft_delete_personnel", {
+      p_personnel_id: deleteTargetId,
+      p_reason: reason,
+    });
 
-      const {
-        error,
-      } = await supabase
-        .from("personnel")
-        .delete()
-        .eq(
-          "id",
-          deleteTargetId
-        );
+    if (error) throw error; // النافذة بتعرض الرسالة (زي: صادر له خطابات)
 
-      if (error) {
-        throw error;
-      }
+    const deletedId = deleteTargetId;
 
-      try {
-        await logActivity({
-          userId: currentUserId,
-
-          userName:
-            currentUserName,
-
-          actionType: "DELETE",
-
-          action: "حذف فرد",
-
-          entity: "personnel",
-
-          details: JSON.stringify({
-            personnelId:
-              deleteTargetId,
-
-            militaryNumber:
-              deletedRecord?.militaryId ??
-              null,
-
-            fullName:
-              deletedRecord?.name ??
-              null,
-          }),
-        });
-      } catch (auditError) {
-
-      }
-
-      setResults((previous) =>
-        previous.filter(
-          (record) =>
-            record.id !==
-            deleteTargetId
-        )
-      );
-
-      setSelectedIds((previous) => {
-        const next = new Set(previous);
-
-        next.delete(
-          deleteTargetId
-        );
-
-        return next;
-      });
-    } catch (error) {
-
-
-      alert(
-        "حدث خطأ أثناء حذف الفرد"
-      );
-    }
+    setResults((previous) => previous.filter((record) => record.id !== deletedId));
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      next.delete(deletedId);
+      return next;
+    });
 
     setDeleteTargetId(null);
   }
@@ -1657,10 +1607,12 @@ const { hasPermission } = usePermissions();
       className="flex flex-col gap-6 w-full"
       dir="rtl"
     >
-      <DeleteConfirmDialog
-        open={
-          deleteTargetId !== null
-        }
+      <SoftDeleteDialog
+        open={deleteTargetId !== null}
+        subtitle={(() => {
+          const r = results.find((x) => x.id === deleteTargetId);
+          return r ? `${r.militaryId} - ${r.name}` : undefined;
+        })()}
         onCancel={cancelDelete}
         onConfirm={confirmDelete}
       />
@@ -1931,7 +1883,7 @@ const { hasPermission } = usePermissions();
 
               {found && (
                 <NotifBadge
-                  label={`تم العثور علي ${results.length} نتائج استعلام`}
+                  label={`تم العثور علي ${Math.max(totalMatches, results.length)} نتائج استعلام`}
                   dot="#35C128"
                   bg="#ebfaea"
                   text="#26861d"
@@ -1939,6 +1891,22 @@ const { hasPermission } = usePermissions();
               )}
             </div>
           </div>
+
+          {found && totalMatches > results.length && (
+            <div
+              className="w-full rounded-[10px] px-4 py-3"
+              style={{
+                background: "#fff8e8",
+                border: "1px solid #f4d58d",
+                color: "#8a6500",
+                fontFamily: "'Almarai', sans-serif",
+                fontSize: "14px",
+              }}
+            >
+              فيه {totalMatches.toLocaleString("ar-EG")} نتيجة مطابقة، ومعروض أول{" "}
+              {results.length.toLocaleString("ar-EG")} بس. ضيّق البحث (اكتب جزء أطول من الرقم أو الاسم، أو اختر الفئة).
+            </div>
+          )}
 
           {/* ═══════════════════════════════════════════════════════════════ */}
           {/* FILTERS */}

@@ -15,6 +15,7 @@ import { ArrowDownUp, Building2 } from "lucide-react";
 
 import svgPaths from "../../imports/بيانالوحداتالموقفالعامبيانوحده-1/svg-bswzreobyg";
 import { supabase } from "../../lib/supabase";
+import { fetchAllRows } from "../../lib/fetchAllRows";
 import {
   isCountedInUnitStrength,
   isOutsideOwnUnit,
@@ -1383,27 +1384,17 @@ export function UnitDetailPage() {
         statusesResult,
         unitsResult,
       ] = await Promise.all([
-        main
-          ? supabase
-              .from("personnel")
-              .select(
-                "id,military_number,full_name,rank_id,personnel_category_id,service_status_id,primary_unit_id,attachment_unit_id,is_active,discharge_date"
-              )
-              .eq(
-                "primary_unit_id",
-                unitId
-              )
-              .eq("is_active", true)
-          : supabase
-              .from("personnel")
-              .select(
-                "id,military_number,full_name,rank_id,personnel_category_id,service_status_id,primary_unit_id,attachment_unit_id,is_active,discharge_date"
-              )
-              .eq(
-                "attachment_unit_id",
-                unitId
-              )
-              .eq("is_active", true),
+        fetchAllRows<DbPersonnelRow>((from, to) =>
+          supabase
+            .from("personnel")
+            .select(
+              "id,military_number,full_name,rank_id,personnel_category_id,service_status_id,primary_unit_id,attachment_unit_id,is_active,discharge_date"
+            )
+            .eq(main ? "primary_unit_id" : "attachment_unit_id", unitId)
+            .eq("is_active", true)
+            .order("id", { ascending: true })
+            .range(from, to)
+        ),
 
         supabase
           .from("ranks")
@@ -1422,9 +1413,6 @@ export function UnitDetailPage() {
           .select("id,name"),
       ]);
 
-      if (personnelResult.error) {
-        throw personnelResult.error;
-      }
 
       if (ranksResult.error) {
         throw ranksResult.error;
@@ -1444,10 +1432,7 @@ export function UnitDetailPage() {
 
       setUnit(unitRow);
 
-      setUnitPersonnel(
-        (personnelResult.data ??
-          []) as DbPersonnelRow[]
-      );
+      setUnitPersonnel(personnelResult);
 
       setRanks(
         ranksResult.data ?? []

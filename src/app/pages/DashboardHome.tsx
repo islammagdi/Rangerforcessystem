@@ -6,9 +6,19 @@ import { ProgressCard } from "../components/dashboard/ProgressCard";
 import { DonutChart } from "../components/dashboard/DonutChart";
 import { UnitBarChart } from "../components/dashboard/UnitBarChart";
 import { useDashboardStats } from "../../hooks/useDashboardStats";
+import { DutyDashboardSection } from "../components/dashboard/DutyDashboardSection";
+import { UpcomingVisitsSection } from "../components/dashboard/UpcomingVisitsSection";
+import { useDashboardSections } from "../../lib/dashboardSections";
+import { usePermissions } from "../../lib/usePermissions";
 import { useNavigate } from "react-router";
-import { CircleCheckBig, CircleX, Inbox, Send, FileText, Users } from "lucide-react";
+import { CircleCheckBig, CircleX, Inbox, Send, FileText, Users, UserCheck } from "lucide-react";
 import { fetchSocialRecordUnitStats } from "../../lib/socialRecords";
+import {
+  PHASE_STATUS_LABELS,
+  fetchDashboardPhaseStats,
+  type DashboardCategoryStats,
+  type DashboardPhaseStats,
+} from "../../lib/recruitArrivals";
 import {
   fetchTodayMailAlerts,
   fetchPendingMailTasks,
@@ -142,11 +152,156 @@ function isOverdue(referenceDate: string): boolean {
 
 const MAX_VISIBLE_TASK_BADGES = 10;
 
-const SOCIAL_RECORD_DASHBOARD_ROLE_CODES = [
-  "ADMIN",
-  "BRANCH_HEAD",
-  "custom_1790400490014",
-];
+
+
+// ============================================================
+// مكونات موقف وصول المجندين
+// ============================================================
+
+const RECRUIT_FONT: React.CSSProperties = {
+  fontFamily: "'Almarai', sans-serif",
+};
+
+const fmtNum = (n: number) => n.toLocaleString("en-US");
+
+const calcPercent = (arrived: number, target: number) =>
+  target > 0 ? Math.min(100, Math.round((arrived / target) * 100)) : 0;
+
+function RecruitProgressBar({ percent }: { percent: number }) {
+  return (
+    <div className="w-full h-2 rounded-full bg-[#eff0f6] overflow-hidden">
+      <div
+        className="h-full rounded-full"
+        style={{ width: `${percent}%`, background: "#00b867" }}
+      />
+    </div>
+  );
+}
+
+function RecruitDonut({ percent, size = 96 }: { percent: number; size?: number }) {
+  const stroke = 10;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const offset = c - (percent / 100) * c;
+
+  return (
+    <div className="shrink-0 relative" style={{ width: size, height: size }}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="#eff0f6"
+          strokeWidth={stroke}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="#00b867"
+          strokeWidth={stroke}
+          strokeDasharray={c}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+        />
+      </svg>
+      <div
+        className="absolute inset-0 flex items-center justify-center"
+        style={{ ...RECRUIT_FONT, fontWeight: 700, fontSize: 16, color: "#2d3648" }}
+      >
+        {percent}%
+      </div>
+    </div>
+  );
+}
+
+function RecruitCategoryCard({
+  data,
+  onClick,
+}: {
+  data: DashboardCategoryStats;
+  onClick: () => void;
+}) {
+  const percent = calcPercent(data.arrived, data.target);
+  const remaining = data.target - data.arrived;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      dir="rtl"
+      className="flex-1 min-w-[280px] bg-white rounded-2xl border border-[#eff0f6] p-4 sm:p-5 flex flex-col gap-4 text-right hover:border-[#00b867] transition-colors"
+    >
+      <div className="flex items-center justify-between gap-3 w-full">
+        <div className="flex flex-col gap-1.5">
+          <span style={{ ...RECRUIT_FONT, fontWeight: 700, fontSize: 18, color: "#2d3648" }}>
+            {data.label}
+          </span>
+          <span style={{ ...RECRUIT_FONT, fontSize: 13, color: "#717d96" }}>
+            وصل {fmtNum(data.arrived)} من {fmtNum(data.target)}
+          </span>
+          <span
+            style={{
+              ...RECRUIT_FONT,
+              fontSize: 13,
+              color: remaining < 0 ? "#e3282c" : "#92400e",
+            }}
+          >
+            المتبقي: {fmtNum(remaining)}
+          </span>
+          <span
+            className="self-start px-2 py-0.5 rounded-full"
+            style={{
+              ...RECRUIT_FONT,
+              background: "#e0f2fe",
+              fontSize: 12,
+              fontWeight: 700,
+              color: "#075985",
+            }}
+          >
+            وصل اليوم: {fmtNum(data.today)}
+          </span>
+        </div>
+
+        <RecruitDonut percent={percent} />
+      </div>
+
+      <div className="flex flex-col gap-3 pt-3 border-t border-[#eff0f6] w-full">
+        {data.levels.map((l) => (
+          <div key={l.level} className="flex flex-col gap-1">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span style={{ ...RECRUIT_FONT, fontSize: 13, fontWeight: 700, color: "#2d3648" }}>
+                {l.label}
+              </span>
+
+              <div className="flex items-center gap-2">
+                <span style={{ ...RECRUIT_FONT, fontSize: 12, color: "#717d96" }}>
+                  {fmtNum(l.arrived)} من {fmtNum(l.target)}
+                </span>
+                <span
+                  className="px-2 py-0.5 rounded-full"
+                  style={{
+                    ...RECRUIT_FONT,
+                    background: "#e0f2fe",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#075985",
+                  }}
+                >
+                  اليوم {fmtNum(l.today)}
+                </span>
+              </div>
+            </div>
+
+            <RecruitProgressBar percent={calcPercent(l.arrived, l.target)} />
+          </div>
+        ))}
+      </div>
+    </button>
+  );
+}
 // ============================================================
 // الصفحة الرئيسية
 // ============================================================
@@ -154,10 +309,10 @@ const SOCIAL_RECORD_DASHBOARD_ROLE_CODES = [
 export function DashboardHome() {
 
   const navigate = useNavigate();
+  const { loading: loadingSections, canSee } = useDashboardSections();
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
-  const [currentUserRoleCode, setCurrentUserRoleCode] = useState<string | null>(null);
-
+  const { roleNames } = usePermissions();
+  const currentUserRole = roleNames.length > 0 ? roleNames.join("، ") : null;
   const [socialStats, setSocialStats] = useState({
     total: 0,
     complete: 0,
@@ -165,6 +320,10 @@ export function DashboardHome() {
     without: 0,
   });
   const [loadingSocialStats, setLoadingSocialStats] = useState(true);
+
+  const [recruitStats, setRecruitStats] = useState<DashboardPhaseStats | null>(null);
+  const [loadingRecruitStats, setLoadingRecruitStats] = useState(true);
+  const [recruitUpdatedAt, setRecruitUpdatedAt] = useState<Date | null>(null);
   const [loadingUser, setLoadingUser] = useState(true);
 
   const { alerts, loading: loadingAlerts } = useSystemAlerts();
@@ -215,22 +374,35 @@ export function DashboardHome() {
   const [loadingTodayLetters, setLoadingTodayLetters] = useState(true);
   useEffect(() => {
     loadCurrentUser();
-    loadPersonnelStats();
-    loadReserveBatchData();
-    loadDocumentsStats();
-    loadReviewStats();
+    loadOverview();
     loadMailAlerts();
     loadPendingTasks();
     loadPendingLetters();
     loadTodayLettersCount();
   }, []);
-  const canViewSocialRecordStats =
-    currentUserRoleCode !== null &&
-    SOCIAL_RECORD_DASHBOARD_ROLE_CODES.includes(currentUserRoleCode);
+  const canViewSocialRecordStats = canSee("social_record_stats");
 
   useEffect(() => {
     if (canViewSocialRecordStats) loadSocialRecordStats();
   }, [canViewSocialRecordStats]);
+  const canViewRecruitStats = canSee("recruit_arrivals");
+
+  useEffect(() => {
+    if (canViewRecruitStats) loadRecruitStats();
+  }, [canViewRecruitStats]);
+
+  async function loadRecruitStats() {
+    try {
+      setLoadingRecruitStats(true);
+      const data = await fetchDashboardPhaseStats(toDbDateString(new Date()));
+      setRecruitStats(data);
+      setRecruitUpdatedAt(new Date());
+    } catch (error) {
+      console.error("خطأ في تحميل موقف وصول المجندين:", error);
+    } finally {
+      setLoadingRecruitStats(false);
+    }
+  }
 
   async function loadSocialRecordStats() {
     try {
@@ -298,19 +470,7 @@ export function DashboardHome() {
 
       setCurrentUser(data);
 
-      const { data: userRole, error: roleError } = await supabase
-        .from("user_roles")
-        .select("role:roles(name, code)")
-        .eq("user_id", user.id)
-        .maybeSingle();
 
-      if (roleError) {
-        console.error("خطأ في تحميل دور المستخدم:", roleError);
-      } else {
-        const role = userRole?.role as unknown as { name: string; code: string } | null;
-        setCurrentUserRole(role?.name ?? null);
-        setCurrentUserRoleCode(role?.code ?? null);
-      }
     } catch (error) {
 
     } finally {
@@ -318,125 +478,7 @@ export function DashboardHome() {
     }
   };
 
-  const loadPersonnelStats = async () => {
-    try {
-      setLoadingStats(true);
 
-      const { data: categories, error: categoriesError } = await supabase
-        .from("personnel_categories")
-        .select("id, code")
-        .in("code", ["VOLUNTEER", "CONSCRIPT"]);
-
-      if (categoriesError) {
-    
-        return;
-      }
-
-      const volunteerCategory = categories?.find((item) => item.code === "VOLUNTEER");
-      const conscriptCategory = categories?.find((item) => item.code === "CONSCRIPT");
-
-      if (!volunteerCategory || !conscriptCategory) {
-       
-        return;
-      }
-
-      const { data: statuses, error: statusesError } = await supabase
-        .from("service_statuses")
-        .select("id, code")
-        .eq("code", "ATTACHED");
-
-      if (statusesError) {
-       
-        return;
-      }
-
-      const attachedStatus = statuses?.find((item) => item.code === "ATTACHED");
-
-      if (!attachedStatus) {
-      
-        return;
-      }
-
-      const { count: volunteersCount, error: volunteersError } = await supabase
-        .from("personnel")
-        .select(
-          "id, primary_unit:units!personnel_primary_unit_id_fkey!inner(unit_type)",
-          { count: "exact", head: true }
-        )
-        .eq("personnel_category_id", volunteerCategory.id)
-        .eq("is_active", true)
-        .ilike("primary_unit.unit_type", "MAIN");
-
-      if (volunteersError) {
-     
-      }
-
-      const { count: conscriptsCount, error: conscriptsError } = await supabase
-        .from("personnel")
-        .select(
-          "id, primary_unit:units!personnel_primary_unit_id_fkey!inner(unit_type)",
-          { count: "exact", head: true }
-        )
-        .eq("personnel_category_id", conscriptCategory.id)
-        .eq("is_active", true)
-        .ilike("primary_unit.unit_type", "MAIN");
-
-      if (conscriptsError) {
-      
-      }
-
-      const { count: outsideVolunteersCount, error: outsideVolunteersError } = await supabase
-        .from("personnel")
-        .select(
-          "id, primary_unit:units!personnel_primary_unit_id_fkey!inner(unit_type)",
-          { count: "exact", head: true }
-        )
-        .eq("personnel_category_id", volunteerCategory.id)
-        .eq("is_active", true)
-        .eq("service_status_id", attachedStatus.id)
-        .ilike("primary_unit.unit_type", "MAIN");
-
-      if (outsideVolunteersError) {
-       
-      }
-
-      const { count: outsideConscriptsCount, error: outsideConscriptsError } = await supabase
-        .from("personnel")
-        .select(
-          "id, primary_unit:units!personnel_primary_unit_id_fkey!inner(unit_type)",
-          { count: "exact", head: true }
-        )
-        .eq("personnel_category_id", conscriptCategory.id)
-        .eq("is_active", true)
-        .eq("service_status_id", attachedStatus.id)
-        .ilike("primary_unit.unit_type", "MAIN");
-
-      if (outsideConscriptsError) {
-      
-      }
-
-      const volunteers = volunteersCount ?? 0;
-      const conscripts = conscriptsCount ?? 0;
-      const outsideVolunteers = outsideVolunteersCount ?? 0;
-      const outsideConscripts = outsideConscriptsCount ?? 0;
-
-      const totalForce = volunteers + conscripts;
-      const totalOutside = outsideVolunteers + outsideConscripts;
-
-      setStats({
-        volunteers,
-        conscripts,
-        totalForce,
-        outsideVolunteers,
-        outsideConscripts,
-        totalOutside,
-      });
-    } catch (error) {
-    
-    } finally {
-      setLoadingStats(false);
-    }
-  };
 
   function toDbDateString(date: Date) {
     const year = date.getFullYear();
@@ -449,307 +491,64 @@ export function DashboardHome() {
     const [year, month, day] = dateStr.split("-").map(Number);
     return new Date(year, month - 1, day);
   }
+    // كل أرقام القوة والدفعة في طلب واحد (نفس تعريف بيان الوحدات)
+  async function loadOverview() {
+    setLoadingStats(true);
+    setLoadingReserveBatch(true);
+    setLoadingDocStats(true);
+    setLoadingReviewStats(true);
 
-async function getNextReserveBatch(): Promise<{ id: string; batch_date: string } | null> {
-  const todayStr = toDbDateString(new Date());
-
-  // ✅ .gt بدل .gte: الدفعة "التالية" لازم تكون بعد اليوم فعلاً،
-  // مش تشمل دفعة بتاريخ اليوم نفسه (اللي ممكن تكون دفعة قديمة/فارغة
-  // اتسجلت بنفس تاريخ النهاردة بالصدفة)
-  const { data: upcoming, error: upcomingError } = await supabase
-    .from("reserve_batches")
-    .select("id, batch_date")
-    .gt("batch_date", todayStr)
-    .order("batch_date", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (upcomingError) {
-  
-  }
-
-  if (upcoming) {
-    return upcoming;
-  }
-
-  // احتياطي: لو مفيش أي دفعة بعد اليوم، ناخد آخر دفعة (بما فيها
-  // اللي بتاريخ اليوم نفسه أو قبله)
-  const { data: latestPast, error: latestPastError } = await supabase
-    .from("reserve_batches")
-    .select("id, batch_date")
-    .lte("batch_date", todayStr)
-    .order("batch_date", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (latestPastError) {
-   
-  }
-
-  return latestPast ?? null;
-}
-
-  async function loadReserveBatchData() {
     try {
-      setLoadingReserveBatch(true);
+      const { data, error } = await supabase.rpc("get_dashboard_overview");
+      if (error) throw error;
 
-      const batch = await getNextReserveBatch();
+      const o = (data ?? {}) as Record<string, any>;
+      const n = (key: string) => Number(o[key] ?? 0);
 
-      if (!batch) {
-        setNextBatchDate(null);
-        setNextBatchCount(0);
-        return;
-      }
+      setStats({
+        volunteers: n("volunteers"),
+        conscripts: n("conscripts"),
+        totalForce: n("volunteers") + n("conscripts"),
+        outsideVolunteers: n("outside_volunteers"),
+        outsideConscripts: n("outside_conscripts"),
+        totalOutside: n("outside_volunteers") + n("outside_conscripts"),
+      });
 
-      setNextBatchDate(parseDbDateString(batch.batch_date));
-
-      const { data: conscriptCategory, error: categoryError } = await supabase
-        .from("personnel_categories")
-        .select("id")
-        .eq("code", "CONSCRIPT")
-        .single();
-
-      if (categoryError) {
-       
-        setNextBatchCount(0);
-        return;
-      }
-
-      const { count, error: personnelError } = await supabase
-        .from("personnel")
-        .select("id", { count: "exact", head: true })
-        .eq("personnel_category_id", conscriptCategory.id)
-        .eq("is_active", true)
-        .eq("discharge_date", batch.batch_date);
-
-      if (personnelError) {
-    
-        setNextBatchCount(0);
-        return;
-      }
-
-      setNextBatchCount(count ?? 0);
-    } catch (error) {
-     
-      setNextBatchCount(0);
-    } finally {
-      setLoadingReserveBatch(false);
-    }
-  }
-
-  async function loadDocumentsStats() {
-    try {
-      setLoadingDocStats(true);
-
-      const batch = await getNextReserveBatch();
-
-      if (!batch) {
-        setDocStats({
-          karizaDelivered: 0,
-          karizaTotal: 0,
-          licenseDelivered: 0,
-          licenseTotal: 0,
-        });
-        return;
-      }
-
-      const { data: conscriptCategory, error: categoryError } = await supabase
-        .from("personnel_categories")
-        .select("id")
-        .eq("code", "CONSCRIPT")
-        .single();
-
-      if (categoryError || !conscriptCategory) {
-        setDocStats({
-          karizaDelivered: 0,
-          karizaTotal: 0,
-          licenseDelivered: 0,
-          licenseTotal: 0,
-        });
-        return;
-      }
-
-      const { data: personnel, error: personnelError } = await supabase
-        .from("personnel")
-        .select("id, military_number")
-        .eq("personnel_category_id", conscriptCategory.id)
-        .eq("is_active", true)
-        .eq("discharge_date", batch.batch_date);
-
-      if (personnelError) {
-      
-        setDocStats({
-          karizaDelivered: 0,
-          karizaTotal: 0,
-          licenseDelivered: 0,
-          licenseTotal: 0,
-        });
-        return;
-      }
-
-      const personnelRows = personnel ?? [];
-
-      if (personnelRows.length === 0) {
-        setDocStats({
-          karizaDelivered: 0,
-          karizaTotal: 0,
-          licenseDelivered: 0,
-          licenseTotal: 0,
-        });
-        return;
-      }
-
-      const karizaTotal = personnelRows.length;
-
-      const eligibleForLicense = personnelRows.filter((p) =>
-        hasLicenseEligibility(p.military_number)
-      );
-
-      const licenseTotal = eligibleForLicense.length;
-
-      const personnelIds = personnelRows.map((p) => p.id);
-
-      const { data: documents, error: documentsError } = await supabase
-        .from("reserve_batch_documents")
-        .select("personnel_id, document_type, status")
-        .eq("reserve_batch_id", batch.id)
-        .in("personnel_id", personnelIds);
-
-      if (documentsError) {
-      
-        setDocStats({
-          karizaDelivered: 0,
-          karizaTotal,
-          licenseDelivered: 0,
-          licenseTotal,
-        });
-        return;
-      }
-
-      const karizaDelivered = (documents ?? []).filter(
-        (doc: any) => doc.document_type === "KARIZA" && doc.status === "DELIVERED"
-      ).length;
-
-      const eligibleIds = new Set(eligibleForLicense.map((p) => p.id));
-
-      const licenseDelivered = (documents ?? []).filter(
-        (doc: any) =>
-          doc.document_type === "LICENSE" &&
-          doc.status === "DELIVERED" &&
-          eligibleIds.has(doc.personnel_id)
-      ).length;
+      setNextBatchDate(o.next_batch_date ? parseDbDateString(o.next_batch_date) : null);
+      setNextBatchCount(n("batch_total"));
 
       setDocStats({
-        karizaDelivered,
-        karizaTotal,
-        licenseDelivered,
-        licenseTotal,
+        karizaDelivered: n("kariza_delivered"),
+        karizaTotal: n("batch_total"),
+        licenseDelivered: n("license_delivered"),
+        licenseTotal: n("license_total"),
       });
-    } catch (error) {
-     
-      setDocStats({
-        karizaDelivered: 0,
-        karizaTotal: 0,
-        licenseDelivered: 0,
-        licenseTotal: 0,
-      });
-    } finally {
-      setLoadingDocStats(false);
-    }
-  }
 
-  async function loadReviewStats() {
-    try {
-      setLoadingReviewStats(true);
-
-      const batch = await getNextReserveBatch();
-
-      if (!batch) {
-        setReviewStats({
-          reviewed: 0,
-          notReviewed: 0,
-          total: 0,
-        });
-        return;
-      }
-
-      const { data: conscriptCategory, error: categoryError } = await supabase
-        .from("personnel_categories")
-        .select("id")
-        .eq("code", "CONSCRIPT")
-        .single();
-
-      if (categoryError || !conscriptCategory) {
-        setReviewStats({
-          reviewed: 0,
-          notReviewed: 0,
-          total: 0,
-        });
-        return;
-      }
-
-      // الحصول على جميع الأفراد المستحقين للتسريح في الدفعة
-      const { data: personnel, error: personnelError } = await supabase
-        .from("personnel")
-        .select("id")
-        .eq("personnel_category_id", conscriptCategory.id)
-        .eq("is_active", true)
-        .eq("discharge_date", batch.batch_date);
-
-      if (personnelError || !personnel) {
-        setReviewStats({
-          reviewed: 0,
-          notReviewed: 0,
-          total: 0,
-        });
-        return;
-      }
-
-      const total = personnel.length;
-      const personnelIds = personnel.map((p) => p.id);
-
-      if (personnelIds.length === 0) {
-        setReviewStats({
-          reviewed: 0,
-          notReviewed: 0,
-          total: 0,
-        });
-        return;
-      }
-
-      // ✅ الحصول على عدد الأفراد اللي "تمت مراجعة" نموذج (1س) بتاعهم
-      // في نفس دفعة الرديف الحالية
-      const { count: reviewedCount, error: reviewedError } = await supabase
-        .from("reserve_batch_documents")
-        .select("id", { count: "exact", head: true })
-        .eq("reserve_batch_id", batch.id)
-        .eq("document_type", "MODEL_1S")
-        .eq("status", "REVIEWED")
-        .in("personnel_id", personnelIds);
-
-      if (reviewedError) {
-        console.error("خطأ في تحميل إحصائيات المراجعة:", reviewedError);
-      }
-
-      const reviewed = reviewedCount ?? 0;
-      const notReviewed = total - reviewed;
+      const reviewed = n("reviewed");
+      const total = n("batch_total");
 
       setReviewStats({
         reviewed,
-        notReviewed,
+        notReviewed: Math.max(0, total - reviewed),
         total,
       });
     } catch (error) {
-      console.error("خطأ غير متوقع في تحميل إحصائيات المراجعة:", error);
-      setReviewStats({
-        reviewed: 0,
-        notReviewed: 0,
-        total: 0,
-      });
+      console.error("خطأ في تحميل أرقام الموقف العام:", error);
     } finally {
+      setLoadingStats(false);
+      setLoadingReserveBatch(false);
+      setLoadingDocStats(false);
       setLoadingReviewStats(false);
     }
   }
+
+
+
+ 
+
+
+
+
 
   async function loadMailAlerts() {
     try {
@@ -841,10 +640,17 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
     reviewStats.total > 0
       ? Math.round((reviewStats.reviewed / reviewStats.total) * 100)
       : 0;
+  if (loadingSections) {
+    return (
+      <div className="text-right text-gray-500 py-10" style={{ fontFamily: "'Almarai', sans-serif" }}>
+        جاري تحميل الموقف العام...
+      </div>
+    );
+  }
 
   return (
     <>
-      {!loadingUser && currentUser && (
+      {canSee("current_user") && !loadingUser && currentUser && (
         <div
           className="w-full bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-gray-100"
           dir="rtl"
@@ -918,7 +724,7 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
                 className="text-gray-500 text-sm mb-1"
                 style={{ fontFamily: "'Almarai', sans-serif" }}
               >
-                الدور
+                {roleNames.length > 1 ? "الأدوار" : "الدور"}
               </p>
 
               <p
@@ -932,7 +738,7 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
         </div>
       )}
 
-      {!loadingAlerts && alerts.length > 0 && (
+      {canSee("system_alerts") && !loadingAlerts && alerts.length > 0 && (
         <div className="flex flex-col gap-3 w-full" dir="rtl">
           {alerts.map((alert, idx) => {
             const isClickable =
@@ -1020,6 +826,12 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
 
    
 
+      {canSee("branch_duty") && <DutyDashboardSection />}
+
+      {canSee("upcoming_visits") && <UpcomingVisitsSection />}
+
+      {canSee("pending_tasks") && (
+      <>
       <SectionTitle>المهام المعلقة</SectionTitle>
 
       {loadingPendingTasks || loadingPendingLetters ? (
@@ -1187,7 +999,11 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
           )}
         </div>
       )}
+      </>
+      )}
 
+      {canSee("mail_alerts") && (
+      <>
       <SectionTitle>التنبيهات</SectionTitle>
 
       {loadingMailAlerts ? (
@@ -1328,6 +1144,9 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
         </>
       )}
 
+         </>
+      )}
+
       {canViewSocialRecordStats && (
         <>
           <SectionTitle>موقف السجل الاجتماعي</SectionTitle>
@@ -1369,6 +1188,128 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
         </>
       )}
 
+      {canViewRecruitStats && (loadingRecruitStats || recruitStats) && (
+        <>
+                 <div className="flex items-center justify-between flex-wrap gap-2">
+            {recruitUpdatedAt && (
+              <p
+                style={{
+                  color: "#2d3648",
+                  fontFamily: "'Almarai', sans-serif",
+                  fontSize: "14px",
+                }}
+              >
+                آخر تحديث: {recruitUpdatedAt.toLocaleDateString("ar-EG")} -{" "}
+                {recruitUpdatedAt.toLocaleTimeString("ar-EG", {
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}
+              </p>
+            )}
+
+            <SectionTitle>موقف وصول المجندين</SectionTitle>
+          </div>
+
+          {loadingRecruitStats || !recruitStats ? (
+            <div className="text-right text-gray-500 py-4">
+              جاري تحميل موقف وصول المجندين...
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                dir="rtl"
+                onClick={() =>
+                  navigate(`/dashboard/recruit-arrivals/${recruitStats.phase.id}`)
+                }
+                className="w-full bg-white rounded-2xl border border-[#eff0f6] p-5 flex items-center justify-between gap-3 text-right hover:border-[#00b867] transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-[12px] bg-[#DCF4DF] flex items-center justify-center shrink-0">
+                    <UserCheck size={22} color="#00522e" />
+                  </div>
+
+                  <div className="flex flex-col">
+                    <span style={{ ...RECRUIT_FONT, fontSize: 13, color: "#717d96" }}>
+                      {recruitStats.phase.status === "ongoing"
+                        ? "الدفعة الجارية"
+                        : "آخر دفعة"}
+                    </span>
+                    <span
+                      style={{
+                        ...RECRUIT_FONT,
+                        fontWeight: 700,
+                        fontSize: 22,
+                        color: "#2d3648",
+                      }}
+                    >
+                      {recruitStats.phase.name}
+                    </span>
+                  </div>
+                </div>
+
+                <span
+                  className="px-3 py-1 rounded-full"
+                  style={{
+                    ...RECRUIT_FONT,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    background:
+                      recruitStats.phase.status === "arrived" ? "#e0f2fe" : "#fef3c7",
+                    color:
+                      recruitStats.phase.status === "arrived" ? "#075985" : "#92400e",
+                  }}
+                >
+                  {PHASE_STATUS_LABELS[recruitStats.phase.status]}
+                </span>
+              </button>
+
+              <div className="flex gap-3 sm:gap-4 flex-wrap">
+                <StatCard
+                  icon={<Users size={20} />}
+                  value={formatNumber(recruitStats.targetTotal)}
+                  label="إجمالي الدفعة"
+                />
+
+                <StatCard
+                  icon={<Users size={20} color="#166534" />}
+                  value={formatNumber(recruitStats.arrivedTotal)}
+                  label="إجمالي الوصول"
+                  valueColor="#166534"
+                />
+
+                <StatCard
+                  icon={<Users size={20} color="#92400e" />}
+                  value={formatNumber(
+                    recruitStats.targetTotal - recruitStats.arrivedTotal
+                  )}
+                  label="المتبقي"
+                  valueColor={
+                    recruitStats.targetTotal - recruitStats.arrivedTotal < 0
+                      ? "#e3282c"
+                      : "#92400e"
+                  }
+                />
+              </div>
+
+              <div className="flex gap-3 sm:gap-4 flex-wrap items-stretch">
+                {recruitStats.categories.map((category) => (
+                  <RecruitCategoryCard
+                    key={category.category}
+                    data={category}
+                    onClick={() =>
+                      navigate(`/dashboard/recruit-arrivals/${recruitStats.phase.id}`)
+                    }
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+         {canSee("force_status") && (
+      <>
       <SectionTitle>الموقف العام للقوة الحالية</SectionTitle>
 
       {loadingStats ? (
@@ -1422,6 +1363,11 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
         </>
       )}
 
+         </>
+      )}
+
+      {canSee("outside_analysis") && (
+      <>
       <SectionTitle>تحليل موقف الخوارج</SectionTitle>
 
       <div className="flex gap-4 items-start flex-wrap lg:flex-nowrap">
@@ -1434,6 +1380,11 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
         </div>
       </div>
 
+      </>
+      )}
+
+      {canSee("reserve_batch") && (
+      <>
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p
           style={{
@@ -1538,6 +1489,9 @@ async function getNextReserveBatch(): Promise<{ id: string; batch_date: string }
         />
       </div>
 
+
+      </>
+      )}
 
       {openModal === "discharged" && (
         <div

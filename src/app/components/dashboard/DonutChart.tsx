@@ -45,166 +45,21 @@ export function DonutChart() {
     loadData();
   }, []);
 
-  async function loadData() {
+   async function loadData() {
     try {
       setLoading(true);
 
-      // ============================================================
-      // 1. جلب تصنيفات الأفراد
-      // ============================================================
+      // نفس أرقام كروت القوة وبيان الوحدات بالظبط
+      const { data, error } = await supabase.rpc("get_dashboard_overview");
+      if (error) throw error;
 
-      const { data: categories, error: categoriesError } =
-        await supabase
-          .from("personnel_categories")
-          .select("id, code")
-          .in("code", ["VOLUNTEER", "CONSCRIPT"]);
+      const o = (data ?? {}) as Record<string, any>;
+      const n = (key: string) => Number(o[key] ?? 0);
 
-      if (categoriesError) {
-        console.error(
-          "خطأ في جلب تصنيفات الأفراد:",
-          categoriesError
-        );
-        return;
-      }
-
-      const volunteerCategory = categories?.find(
-        (item) => item.code === "VOLUNTEER"
-      );
-
-      const conscriptCategory = categories?.find(
-        (item) => item.code === "CONSCRIPT"
-      );
-
-      if (!volunteerCategory || !conscriptCategory) {
-        console.error(
-          "لم يتم العثور على VOLUNTEER أو CONSCRIPT"
-        );
-        return;
-      }
-
-      // ============================================================
-      // 2. جلب حالات الخدمة
-      // ============================================================
-
-      const { data: statuses, error: statusesError } =
-        await supabase
-          .from("service_statuses")
-          .select("id, code")
-          .in("code", [
-            "UNIT_FORCE",
-            "ATTACHED",
-          ]);
-
-      if (statusesError) {
-        console.error(
-          "خطأ في جلب حالات الخدمة:",
-          statusesError
-        );
-        return;
-      }
-
-      const unitForceStatus = statuses?.find(
-        (item) => item.code === "UNIT_FORCE"
-      );
-
-      const attachedStatus = statuses?.find(
-        (item) => item.code === "ATTACHED"
-      );
-
-      if (!unitForceStatus || !attachedStatus) {
-        console.error(
-          "لم يتم العثور على UNIT_FORCE أو ATTACHED"
-        );
-        return;
-      }
-
-      // ============================================================
-      // 3. إجمالي القوة
-      //
-      // إجمالي القوة =
-      // جميع المتطوعين + جميع المجندين
-      //
-      // سواء كان:
-      // UNIT_FORCE
-      // أو ATTACHED
-      //
-      // OUTSIDE_FORCE و DISCHARGED لا يدخلوا في الحساب
-      // ============================================================
-
-      const { count: totalForceCount, error: totalForceError } =
-        await supabase
-          .from("personnel")
-          .select("id", {
-            count: "exact",
-            head: true,
-          })
-          .in("personnel_category_id", [
-            volunteerCategory.id,
-            conscriptCategory.id,
-          ])
-          .in("service_status_id", [
-            unitForceStatus.id,
-            attachedStatus.id,
-          ])
-          .eq("is_active", true);
-
-      if (totalForceError) {
-        console.error(
-          "خطأ في حساب إجمالي القوة:",
-          totalForceError
-        );
-        return;
-      }
-
-      // ============================================================
-      // 4. إجمالي الخوارج
-      //
-      // الخوارج =
-      // المتطوعين + المجندين
-      // بشرط أن الحالة ATTACHED فقط
-      //
-      // UNIT_FORCE ليس خوارج
-      // OUTSIDE_FORCE ليس خوارج
-      // DISCHARGED ليس خوارج
-      // ============================================================
-
-      const { count: khawarejCount, error: khawarejError } =
-        await supabase
-          .from("personnel")
-          .select("id", {
-            count: "exact",
-            head: true,
-          })
-          .in("personnel_category_id", [
-            volunteerCategory.id,
-            conscriptCategory.id,
-          ])
-          .eq("service_status_id", attachedStatus.id)
-          .eq("is_active", true);
-
-      if (khawarejError) {
-        console.error(
-          "خطأ في حساب إجمالي الخوارج:",
-          khawarejError
-        );
-        return;
-      }
-
-      const total = totalForceCount ?? 0;
-      const outside = khawarejCount ?? 0;
-
-      setTotalForce(total);
-      setKhawarej(outside);
-
-      console.log("بيانات Donut:", {
-        totalForce: total,
-        khawarej: outside,
-      });
+      setTotalForce(n("volunteers") + n("conscripts"));
+      setKhawarej(n("outside_volunteers") + n("outside_conscripts"));
     } catch (error) {
-      console.error(
-        "خطأ غير متوقع في DonutChart:",
-        error
-      );
+      console.error("خطأ في DonutChart:", error);
     } finally {
       setLoading(false);
     }

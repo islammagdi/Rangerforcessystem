@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useLocation } from "react-router";
 import type { CSSProperties, ComponentType } from "react";
 import {
   ArrowLeftRight,
@@ -8,6 +8,13 @@ import {
   FileText,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import {
+  getLetterDraft,
+  resetLetterDraft,
+  startLetterDraft,
+  countLetterDrafts,
+} from "../../lib/letterDraft";
+import { usePermissions } from "../../lib/usePermissions";
 
 const F: CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
@@ -183,6 +190,34 @@ function LetterCard({
 
 export function IssueLetterPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const keepDraft = Boolean(
+    (location.state as { keepDraft?: boolean } | null)?.keepDraft
+  );
+  // ✅ شريط المسودات: بيظهر بس لمن عنده صلاحية إصدار الخطابات
+  const { hasPermission, loading: permissionsLoading } = usePermissions();
+  const canUseDrafts = hasPermission("issue_letter:create");
+  const [draftsCount, setDraftsCount] = useState(0);
+
+  useEffect(() => {
+    if (permissionsLoading || !canUseDrafts) return;
+
+    let mounted = true;
+
+    void countLetterDrafts().then((count) => {
+      if (mounted) setDraftsCount(count);
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [permissionsLoading, canUseDrafts]);
+  // ✅ دخول جديد للخطوة 1 (مش راجع من الـ Stepper) = بداية خطاب جديد
+  useEffect(() => {
+    if (!keepDraft) resetLetterDraft();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [letterTypes, setLetterTypes] = useState<LetterType[]>([]);
   const [selected, setSelected] = useState<LetterType | null>(null);
@@ -214,6 +249,13 @@ export function IssueLetterPage() {
         }
 
         setLetterTypes(data ?? []);
+
+        // ✅ لو راجع من الـ Stepper، نرجّع النوع اللي كان مختاره
+        const draftTypeId = getLetterDraft().letterTypeId;
+        if (draftTypeId) {
+          const previous = (data ?? []).find((t) => t.id === draftTypeId);
+          if (previous) setSelected(previous);
+        }
       } catch (err) {
 
         if (!mounted) return;
@@ -249,6 +291,13 @@ export function IssueLetterPage() {
       // نبعت كود النوع نفسه بدل ما نجبره على واحد من الأربعة القدامى
       letterType = selected.code;
     }
+
+    // ✅ لو النوع اتغيّر عن اللي كان مختار، الأفراد والبيانات بتتصفّر
+    startLetterDraft({
+      id: selected.id,
+      code: selected.code,
+      name: selected.name,
+    });
 
     navigate("/dashboard/issue-letter/soldiers", {
       state: {
@@ -286,6 +335,36 @@ export function IssueLetterPage() {
 
       {/* ملحوظة: تم توسيع الحاوية لتستوعب 4 كروت في كل صف بدل 2 */}
       <div className="flex flex-col items-center gap-8 w-full max-w-[1040px]">
+        {canUseDrafts && draftsCount > 0 && (
+          <div
+            className="w-full flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-[12px]"
+            style={{ background: "#fff8e8", border: "1px solid #f4d58d" }}
+          >
+            <span style={{ ...F, fontSize: 14, color: "#8a6500", lineHeight: 1.6 }}>
+              {draftsCount === 1
+                ? "لديك مسودة واحدة غير مكتملة"
+                : draftsCount === 2
+                ? "لديك مسودتان غير مكتملتين"
+                : `لديك ${draftsCount.toLocaleString("ar-EG")} مسودات غير مكتملة`}
+            </span>
+
+            <button
+              type="button"
+              onClick={() =>
+                navigate("/dashboard/letters-archive", {
+                  state: { tab: "drafts" },
+                })
+              }
+              className="px-4 py-2 rounded-[8px] transition-opacity hover:opacity-80"
+              style={{ border: "1.5px solid #c9a227" }}
+            >
+              <span style={{ ...F, fontSize: 14, color: "#8a6500", fontWeight: 700 }}>
+                عرض المسودات
+              </span>
+            </button>
+          </div>
+        )}
+
         <p
           className="text-center"
           style={{

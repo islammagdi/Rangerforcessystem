@@ -109,7 +109,22 @@ export async function fetchBulletinById(id: string): Promise<PromotionBulletin> 
 
   return { ...data, item_count: 0 };
 }
+export async function fetchBulletinByPeriod(
+  month: number,
+  year: number
+): Promise<PromotionBulletin | null> {
+  const { data, error } = await supabase
+    .from("promotion_bulletins")
+    .select("id, bulletin_month, bulletin_year, decision_number, status, published_at")
+    .eq("bulletin_month", month)
+    .eq("bulletin_year", year)
+    .maybeSingle();
 
+  if (error) throw error;
+  if (!data) return null;
+
+  return { ...data, item_count: 0 };
+}
 export async function fetchBulletinItems(bulletinId: string): Promise<PromotionBulletinItem[]> {
   const { data, error } = await supabase
     .from("promotion_bulletin_items")

@@ -16,6 +16,7 @@ import {
   upsertCell,
   updateSheetName,
   fetchSheetLogs,
+  fetchColumnDropdownOptions,
   logSheetRowAdded,
   logSheetRowDeleted,
   logSheetCellChanged,
@@ -31,6 +32,7 @@ import {
   COLUMN_TYPE_LABELS,
 } from "../../lib/sheets";
 import { SheetReportsTab } from "../components/sheets/SheetReportsTab";
+import { DropdownColumnConfig } from "../components/sheets/DropdownColumnConfig";
 import { useUnsavedChanges } from "../../lib/unsavedChanges";
 
 
@@ -95,6 +97,12 @@ function SheetLogsModal({
           {loading && (
             <p style={{ ...F, fontSize: 13, color: "#a1aebe" }}>
               جاري تحميل السجل...
+            </p>
+          )}
+
+          {!loading && logs.length >= 500 && (
+            <p style={{ ...F, fontSize: 12, color: "#a1aebe" }}>
+              معروض آخر ٥٠٠ تعديل.
             </p>
           )}
 
@@ -342,6 +350,11 @@ export function SheetDetailPage() {
   const [showAddColumn, setShowAddColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
   const [newColumnType, setNewColumnType] = useState<SheetColumnType>("TEXT");
+  const [newDropdownSource, setNewDropdownSource] = useState<string | null>(null);
+  const [newDropdownOptions, setNewDropdownOptions] = useState<string[]>([]);
+  const [dropdownOptionsMap, setDropdownOptionsMap] = useState<
+    Record<string, string[]>
+  >({});
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [logs, setLogs] = useState<SheetLog[]>([]);
@@ -411,6 +424,30 @@ export function SheetDetailPage() {
     const map = new Map<string, SheetColumn>();
     columns.forEach((c) => map.set(c.id, c));
     return map;
+  }, [columns]);
+
+  useEffect(() => {
+    const dropdownCols = columns.filter((c) => c.column_type === "DROPDOWN");
+    if (dropdownCols.length === 0) return;
+
+    let cancelled = false;
+
+    Promise.all(
+      dropdownCols.map(async (col) => {
+        try {
+          return [col.id, await fetchColumnDropdownOptions(col)] as const;
+        } catch (err) {
+          console.error("Load dropdown options error:", err);
+          return [col.id, [] as string[]] as const;
+        }
+      })
+    ).then((entries) => {
+      if (!cancelled) setDropdownOptionsMap(Object.fromEntries(entries));
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [columns]);
 
   async function openLogsModal() {
@@ -506,10 +543,12 @@ export function SheetDetailPage() {
 
     const newRowNumber = rows.length + 1;
 
-    try {
-      const newRowId = await addRow(id, rows.length);
-      setRows((prev) => [...prev, { id: newRowId, sheet_id: id, row_order: prev.length }]);
+       const nextOrder =
+      rows.length > 0 ? Math.max(...rows.map((r) => r.row_order)) + 1 : 0;
 
+    try {
+      const newRowId = await addRow(id, nextOrder);
+      setRows((prev) => [...prev, { id: newRowId, sheet_id: id, row_order: nextOrder }]);
       try {
         const userName = await getCurrentUserName();
         await logSheetRowAdded(id, userName, newRowNumber);
@@ -1121,21 +1160,56 @@ export function SheetDetailPage() {
 
                     {columns.map((col) => (
                       <td key={col.id} className="px-2 py-1.5 border-b border-[#eaecf0]">
-                        <input
-                          type={col.column_type === "NUMBER" ? "number" : col.column_type === "DATE" ? "date" : "text"}
-                          value={getCellValue(row.id, col.id)}
-                          onChange={(e) =>
-                            handleCellChange(row.id, col.id, e.target.value)
-                          }
-                          onFocus={() => handleCellFocus(row.id, col.id)}
-                          onBlur={() =>
-                            handleCellBlur(row.id, col.id, index + 1, col.name)
-                          }
-                          disabled={!canEdit}
-                          dir="rtl"
-                          className="w-full h-[38px] rounded-[6px] border border-transparent hover:border-[#e2e7f0] focus:border-[#00b867] px-2 outline-none disabled:bg-transparent"
-                          style={{ ...F, fontSize: 14, color: "#2d3648" }}
-                        />
+                        {col.column_type === "DROPDOWN" ? (
+                          (() => {
+                            const current = getCellValue(row.id, col.id);
+                            const opts = dropdownOptionsMap[col.id] ?? [];
+                            const finalOpts =
+                              current && !opts.includes(current)
+                                ? [current, ...opts]
+                                : opts;
+
+                            return (
+                              <select
+                                value={current}
+                                onChange={(e) =>
+                                  handleCellChange(row.id, col.id, e.target.value)
+                                }
+                                onFocus={() => handleCellFocus(row.id, col.id)}
+                                onBlur={() =>
+                                  handleCellBlur(row.id, col.id, index + 1, col.name)
+                                }
+                                disabled={!canEdit}
+                                dir="rtl"
+                                className="w-full h-[38px] rounded-[6px] border border-transparent hover:border-[#e2e7f0] focus:border-[#00b867] px-1 outline-none bg-transparent disabled:bg-transparent"
+                                style={{ ...F, fontSize: 14, color: "#2d3648" }}
+                              >
+                                <option value="">— اختر —</option>
+                                {finalOpts.map((opt) => (
+                                  <option key={opt} value={opt}>
+                                    {opt}
+                                  </option>
+                                ))}
+                              </select>
+                            );
+                          })()
+                        ) : (
+                          <input
+                            type={col.column_type === "NUMBER" ? "number" : col.column_type === "DATE" ? "date" : "text"}
+                            value={getCellValue(row.id, col.id)}
+                            onChange={(e) =>
+                              handleCellChange(row.id, col.id, e.target.value)
+                            }
+                            onFocus={() => handleCellFocus(row.id, col.id)}
+                            onBlur={() =>
+                              handleCellBlur(row.id, col.id, index + 1, col.name)
+                            }
+                            disabled={!canEdit}
+                            dir="rtl"
+                            className="w-full h-[38px] rounded-[6px] border border-transparent hover:border-[#e2e7f0] focus:border-[#00b867] px-2 outline-none disabled:bg-transparent"
+                            style={{ ...F, fontSize: 14, color: "#2d3648" }}
+                          />
+                        )}
                       </td>
                     ))}
 
@@ -1183,7 +1257,6 @@ export function SheetDetailPage() {
                   إضافة صف
                 </span>
               </button>
-
               {!showAddColumn ? (
                 <button
                   type="button"
@@ -1196,53 +1269,71 @@ export function SheetDetailPage() {
                   </span>
                 </button>
               ) : (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={newColumnName}
-                    onChange={(e) => setNewColumnName(e.target.value)}
-                    placeholder="اسم العمود"
-                    dir="rtl"
-                    className="h-[38px] rounded-[7px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867]"
-                    style={{ ...F, fontSize: 13, color: "#2d3648" }}
-                  />
+                <div className="flex flex-col gap-3 w-full max-w-lg">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <input
+                      type="text"
+                      value={newColumnName}
+                      onChange={(e) => setNewColumnName(e.target.value)}
+                      placeholder="اسم العمود"
+                      dir="rtl"
+                      className="h-[38px] rounded-[7px] border border-[#e2e7f0] px-3 text-right outline-none focus:border-[#00b867]"
+                      style={{ ...F, fontSize: 13, color: "#2d3648" }}
+                    />
 
-                  <select
-                    value={newColumnType}
-                    onChange={(e) =>
-                      setNewColumnType(e.target.value as SheetColumnType)
-                    }
-                    dir="rtl"
-                    className="h-[38px] rounded-[7px] border border-[#e2e7f0] px-2 text-right outline-none bg-white"
-                    style={{ ...F, fontSize: 13, color: "#2d3648" }}
-                  >
-                    {Object.entries(COLUMN_TYPE_LABELS).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
+                    <select
+                      value={newColumnType}
+                      onChange={(e) => {
+                        setNewColumnType(e.target.value as SheetColumnType);
+                        setNewDropdownSource(null);
+                        setNewDropdownOptions([]);
+                      }}
+                      dir="rtl"
+                      className="h-[38px] rounded-[7px] border border-[#e2e7f0] px-2 text-right outline-none bg-white"
+                      style={{ ...F, fontSize: 13, color: "#2d3648" }}
+                    >
+                      {Object.entries(COLUMN_TYPE_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
 
-                  <button
-                    type="button"
-                    onClick={handleAddColumn}
-                    className="h-[38px] px-4 rounded-[7px]"
-                    style={{ background: "#00b867", color: "#fff", ...F, fontSize: 13 }}
-                  >
-                    إضافة
-                  </button>
+                    <button
+                      type="button"
+                      onClick={handleAddColumn}
+                      className="h-[38px] px-4 rounded-[7px]"
+                      style={{ background: "#00b867", color: "#fff", ...F, fontSize: 13 }}
+                    >
+                      إضافة
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddColumn(false);
-                      setNewColumnName("");
-                    }}
-                    className="h-[38px] px-3 rounded-[7px] border border-[#e2e7f0]"
-                    style={{ ...F, fontSize: 13, color: "#717d96" }}
-                  >
-                    إلغاء
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddColumn(false);
+                        setNewColumnName("");
+                        setNewColumnType("TEXT");
+                        setNewDropdownSource(null);
+                        setNewDropdownOptions([]);
+                      }}
+                      className="h-[38px] px-3 rounded-[7px] border border-[#e2e7f0]"
+                      style={{ ...F, fontSize: 13, color: "#717d96" }}
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+
+                  {newColumnType === "DROPDOWN" && (
+                    <DropdownColumnConfig
+                      source={newDropdownSource}
+                      options={newDropdownOptions}
+                      onChange={({ source, options }) => {
+                        setNewDropdownSource(source);
+                        setNewDropdownOptions(options);
+                      }}
+                    />
+                  )}
                 </div>
               )}
             </div>

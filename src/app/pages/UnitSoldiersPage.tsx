@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import svgPaths from "../../imports/بيانالوحداتالموقفالعامافرادالوحده/svg-gyw4yomx83";
 import { supabase } from "../../lib/supabase";
+import { fetchAllRows } from "../../lib/fetchAllRows";
 import {
   isOutsideOwnUnit,
+  isAttachedStatus,
   isVolunteerCategory,
   isConscriptCategory,
   computeUnitStrengthStats,
@@ -701,43 +703,27 @@ export function UnitSoldiersPage() {
       //    أما الوحدة الإدارية فتجيب الأفراد بمقارنة attachment_unit_id
       //    (فرد ملحق بالوحدة الإدارية دي)، مش primary_unit_id، وإلا
       //    مفيش نتائج أبدًا للوحدات الإدارية.
-      let personnelQuery = supabase
-        .from("personnel")
-        .select(`
-          id,
-          military_number,
-          full_name,
-          rank_id,
-          personnel_category_id,
-          service_status_id,
-          primary_unit_id,
-          attachment_unit_id,
-          is_active,
-          discharge_date
-        `)
-        .eq("is_active", true);
-
-      personnelQuery = isMain
-        ? personnelQuery.eq(
-            "primary_unit_id",
-            unitId
-          )
-        : personnelQuery.eq(
-            "attachment_unit_id",
-            unitId
-          );
-
-      const {
-        data: personnelRaw,
-        error: personnelError,
-      } = await personnelQuery.order(
-        "full_name",
-        { ascending: true }
+      const personnelRaw = await fetchAllRows<any>((from, to) =>
+        supabase
+          .from("personnel")
+          .select(`
+            id,
+            military_number,
+            full_name,
+            rank_id,
+            personnel_category_id,
+            service_status_id,
+            primary_unit_id,
+            attachment_unit_id,
+            is_active,
+            discharge_date
+          `)
+          .eq("is_active", true)
+          .eq(isMain ? "primary_unit_id" : "attachment_unit_id", unitId)
+          .order("full_name", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to)
       );
-
-      if (personnelError) {
-        throw personnelError;
-      }
 
       // 3) حالات الخدمة
       // ⬅️ لازم نجيبها قبل فلترة الأفراد عشان نقدر نطبّق شرط الحالة:
@@ -811,11 +797,7 @@ function isAllowedStatus(
 
   // ⬅️ الوحدة الإدارية: لسه محتاجين نقصر على "ملحق" بس، لأن دي اللي
   //    فعلاً بتمثل إلحاق الفرد بالوحدة الإدارية دي.
-  const name = statusById
-    .get(statusId ?? "")
-    ?.name?.trim();
-
-  return name === "ملحق";
+  return isAttachedStatus(statusById.get(statusId ?? ""));
 }
 
       const personnel = (
@@ -1134,9 +1116,7 @@ function isAllowedStatus(
 
               isVolunteer,
               isConscript,
-                  isVolunteer,
-    isConscript,
-    administrationCode: extractAdministrationCode(
+              administrationCode: extractAdministrationCode(
       person.military_number ?? ""
     ),
   };

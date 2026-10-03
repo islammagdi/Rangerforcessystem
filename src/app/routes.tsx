@@ -53,9 +53,21 @@ import { IncidentsRecordPage } from "./pages/IncidentsRecordPage";
 import { JobsManagementPage } from "./pages/JobsManagementPage";
 import { UnitsTreePage } from "./pages/UnitsTreePage"; // عدّل المسار حسب مكانك
 import { PromotionNotificationsPage } from "./pages/promotion-notifications";
+import { RecruitArrivalsPage } from "./pages/RecruitArrivalsPage";
+import { RecruitArrivalDetailPage } from "./pages/RecruitArrivalDetailPage";
+import { DeficitRatePage } from "./pages/DeficitRatePage";
+import { BranchDutyPage } from "./pages/BranchDutyPage";
+import { MilitaryCeremoniesPage } from "./pages/MilitaryCeremoniesPage";
+import { MilitaryCeremonyDetailPage } from "./pages/MilitaryCeremonyDetailPage";
+import { DashboardSettingsPage } from "./pages/DashboardSettingsPage";
+import { NcoDischargesPage } from "./pages/NcoDischargesPage";
+import { NcoDischargeDetailPage } from "./pages/NcoDischargeDetailPage";
+import { ConscriptPromotionsPage } from "./pages/ConscriptPromotionsPage";
 import { PromotionNotificationDetailPage } from "./pages/promotion-notification-detail";
 import { SocialRecordUnitPage } from "./pages/SocialRecordUnitPage";
 import { SocialRecordDetailPage } from "./pages/SocialRecordDetailPage";// ✅ جديد
+import { PromotionEligibilityReportPage } from "./pages/promotion-eligibility-report";
+import { DeletedPersonnelPage } from "./pages/DeletedPersonnelPage";
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -122,8 +134,20 @@ export const router = createBrowserRouter([
 { path: "manage-jobs", Component: JobsManagementPage }, // ✅ جديد
 { path: "units-tree", Component: UnitsTreePage }, // ✅ جديد
 { path: "promotion-notifications", Component: PromotionNotificationsPage },
+{ path: "recruit-arrivals", Component: RecruitArrivalsPage },
+{ path: "recruit-arrivals/:phaseId", Component: RecruitArrivalDetailPage },
+{ path: "promotion-eligibility-report", Component: PromotionEligibilityReportPage },
+{ path: "deficit-rate", Component: DeficitRatePage },
+{ path: "branch-duty", Component: BranchDutyPage },
+{ path: "military-ceremonies", Component: MilitaryCeremoniesPage },
+{ path: "military-ceremonies/:visitId", Component: MilitaryCeremonyDetailPage },
+{ path: "dashboard-settings", Component: DashboardSettingsPage },
+{ path: "nco-discharges", Component: NcoDischargesPage },
+{ path: "nco-discharges/:caseId", Component: NcoDischargeDetailPage },
+{ path: "conscript-promotions", Component: ConscriptPromotionsPage },
 { path: "promotion-notifications/:bulletinId", Component: PromotionNotificationDetailPage },
 { path: "social-record/unit/:unitId", Component: SocialRecordUnitPage },
+{ path: "deleted-personnel", Component: DeletedPersonnelPage },
 { path: "social-record/personnel/:personnelId", Component: SocialRecordDetailPage }, // ✅ جديد
     ],
   },
