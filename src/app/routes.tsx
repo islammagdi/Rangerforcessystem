@@ -57,6 +57,7 @@ import { RecruitArrivalsPage } from "./pages/RecruitArrivalsPage";
 import { RecruitArrivalDetailPage } from "./pages/RecruitArrivalDetailPage";
 import { DeficitRatePage } from "./pages/DeficitRatePage";
 import { BranchDutyPage } from "./pages/BranchDutyPage";
+import { DailyAttendancePage } from "./pages/DailyAttendancePage";
 import { MilitaryCeremoniesPage } from "./pages/MilitaryCeremoniesPage";
 import { MilitaryCeremonyDetailPage } from "./pages/MilitaryCeremonyDetailPage";
 import { DashboardSettingsPage } from "./pages/DashboardSettingsPage";
@@ -68,6 +69,11 @@ import { SocialRecordUnitPage } from "./pages/SocialRecordUnitPage";
 import { SocialRecordDetailPage } from "./pages/SocialRecordDetailPage";// ✅ جديد
 import { PromotionEligibilityReportPage } from "./pages/promotion-eligibility-report";
 import { DeletedPersonnelPage } from "./pages/DeletedPersonnelPage";
+import { TransfersOutPage } from "./pages/TransfersOutPage";
+import { AbsenceDecisionsPage } from "./pages/AbsenceDecisionsPage";
+import { DischargedArchivePage } from "./pages/DischargedArchivePage";
+import { DataQualityPage } from "./pages/DataQualityPage";
+import { DailyReportsArchivePage } from "./pages/DailyReportsArchivePage";
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -139,6 +145,7 @@ export const router = createBrowserRouter([
 { path: "promotion-eligibility-report", Component: PromotionEligibilityReportPage },
 { path: "deficit-rate", Component: DeficitRatePage },
 { path: "branch-duty", Component: BranchDutyPage },
+{ path: "daily-attendance", Component: DailyAttendancePage },
 { path: "military-ceremonies", Component: MilitaryCeremoniesPage },
 { path: "military-ceremonies/:visitId", Component: MilitaryCeremonyDetailPage },
 { path: "dashboard-settings", Component: DashboardSettingsPage },
@@ -148,7 +155,12 @@ export const router = createBrowserRouter([
 { path: "promotion-notifications/:bulletinId", Component: PromotionNotificationDetailPage },
 { path: "social-record/unit/:unitId", Component: SocialRecordUnitPage },
 { path: "deleted-personnel", Component: DeletedPersonnelPage },
+{ path: "transfers-out", Component: TransfersOutPage },
+{ path: "absence-decisions", Component: AbsenceDecisionsPage },
+{ path: "discharged-archive", Component: DischargedArchivePage },
+{ path: "data-quality", Component: DataQualityPage },
+{ path: "daily-reports-archive", Component: DailyReportsArchivePage },
 { path: "social-record/personnel/:personnelId", Component: SocialRecordDetailPage }, // ✅ جديد
     ],
-  },
+  }, 
 ]);

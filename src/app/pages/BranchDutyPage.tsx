@@ -13,6 +13,7 @@ import {
   PenLine,
   Printer,
   Send,
+  ArrowLeftRight,
 } from "lucide-react";
 import { useLocation } from "react-router";
 import { supabase } from "../../lib/supabase";
@@ -48,6 +49,7 @@ type Shift = {
   assigned_rank: string | null;
   assigned_office: string | null;
   signed_at: string | null;
+  holiday_dates: string[]; // أيام الإجازة الرسمية جوه الفترة (YYYY-MM-DD)
 };
 
 type Candidate = {
@@ -56,6 +58,92 @@ type Candidate = {
   rank: string | null;
   office: string;
 };
+
+type FairnessRow = {
+  user_id: string;
+  user_name: string | null;
+  user_rank: string | null;
+  month: number;
+  shifts_count: number;
+  days_count: number;
+  weekend_days: number;
+  holiday_days: number;
+};
+
+type SwapStatus =
+  | "pending_peer"
+  | "pending_manager"
+  | "approved"
+  | "rejected_peer"
+  | "rejected_manager"
+  | "cancelled"
+  | "void";
+
+type SwapRequest = {
+  id: string;
+  roster_id: string;
+  from_shift_id: string | null;
+  to_shift_id: string | null;
+  is_exchange: boolean;
+  from_user_id: string;
+  to_user_id: string;
+  reason: string | null;
+  status: SwapStatus;
+  decision_note: string | null;
+  created_at: string;
+  from_name: string | null;
+  from_rank: string | null;
+  to_name: string | null;
+  to_rank: string | null;
+  from_shift_start: string | null;
+  from_shift_end: string | null;
+  to_shift_start: string | null;
+  to_shift_end: string | null;
+};
+
+type SwapLogRow = {
+  id: string;
+  decided_at: string;
+  is_exchange: boolean;
+  from_name: string | null;
+  from_rank: string | null;
+  to_name: string | null;
+  to_rank: string | null;
+  from_shift_start: string | null;
+  from_shift_end: string | null;
+  to_shift_start: string | null;
+  to_shift_end: string | null;
+};
+
+type SwapPeer = {
+  user_id: string;
+  user_name: string;
+  user_rank: string | null;
+  user_office: string;
+};
+
+type SwapDraft = {
+  shiftId: string;
+  toUserId: string;
+  toShiftId: string; // فاضي = تسليم بدون مقابل
+  reason: string;
+};
+
+const SWAP_STATUS_LABELS: Record<SwapStatus, string> = {
+  pending_peer: "بانتظار رد الزميل",
+  pending_manager: "بانتظار اعتماد المسؤول",
+  approved: "تمت الموافقة",
+  rejected_peer: "رفضه الزميل",
+  rejected_manager: "رفضه المسؤول",
+  cancelled: "أُلغي",
+  void: "لم يعد صالحًا (النوبتجية تغيّرت)",
+};
+
+const personText = (rank: string | null | undefined, name: string | null | undefined) =>
+  [rank, name].filter(Boolean).join(" ") || "—";
+
+const periodText = (start: string | null, end: string | null) =>
+  start && end ? rangeLabel(start, end) : "—";
 
 // =====================================================
 // Helpers
@@ -107,6 +195,23 @@ function dayCount(start: string, end: string): number {
   return parseISO(end).d - parseISO(start).d + 1;
 }
 
+// تاريخ اليوم بصيغة YYYY-MM-DD (بالتوقيت المحلي)
+function todayISO(): string {
+  const now = new Date();
+  return iso(now.getFullYear(), now.getMonth() + 1, now.getDate());
+}
+
+// ألوان التمييز الخفيفة
+const TODAY_BG = "#f0fbf4"; // أخضر خفيف جدًا: الفترة اللي فيها اليوم الحالي
+const MERGED_BG = "#f6f7f9"; // رمادي خفيف جدًا: الفترة المدمجة بأكتر من يوم
+
+// لون خلفية الصف: اليوم الحالي له الأولوية، بعده المدمجة
+function rowBackground(shift: Shift, today: string): string | undefined {
+  if (shift.start_date <= today && today <= shift.end_date) return TODAY_BG;
+  if (shift.start_date !== shift.end_date) return MERGED_BG;
+  return undefined;
+}
+
 function newShift(start: string, end: string): Shift {
   return {
     key: crypto.randomUUID(),
@@ -114,6 +219,7 @@ function newShift(start: string, end: string): Shift {
     start_date: start,
     end_date: end,
     note: "",
+    holiday_dates: [],
     assigned_user_id: null,
     assigned_name: null,
     assigned_rank: null,
@@ -150,6 +256,7 @@ function mapRow(row: any): Shift {
     start_date: row.start_date,
     end_date: row.end_date,
     note: row.note ?? "",
+    holiday_dates: (row.holiday_dates ?? []) as string[],
     assigned_user_id: row.assigned_user_id ?? null,
     assigned_name: row.assigned_name ?? null,
     assigned_rank: row.assigned_rank ?? null,
@@ -164,6 +271,7 @@ function toPayload(list: Shift[]) {
     start_date: s.start_date,
     end_date: s.end_date,
     note: s.note.trim() || null,
+    holiday_dates: s.holiday_dates,
     assigned_user_id: s.assigned_user_id,
     assigned_name: s.assigned_name,
     assigned_rank: s.assigned_rank,
@@ -173,11 +281,52 @@ function toPayload(list: Shift[]) {
 
 const snapshotOf = (list: Shift[]) =>
   JSON.stringify(
-    list.map((s) => [s.id, s.start_date, s.end_date, s.note, s.assigned_user_id])
+    list.map((s) => [
+      s.id,
+      s.start_date,
+      s.end_date,
+      s.note,
+      s.assigned_user_id,
+      s.holiday_dates.join(","),
+    ])
   );
 
 function joinNotes(a: string, b: string): string {
   return [a, b].map((x) => x.trim()).filter(Boolean).filter((x, i, arr) => arr.indexOf(x) === i).join(" - ");
+}
+
+type DutyLoad = { shifts: number; days: number; weekend: number; holiday: number };
+
+const emptyLoad = (): DutyLoad => ({ shifts: 0, days: 0, weekend: 0, holiday: 0 });
+
+function addLoad(a: DutyLoad, b: DutyLoad): DutyLoad {
+  return {
+    shifts: a.shifts + b.shifts,
+    days: a.days + b.days,
+    weekend: a.weekend + b.weekend,
+    holiday: a.holiday + b.holiday,
+  };
+}
+
+// أيام الفترة: عطلة أسبوعية (الخميس والجمعة) / إجازة رسمية (غير الخميس والجمعة)
+function shiftLoad(shift: Shift): DutyLoad {
+  const load: DutyLoad = { shifts: 1, days: 0, weekend: 0, holiday: 0 };
+  const total = dayCount(shift.start_date, shift.end_date);
+
+  for (let i = 0; i < total; i += 1) {
+    const date = addDays(shift.start_date, i);
+    const weekday = weekdayOf(date);
+
+    load.days += 1;
+
+    if (weekday === 4 || weekday === 5) {
+      load.weekend += 1;
+    } else if (shift.holiday_dates.includes(date)) {
+      load.holiday += 1;
+    }
+  }
+
+  return load;
 }
 
 function formatDateTime(value: string): string {
@@ -422,6 +571,7 @@ export function BranchDutyPage() {
   const { hasPermission } = usePermissions();
   const canEdit = hasPermission("branch_duty:edit");
   const canHeadSign = hasPermission("branch_duty:head_sign");
+  const canSeeStats = canEdit || canHeadSign;
   const { setDirty } = useUnsavedChanges();
   const location = useLocation();
   const requestedRosterId = (location.state as { rosterId?: string } | null)?.rosterId ?? null;
@@ -433,7 +583,12 @@ export function BranchDutyPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [savedSnapshot, setSavedSnapshot] = useState("[]");
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-
+  const [yearStats, setYearStats] = useState<FairnessRow[]>([]);
+  const [showStats, setShowStats] = useState(false);
+  const [swapRequests, setSwapRequests] = useState<SwapRequest[]>([]);
+  const [swapLog, setSwapLog] = useState<SwapLogRow[]>([]);
+  const [swapPeers, setSwapPeers] = useState<SwapPeer[]>([]);
+  const [swapDraft, setSwapDraft] = useState<SwapDraft | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -442,7 +597,8 @@ export function BranchDutyPage() {
   // null = الافتراضي (المسودة تتعدل، المعتمدة تتعرض). true/false = اختيار المسؤول
   const [editOverride, setEditOverride] = useState<boolean | null>(null);
 
-  const today = new Date();
+   const today = new Date();
+  const todayStr = todayISO();
   const [showCreate, setShowCreate] = useState(false);
   const [newYear, setNewYear] = useState(today.getFullYear());
   const [newMonth, setNewMonth] = useState(today.getMonth() + 1);
@@ -513,6 +669,33 @@ export function BranchDutyPage() {
       setCandidates(Array.from(map.values()));
     })();
   }, [canEdit]);
+
+  // إحصائية السنة (من قاعدة البيانات) للنوبتجية المختارة
+  useEffect(() => {
+    if (!canSeeStats || !selectedRoster) return;
+
+    let cancelled = false;
+
+    void (async () => {
+      const { data, error: statsError } = await supabase.rpc("duty_fairness_stats", {
+        p_year: selectedRoster.year,
+      });
+
+      if (cancelled) return;
+
+      if (statsError) {
+        console.error("تعذر تحميل إحصائية التوزيع:", statsError);
+        return;
+      }
+
+      setYearStats((data ?? []) as FairnessRow[]);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSeeStats, selectedRoster?.year, selectedRoster?.status]);
 
   async function init() {
     setLoading(true);
@@ -585,12 +768,43 @@ export function BranchDutyPage() {
     setSavedSnapshot(snapshotOf(mapped));
   }
 
+  async function loadSwapData(roster: Roster) {
+    // التبديل بيبدأ بعد النشر بس
+    if (roster.status === "draft") {
+      setSwapRequests([]);
+      setSwapLog([]);
+      return;
+    }
+
+    const [requestsRes, logRes] = await Promise.all([
+      supabase
+        .from("duty_swap_requests")
+        .select("*")
+        .eq("roster_id", roster.id)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      supabase.rpc("duty_roster_swaps", { p_roster_id: roster.id }),
+    ]);
+
+    if (requestsRes.error) {
+      console.error("تعذر تحميل طلبات التبديل:", requestsRes.error);
+    }
+
+    if (logRes.error) {
+      console.error("تعذر تحميل سجل التبديلات:", logRes.error);
+    }
+
+    setSwapRequests((requestsRes.data ?? []) as SwapRequest[]);
+    setSwapLog((logRes.data ?? []) as SwapLogRow[]);
+  }
+
   async function openRoster(roster: Roster) {
     setError("");
     setSuccess("");
     setSelectedRosterId(roster.id);
     setEditOverride(null);
     await loadShifts(roster.id);
+    await loadSwapData(roster);
   }
 
   async function handleSelectRoster(rosterId: string) {
@@ -705,7 +919,7 @@ export function BranchDutyPage() {
   }
 
   // دمج الفترة اللي في target مع اللي قبلها
-  function mergeAt(target: number, extraNote = "") {
+  function mergeAt(target: number, extraNote = "", extraHolidayDates: string[] = []) {
     setShifts((prev) => {
       if (target <= 0 || target >= prev.length) return prev;
 
@@ -716,6 +930,9 @@ export function BranchDutyPage() {
         ...a,
         end_date: b.end_date,
         note: joinNotes(joinNotes(a.note, b.note), extraNote),
+        holiday_dates: Array.from(
+          new Set([...a.holiday_dates, ...b.holiday_dates, ...extraHolidayDates])
+        ),
         signed_at: null,
         ...(a.assigned_user_id
           ? {}
@@ -733,8 +950,13 @@ export function BranchDutyPage() {
 
   // إجازة رسمية: تتدمج مع اليوم اللي قبلها (أو اللي بعدها لو هي أول يوم)
   function markHoliday(index: number) {
+    const shift = shifts[index];
+
+    // التعليم على يوم واحد بس (الفترة المدمجة لازم تتفصل الأول)
+    if (!shift || shift.start_date !== shift.end_date) return;
+
     const target = index > 0 ? index : 1;
-    mergeAt(target, HOLIDAY_NOTE);
+    mergeAt(target, HOLIDAY_NOTE, [shift.start_date]);
   }
 
   // فصل الفترة لأيام منفصلة (أول يوم يفضل مع الفرد المعيّن، والباقي بدون تعيين)
@@ -749,11 +971,18 @@ export function BranchDutyPage() {
 
       for (let i = 0; i < days; i += 1) {
         const date = addDays(shift.start_date, i);
+        const holidays = shift.holiday_dates.filter((h) => h === date);
 
         parts.push(
           i === 0
-            ? { ...shift, start_date: date, end_date: date, signed_at: null }
-            : newShift(date, date)
+            ? {
+                ...shift,
+                start_date: date,
+                end_date: date,
+                signed_at: null,
+                holiday_dates: holidays,
+              }
+            : { ...newShift(date, date), holiday_dates: holidays }
         );
       }
 
@@ -912,6 +1141,201 @@ export function BranchDutyPage() {
     if (selectedRoster) void loadShifts(selectedRoster.id);
     setEditOverride(false);
   }
+
+  // =====================================================
+  // تبديل النوبتجية
+  // =====================================================
+
+  // قائمة الزملاء المتاحين للتبديل (بتتحمّل مرة واحدة)
+  useEffect(() => {
+    void (async () => {
+      const { data, error: peersError } = await supabase.rpc("duty_swap_candidates");
+
+      if (peersError) {
+        console.error("تعذر تحميل قائمة الزملاء للتبديل:", peersError);
+        return;
+      }
+
+      setSwapPeers((data ?? []) as SwapPeer[]);
+    })();
+  }, []);
+
+  function pendingSwapFor(shiftId: string | null): SwapRequest | undefined {
+    if (!shiftId) return undefined;
+
+    return swapRequests.find(
+      (r) =>
+        (r.status === "pending_peer" || r.status === "pending_manager") &&
+        (r.from_shift_id === shiftId || r.to_shift_id === shiftId)
+    );
+  }
+
+  async function refreshAfterSwap() {
+    if (!selectedRoster) return;
+
+    await loadShifts(selectedRoster.id);
+    await loadSwapData(selectedRoster);
+  }
+
+  async function handleSubmitSwap() {
+    if (!swapDraft) return;
+
+    if (!swapDraft.toUserId) {
+      setError("اختر الزميل أولًا.");
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const { error: swapError } = await supabase.rpc("request_duty_swap", {
+        p_from_shift_id: swapDraft.shiftId,
+        p_to_user_id: swapDraft.toUserId,
+        p_to_shift_id: swapDraft.toShiftId || null,
+        p_reason: swapDraft.reason.trim() || null,
+      });
+
+      if (swapError) {
+        setError(swapError.message);
+        return;
+      }
+
+      setSwapDraft(null);
+      await refreshAfterSwap();
+      setSuccess("تم إرسال طلب التبديل للزميل وبانتظار ردّه.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRespondSwap(requestId: string, accept: boolean) {
+    setBusy(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const { data, error: respondError } = await supabase.rpc("respond_duty_swap", {
+        p_request_id: requestId,
+        p_accept: accept,
+      });
+
+      if (respondError) {
+        setError(respondError.message);
+        return;
+      }
+
+      await refreshAfterSwap();
+
+      if (data) {
+        setError(String(data));
+      } else {
+        setSuccess(
+          accept ? "تم قبول الطلب وإرساله للمسؤول للاعتماد." : "تم رفض الطلب."
+        );
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDecideSwap(request: SwapRequest, approve: boolean) {
+    let note: string | null = null;
+
+    if (approve) {
+      if (
+        !window.confirm(
+          "هل تريد الموافقة على التبديل؟ ستتحدّث النوبتجية فورًا ويُرسل تنبيه لرئيس الفرع."
+        )
+      ) {
+        return;
+      }
+    } else {
+      const typed = window.prompt("سبب الرفض (اختياري):");
+      if (typed === null) return;
+      note = typed.trim() || null;
+    }
+
+    setBusy(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const { data, error: decideError } = await supabase.rpc("decide_duty_swap", {
+        p_request_id: request.id,
+        p_approve: approve,
+        p_note: note,
+      });
+
+      if (decideError) {
+        setError(decideError.message);
+        return;
+      }
+
+      await refreshAfterSwap();
+
+      if (data) {
+        setError(String(data));
+        return;
+      }
+
+      setSuccess(
+        approve ? "تمت الموافقة على التبديل وتحديث النوبتجية." : "تم رفض طلب التبديل."
+      );
+
+      await log(
+        "UPDATE",
+        approve ? "اعتماد تبديل نوبتجية" : "رفض تبديل نوبتجية",
+        `${personText(request.from_rank, request.from_name)} و ${personText(
+          request.to_rank,
+          request.to_name
+        )}`
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCancelSwap(requestId: string) {
+    if (!window.confirm("هل تريد إلغاء طلب التبديل؟")) return;
+
+    setBusy(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const { error: cancelError } = await supabase.rpc("cancel_duty_swap", {
+        p_request_id: requestId,
+      });
+
+      if (cancelError) {
+        setError(cancelError.message);
+        return;
+      }
+
+      await refreshAfterSwap();
+      setSuccess("تم إلغاء طلب التبديل.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const swapPending = swapRequests.filter(
+    (r) => r.status === "pending_peer" || r.status === "pending_manager"
+  );
+
+  // آخر 5 طلبات انتهت من غير تنفيذ (المنفّذة بتظهر في سجل التبديلات)
+  const swapFinished = swapRequests
+    .filter(
+      (r) =>
+        r.status !== "pending_peer" &&
+        r.status !== "pending_manager" &&
+        r.status !== "approved"
+    )
+    .slice(0, 5);
+
+  const swapVisible = [...swapPending, ...swapFinished];
 
   // =====================================================
   // التوقيع
@@ -1157,6 +1581,80 @@ export function BranchDutyPage() {
 
   const assignedCount = shifts.filter((s) => s.assigned_user_id).length;
 
+  // حمل كل فرد: هذا الشهر (من الجدول الحالي بما فيه التعديلات غير المحفوظة) والسنة
+  const loadByUser = useMemo(() => {
+    const month = new Map<string, DutyLoad>();
+    const year = new Map<string, DutyLoad>();
+
+    shifts.forEach((s) => {
+      if (!s.assigned_user_id) return;
+
+      month.set(
+        s.assigned_user_id,
+        addLoad(month.get(s.assigned_user_id) ?? emptyLoad(), shiftLoad(s))
+      );
+    });
+
+    // باقي شهور السنة من قاعدة البيانات (الشهر الحالي بيتحسب من الجدول الحي)
+    yearStats.forEach((row) => {
+      if (selectedRoster && row.month === selectedRoster.month) return;
+
+      year.set(
+        row.user_id,
+        addLoad(year.get(row.user_id) ?? emptyLoad(), {
+          shifts: row.shifts_count,
+          days: row.days_count,
+          weekend: row.weekend_days,
+          holiday: row.holiday_days,
+        })
+      );
+    });
+
+    month.forEach((load, userId) => {
+      year.set(userId, addLoad(year.get(userId) ?? emptyLoad(), load));
+    });
+
+    return { month, year };
+  }, [shifts, yearStats, selectedRoster]);
+
+  // جدول الإحصائية: كل ضباط الصف المتاحين + أي فرد ليه نوبتجيات، من الأقل حملًا للأكثر
+  const statsTable = useMemo(() => {
+    const info = new Map<string, { name: string; rank: string | null; office: string }>();
+
+    candidates.forEach((c) =>
+      info.set(c.user_id, { name: c.name, rank: c.rank, office: c.office })
+    );
+
+    yearStats.forEach((row) => {
+      if (!info.has(row.user_id)) {
+        info.set(row.user_id, {
+          name: row.user_name ?? "—",
+          rank: row.user_rank,
+          office: "",
+        });
+      }
+    });
+
+    shifts.forEach((s) => {
+      if (s.assigned_user_id && !info.has(s.assigned_user_id)) {
+        info.set(s.assigned_user_id, {
+          name: s.assigned_name ?? "—",
+          rank: s.assigned_rank,
+          office: s.assigned_office ?? "",
+        });
+      }
+    });
+
+    return Array.from(info.entries())
+      .map(([id, person]) => ({
+        id,
+        ...person,
+        month: loadByUser.month.get(id) ?? emptyLoad(),
+        year: loadByUser.year.get(id) ?? emptyLoad(),
+      }))
+      .sort((a, b) => a.year.days - b.year.days || a.name.localeCompare(b.name, "ar"));
+  }, [candidates, yearStats, shifts, loadByUser]);
+
   // =====================================================
   // Render
   // =====================================================
@@ -1306,7 +1804,171 @@ export function BranchDutyPage() {
                   : "لا توجد نوبتجية منشورة حتى الآن."}
         </div>
       )}
+      {/* طلبات التبديل */}
+      {selectedRoster && isLocked && swapVisible.length > 0 && (
+        <div className="bg-white rounded-2xl border border-[#eff0f6] overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#eff0f6] flex items-center gap-2">
+            <ArrowLeftRight size={18} color="#172e78" />
+            <span style={{ fontSize: 16, fontWeight: 700, color: "#2d3648" }}>
+              طلبات التبديل
+            </span>
+          </div>
 
+          <div className="flex flex-col">
+            {swapVisible.map((request) => {
+              const pending =
+                request.status === "pending_peer" || request.status === "pending_manager";
+              const iAmTarget = request.to_user_id === currentUser?.id;
+              const iAmRequester = request.from_user_id === currentUser?.id;
+
+              return (
+                <div
+                  key={request.id}
+                  className="px-5 py-4 border-b border-[#eff0f6] last:border-b-0 flex flex-wrap items-start justify-between gap-3"
+                  style={{ opacity: pending ? 1 : 0.7 }}
+                >
+                  <div className="flex flex-col gap-1">
+                    <span style={{ fontSize: 14, fontWeight: 700, color: "#2d3648" }}>
+                      من {personText(request.from_rank, request.from_name)} إلى{" "}
+                      {personText(request.to_rank, request.to_name)}
+                    </span>
+
+                    <span style={{ fontSize: 13, color: "#334155" }}>
+                      الفترة: {periodText(request.from_shift_start, request.from_shift_end)}
+                      {request.is_exchange
+                        ? ` — مقابل: ${periodText(request.to_shift_start, request.to_shift_end)}`
+                        : " (تسليم بدون مقابل)"}
+                    </span>
+
+                    {request.reason && (
+                      <span style={{ fontSize: 12, color: "#717d96" }}>
+                        السبب: {request.reason}
+                      </span>
+                    )}
+
+                    {request.decision_note && (
+                      <span style={{ fontSize: 12, color: "#991b1b" }}>
+                        ملاحظة المسؤول: {request.decision_note}
+                      </span>
+                    )}
+
+                    <span
+                      className="self-start px-2.5 py-0.5 rounded-full"
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        background: pending ? "#fff8e8" : "#f1f5f9",
+                        color: pending ? "#8a6500" : "#64748b",
+                      }}
+                    >
+                      {SWAP_STATUS_LABELS[request.status]}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {request.status === "pending_peer" && iAmTarget && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void handleRespondSwap(request.id, true)}
+                          disabled={busy}
+                          className="px-4 h-9 rounded-lg bg-[#00B867] text-white hover:opacity-90 disabled:opacity-50"
+                          style={{ fontSize: 13, fontWeight: 700 }}
+                        >
+                          قبول
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleRespondSwap(request.id, false)}
+                          disabled={busy}
+                          className="px-4 h-9 rounded-lg bg-[#fef2f2] text-[#991b1b] hover:opacity-80 disabled:opacity-50"
+                          style={{ fontSize: 13, fontWeight: 700 }}
+                        >
+                          رفض
+                        </button>
+                      </>
+                    )}
+
+                    {request.status === "pending_manager" && canEdit && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void handleDecideSwap(request, true)}
+                          disabled={busy}
+                          className="px-4 h-9 rounded-lg bg-[#00B867] text-white hover:opacity-90 disabled:opacity-50"
+                          style={{ fontSize: 13, fontWeight: 700 }}
+                        >
+                          موافقة
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDecideSwap(request, false)}
+                          disabled={busy}
+                          className="px-4 h-9 rounded-lg bg-[#fef2f2] text-[#991b1b] hover:opacity-80 disabled:opacity-50"
+                          style={{ fontSize: 13, fontWeight: 700 }}
+                        >
+                          رفض
+                        </button>
+                      </>
+                    )}
+
+                    {pending && iAmRequester && (
+                      <button
+                        type="button"
+                        onClick={() => void handleCancelSwap(request.id)}
+                        disabled={busy}
+                        className="px-4 h-9 rounded-lg border border-[#cbd5e1] text-[#475569] hover:bg-gray-50 disabled:opacity-50"
+                        style={{ fontSize: 13 }}
+                      >
+                        إلغاء الطلب
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* التبديلات اللي تمت على النوبتجية */}
+      {selectedRoster && isLocked && swapLog.length > 0 && (
+        <div className="bg-white rounded-2xl border border-[#eff0f6] overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#eff0f6]">
+            <span style={{ fontSize: 16, fontWeight: 700, color: "#2d3648" }}>
+              التبديلات التي تمت على هذه النوبتجية
+            </span>
+          </div>
+
+          <div className="flex flex-col">
+            {swapLog.map((row) => (
+              <div
+                key={row.id}
+                className="px-5 py-3 border-b border-[#eff0f6] last:border-b-0 flex flex-col gap-1"
+              >
+                <span style={{ fontSize: 14, color: "#2d3648" }}>
+                  {row.is_exchange
+                    ? `${personText(row.from_rank, row.from_name)} ⇄ ${personText(
+                        row.to_rank,
+                        row.to_name
+                      )}: ${periodText(row.from_shift_start, row.from_shift_end)} مقابل ${periodText(
+                        row.to_shift_start,
+                        row.to_shift_end
+                      )}`
+                    : `${personText(row.from_rank, row.from_name)} سلّم فترته (${periodText(
+                        row.from_shift_start,
+                        row.from_shift_end
+                      )}) إلى ${personText(row.to_rank, row.to_name)}`}
+                </span>
+
+                <span style={{ fontSize: 12, color: "#94a3b8" }}>
+                  تم بتاريخ {formatDateTime(row.decided_at)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {/* بطاقة النوبتجية */}
       {selectedRoster && (
         <div className="bg-white rounded-2xl border border-[#eff0f6] overflow-hidden">
@@ -1534,7 +2196,11 @@ export function BranchDutyPage() {
                     );
 
                     return (
-                      <tr key={shift.key} className="border-t border-[#eff0f6]">
+                      <tr
+                        key={shift.key}
+                        className="border-t border-[#eff0f6]"
+                        style={{ background: rowBackground(shift, todayStr) }}
+                      >
                         <td className="px-4 py-3" style={{ fontSize: 14, fontWeight: 700, color: "#2d3648" }}>
                           {rangeLabel(shift.start_date, shift.end_date)}
                         </td>
@@ -1559,12 +2225,18 @@ export function BranchDutyPage() {
                               </option>
                             )}
 
-                            {candidates.map((c) => (
-                              <option key={c.user_id} value={c.user_id}>
-                                {c.rank ? `${c.rank} ` : ""}
-                                {c.name} — {c.office}
-                              </option>
-                            ))}
+                            {candidates.map((c) => {
+                              const monthDays = loadByUser.month.get(c.user_id)?.days ?? 0;
+                              const yearDays = loadByUser.year.get(c.user_id)?.days ?? 0;
+
+                              return (
+                                <option key={c.user_id} value={c.user_id}>
+                                  {`${c.rank ? c.rank + " " : ""}${c.name} — ${c.office} (${toAr(
+                                    monthDays
+                                  )} يوم هذا الشهر • ${toAr(yearDays)} هذا العام)`}
+                                </option>
+                              );
+                            })}
                           </select>
                         </td>
 
@@ -1607,9 +2279,13 @@ export function BranchDutyPage() {
 
                             <button
                               type="button"
-                              title="إجازة رسمية (تتدمج مع اليوم السابق)"
+                              title={
+                                days > 1
+                                  ? "افصل الفترة لأيام الأول عشان تعلّم يوم الإجازة"
+                                  : "إجازة رسمية (تتدمج مع اليوم السابق)"
+                              }
                               onClick={() => markHoliday(index)}
-                              disabled={shifts.length < 2}
+                              disabled={shifts.length < 2 || days > 1}
                               className="w-9 h-9 rounded-lg flex items-center justify-center text-[#64748b] hover:bg-purple-50 hover:text-purple-600 disabled:opacity-30 disabled:hover:bg-transparent"
                             >
                               <CalendarOff size={16} />
@@ -1631,6 +2307,7 @@ export function BranchDutyPage() {
                     <th className="text-right px-4 py-3">المكتب</th>
                     <th className="text-right px-4 py-3">ملاحظة</th>
                     <th className="text-right px-4 py-3">التوقيع</th>
+                    <th className="text-right px-4 py-3">تبديل</th>
                   </tr>
                 </thead>
 
@@ -1642,7 +2319,7 @@ export function BranchDutyPage() {
                       <tr
                         key={shift.key}
                         className="border-t border-[#eff0f6]"
-                        style={{ background: isMine ? "#f6fcf8" : undefined }}
+                        style={{ background: rowBackground(shift, todayStr) }}
                       >
                         <td className="px-4 py-3" style={{ fontSize: 14, fontWeight: 700, color: "#2d3648" }}>
                           {rangeLabel(shift.start_date, shift.end_date)}
@@ -1693,6 +2370,42 @@ export function BranchDutyPage() {
                             </span>
                           )}
                         </td>
+
+                        <td className="px-4 py-3">
+                          {pendingSwapFor(shift.id) ? (
+                            <span
+                              className="px-2 py-1 rounded-full"
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 700,
+                                background: "#fff8e8",
+                                color: "#8a6500",
+                              }}
+                            >
+                              تبديل معلّق
+                            </span>
+                          ) : isLocked && isMine && shift.id && shift.end_date >= todayStr ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSwapDraft({
+                                  shiftId: shift.id as string,
+                                  toUserId: "",
+                                  toShiftId: "",
+                                  reason: "",
+                                })
+                              }
+                              disabled={busy}
+                              className="flex items-center gap-1 px-3 h-9 rounded-lg border border-[#cbd5e1] text-[#2d3648] hover:bg-gray-50 disabled:opacity-50"
+                              style={{ fontSize: 12, fontWeight: 700 }}
+                            >
+                              <ArrowLeftRight size={14} />
+                              طلب تبديل
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: 13, color: "#94a3b8" }}>—</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -1700,6 +2413,258 @@ export function BranchDutyPage() {
               </table>
             )}
           </div>
+        </div>
+      )}
+
+
+
+      {/* نافذة طلب تبديل */}
+      {swapDraft &&
+        (() => {
+          const draftShift = shifts.find((s) => s.id === swapDraft.shiftId);
+
+          const peerShifts = shifts.filter(
+            (s) =>
+              s.id &&
+              s.assigned_user_id === swapDraft.toUserId &&
+              s.end_date >= todayStr &&
+              !pendingSwapFor(s.id)
+          );
+
+          return (
+            <div
+              className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999] px-4"
+              onClick={() => !busy && setSwapDraft(null)}
+            >
+              <div
+                dir="rtl"
+                className="bg-white rounded-xl p-6 w-[460px] max-w-[95vw] max-h-[90vh] overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12, color: "#2d3648" }}>
+                  طلب تبديل نوبتجية
+                </h2>
+
+                {draftShift && (
+                  <p style={{ fontSize: 14, color: "#334155", marginBottom: 14 }}>
+                    فترتك: <b>{rangeLabel(draftShift.start_date, draftShift.end_date)}</b>
+                  </p>
+                )}
+
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <label style={{ fontSize: 13, color: "#717d96", display: "block", marginBottom: 4 }}>
+                      الزميل
+                    </label>
+                    <select
+                      value={swapDraft.toUserId}
+                      onChange={(e) =>
+                        setSwapDraft({ ...swapDraft, toUserId: e.target.value, toShiftId: "" })
+                      }
+                      className="w-full h-10 rounded-lg border border-[#cbd5e1] bg-white px-3 outline-none focus:border-[#00B867]"
+                      style={{ fontSize: 14 }}
+                    >
+                      <option value="">اختر الزميل</option>
+                      {swapPeers.map((peer) => (
+                        <option key={peer.user_id} value={peer.user_id}>
+                          {peer.user_rank ? `${peer.user_rank} ` : ""}
+                          {peer.user_name} — {peer.user_office}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {swapDraft.toUserId && (
+                    <div>
+                      <label style={{ fontSize: 13, color: "#717d96", display: "block", marginBottom: 4 }}>
+                        مقابل
+                      </label>
+                      <select
+                        value={swapDraft.toShiftId}
+                        onChange={(e) => setSwapDraft({ ...swapDraft, toShiftId: e.target.value })}
+                        className="w-full h-10 rounded-lg border border-[#cbd5e1] bg-white px-3 outline-none focus:border-[#00B867]"
+                        style={{ fontSize: 14 }}
+                      >
+                        <option value="">تسليم فترتي بدون مقابل</option>
+                        {peerShifts.map((s) => (
+                          <option key={s.id as string} value={s.id as string}>
+                            مبادلة بفترته: {rangeLabel(s.start_date, s.end_date)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div>
+                    <label style={{ fontSize: 13, color: "#717d96", display: "block", marginBottom: 4 }}>
+                      السبب (اختياري)
+                    </label>
+                    <textarea
+                      value={swapDraft.reason}
+                      onChange={(e) => setSwapDraft({ ...swapDraft, reason: e.target.value })}
+                      rows={3}
+                      className="w-full px-3 py-2 rounded-lg border border-[#cbd5e1] outline-none focus:border-[#00B867] resize-none"
+                      style={{ fontSize: 14 }}
+                    />
+                  </div>
+
+                  {error && <p style={{ fontSize: 13, color: "#991b1b" }}>{error}</p>}
+                </div>
+
+                <div className="flex items-center gap-2 mt-5">
+                  <button
+                    type="button"
+                    onClick={() => void handleSubmitSwap()}
+                    disabled={busy || !swapDraft.toUserId}
+                    className="flex-1 py-2 rounded-lg bg-[#00B867] text-white hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+                    style={{ fontSize: 14, fontWeight: 700 }}
+                  >
+                    {busy && <Loader2 size={14} className="animate-spin" />}
+                    إرسال الطلب
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSwapDraft(null)}
+                    disabled={busy}
+                    className="flex-1 py-2 rounded-lg border border-[#cbd5e1] text-[#475569] hover:bg-gray-50 disabled:opacity-50"
+                    style={{ fontSize: 14, fontWeight: 700 }}
+                  >
+                    إلغاء
+                  </button>
+                </div>
+
+                <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 10 }}>
+                  الطلب يروح للزميل أولًا، وبعد موافقته يعتمده المسؤول وتتحدّث النوبتجية.
+                </p>
+              </div>
+            </div>
+          );
+        })()}
+
+      {/* إحصائية عدالة التوزيع */}
+      {selectedRoster && canSeeStats && (
+        <div className="bg-white rounded-2xl border border-[#eff0f6] overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowStats((v) => !v)}
+            className="w-full px-5 py-4 flex flex-wrap items-center justify-between gap-2 text-right hover:bg-[#fafbff] transition-colors"
+          >
+            <span style={{ fontSize: 16, fontWeight: 700, color: "#2d3648" }}>
+              إحصائية توزيع النوبتجيات
+            </span>
+
+            <span style={{ fontSize: 13, color: "#1f3d97" }}>
+              {showStats ? "إخفاء" : "عرض"}
+            </span>
+          </button>
+
+          {showStats && (
+            <>
+              <p className="px-5 pb-3" style={{ fontSize: 12, color: "#94a3b8" }}>
+                مرتّبة من الأقل حملًا للأكثر (حسب أيام السنة). أرقام الشهر بتتحدّث مع كل
+                تعيين حتى قبل الحفظ. العطلة الأسبوعية = الخميس والجمعة، والإجازات الرسمية
+                بتتحسب لما تتعلّم بزر الإجازة.
+              </p>
+
+              {statsTable.length === 0 ? (
+                <div className="px-5 pb-5" style={{ fontSize: 13, color: "#717d96" }}>
+                  لا توجد بيانات بعد.
+                </div>
+              ) : (
+                <div className="overflow-x-auto border-t border-[#eff0f6]">
+                  <table className="w-full min-w-[860px]">
+                    <thead>
+                      <tr className="bg-[#f8fafc] text-[#64748b] text-sm">
+                        <th rowSpan={2} className="text-right px-4 py-3">
+                          الرتبة والاسم
+                        </th>
+
+                        <th colSpan={4} className="text-center px-4 py-2 border-r border-[#eff0f6]">
+                          {MONTHS[selectedRoster.month - 1]} {toAr(selectedRoster.year)}
+                        </th>
+
+                        <th colSpan={4} className="text-center px-4 py-2 border-r border-[#eff0f6]">
+                          من بداية {toAr(selectedRoster.year)}
+                        </th>
+                      </tr>
+
+                      <tr className="bg-[#f8fafc] text-[#64748b]" style={{ fontSize: 12 }}>
+                        {["فترات", "أيام", "عطلة أسبوعية", "إجازات رسمية"].map((label, i) => (
+                          <th
+                            key={`m-${label}`}
+                            className={`text-center px-3 py-2 ${i === 0 ? "border-r border-[#eff0f6]" : ""}`}
+                          >
+                            {label}
+                          </th>
+                        ))}
+
+                        {["فترات", "أيام", "عطلة أسبوعية", "إجازات رسمية"].map((label, i) => (
+                          <th
+                            key={`y-${label}`}
+                            className={`text-center px-3 py-2 ${i === 0 ? "border-r border-[#eff0f6]" : ""}`}
+                          >
+                            {label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {statsTable.map((row) => (
+                        <tr key={row.id} className="border-t border-[#eff0f6]">
+                          <td className="px-4 py-3" style={{ fontSize: 14, color: "#2d3648" }}>
+                            <div className="flex flex-col">
+                              <span style={{ fontWeight: 700 }}>
+                                {row.rank ? `${row.rank} ` : ""}
+                                {row.name}
+                              </span>
+                              {row.office && (
+                                <span style={{ fontSize: 12, color: "#717d96" }}>{row.office}</span>
+                              )}
+                            </div>
+                          </td>
+
+                          {[row.month, row.year].map((load, group) => (
+                            <>
+                              <td
+                                key={`${row.id}-${group}-s`}
+                                className="text-center px-3 py-3 border-r border-[#eff0f6]"
+                                style={{ fontSize: 13, color: "#334155" }}
+                              >
+                                {toAr(load.shifts)}
+                              </td>
+                              <td
+                                key={`${row.id}-${group}-d`}
+                                className="text-center px-3 py-3"
+                                style={{ fontSize: 13, fontWeight: 700, color: "#2d3648" }}
+                              >
+                                {toAr(load.days)}
+                              </td>
+                              <td
+                                key={`${row.id}-${group}-w`}
+                                className="text-center px-3 py-3"
+                                style={{ fontSize: 13, color: "#334155" }}
+                              >
+                                {toAr(load.weekend)}
+                              </td>
+                              <td
+                                key={`${row.id}-${group}-h`}
+                                className="text-center px-3 py-3"
+                                style={{ fontSize: 13, color: "#334155" }}
+                              >
+                                {toAr(load.holiday)}
+                              </td>
+                            </>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

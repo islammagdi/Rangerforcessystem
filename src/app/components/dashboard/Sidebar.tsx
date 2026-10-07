@@ -35,7 +35,9 @@ import {
     SlidersHorizontal,
     UserMinus,
     ChevronsUp,
-    ArchiveRestore
+    ArchiveRestore,
+    Archive,
+    UserX
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { supabase } from "../../../lib/supabase";
@@ -44,6 +46,9 @@ import { FileText,FileDown,FileUp } from "lucide-react";
 import { usePermissions } from "../../../lib/usePermissions";
 import { usePendingMailTasksCount } from "../../../hooks/usePendingMailTasksCount";
 import { Settings2 } from "lucide-react";
+import { ClipboardCheck } from "lucide-react";
+import { FileWarning } from "lucide-react";
+import { FolderArchive } from "lucide-react";
 // =====================================================
 // Types
 // =====================================================
@@ -76,6 +81,7 @@ const LABEL_TO_PATH: Record<string, string> = {
   "إصدار خطاب": "/dashboard/issue-letter",
   "سجل الخطابات": "/dashboard/letters-archive",
   "اليوميات": "/dashboard/daily-reports",
+  "أرشيف اليوميات": "/dashboard/daily-reports-archive",
   "دفعات الرديف": "/dashboard/reserve-batches",
   "ادارة الوحدات": "/dashboard/manage-units",
   "إدارة دفعات الرديف": "/dashboard/manage-reserve-batches",
@@ -101,12 +107,17 @@ const LABEL_TO_PATH: Record<string, string> = {
     "تسجيل وصول المجندين": "/dashboard/recruit-arrivals",
     "الأفراد المستحقين للترقية": "/dashboard/promotion-eligibility-report",
     "نسبة العجز": "/dashboard/deficit-rate",
-    "نوبتجية الفرع": "/dashboard/branch-duty",
+"نوبتجية الفرع": "/dashboard/branch-duty",
+    "تمام الحضور اليومي": "/dashboard/daily-attendance",
     "المراسم العسكرية": "/dashboard/military-ceremonies",
     "إعدادات الموقف العام": "/dashboard/dashboard-settings",
     "ملفات إنهاء الخدمة": "/dashboard/nco-discharges",
     "ترقي المجندين": "/dashboard/conscript-promotions",
     "الأفراد المحذوفين": "/dashboard/deleted-personnel",
+    "النقل خارج السلاح": "/dashboard/transfers-out",
+    "قرارات الغياب والرجوع": "/dashboard/absence-decisions",
+    "استكمال بيانات الأفراد": "/dashboard/data-quality",
+    "الأفراد خارج القوة": "/dashboard/discharged-archive",
 };
 
 // =====================================================
@@ -399,6 +410,12 @@ export function Sidebar({
         section: "الافراد",
         permission: "units_report:view",
       },
+      {
+        icon: <FileWarning size={18} />,
+        label: "استكمال بيانات الأفراد",
+        section: "الافراد",
+        permission: "data_quality:view",
+      },
 
         // -------------------------------
       // التقارير والخطابات
@@ -433,6 +450,12 @@ export function Sidebar({
         section: "التقارير والخطابات",
         permission: "daily_reports:view",
       },
+      {
+        icon: <FolderArchive size={18} />,
+        label: "أرشيف اليوميات",
+        section: "التقارير والخطابات",
+        permission: "daily_reports_archive:view",
+      },
       // -------------------------------
       // الأرشيف
       // -------------------------------
@@ -447,6 +470,12 @@ export function Sidebar({
         label: "الفاكسات - الوارد",
         section: "الأرشيف",
         permission: "archive_incoming:view",
+      },
+      {
+        icon: <ClipboardCheck size={18} />,
+        label: "تمام الحضور اليومي",
+        section: "الأرشيف",
+        permission: "daily_attendance:view",
       },
 
       // -------------------------------
@@ -469,6 +498,24 @@ export function Sidebar({
         label: "ترقي المجندين",
         section: "التسجيل وانهاء الخدمة",
         permission: "conscript_promotion:view",
+      },
+      {
+        icon: <LogOut size={18} />,
+        label: "النقل خارج السلاح",
+        section: "التسجيل وانهاء الخدمة",
+        permission: "transfer_out:view",
+      },
+      {
+        icon: <UserX size={18} />,
+        label: "قرارات الغياب والرجوع",
+        section: "التسجيل وانهاء الخدمة",
+        permission: "absence_decisions:view",
+      },
+      {
+        icon: <Archive size={18} />,
+        label: "الأفراد خارج القوة",
+        section: "التسجيل وانهاء الخدمة",
+        permission: "discharged_archive:view",
       },
             {
         icon: <ArchiveRestore size={18} />,

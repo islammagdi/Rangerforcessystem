@@ -70,6 +70,7 @@ type CaseDetail = {
   submit_fax_id: string | null;
   submitted_to: string | null;
   completed_at: string | null;
+  reversed_at: string | null;
   created_at: string;
   reason_name: string;
   reason_code: string;
@@ -797,7 +798,7 @@ export function NcoDischargeDetailPage() {
           `id, personnel_id, case_year, case_seq, status, event_date,
            decision_number, decision_date, decision_authority,
            notes, cancel_reason, notify_fax_id, submit_fax_id, submitted_to,
-                   completed_at, created_at, personnel_category,
+                  completed_at, reversed_at, created_at, personnel_category,
            reason:reason_id(name, code),
            personnel:personnel_id(full_name, military_number, rank:ranks(name))`
         )
@@ -842,7 +843,8 @@ export function NcoDischargeDetailPage() {
       notify_fax_id: row.notify_fax_id,
       submit_fax_id: row.submit_fax_id,
       submitted_to: row.submitted_to,
-      completed_at: row.completed_at,
+           completed_at: row.completed_at,
+      reversed_at: row.reversed_at ?? null,
       created_at: row.created_at,
       reason_name: reason?.name ?? "-",
       reason_code: reason?.code ?? "",
@@ -1391,7 +1393,10 @@ export function NcoDischargeDetailPage() {
     { label: "إخطار الوحدة", done: Boolean(detail.notify_fax_id) },
     { label: "استيفاء الإجراءات", done: docs.length > 0 },
     { label: "الرفع للجهة الأعلى", done: Boolean(detail.submit_fax_id) },
-    { label: "الشهادة وإكمال الملف", done: detail.status === "completed" },
+    {
+      label: "الشهادة وإكمال الملف",
+      done: detail.status === "completed" || detail.status === "reversed",
+    },
   ];
 
   return (
@@ -1486,6 +1491,16 @@ export function NcoDischargeDetailPage() {
             style={{ fontSize: 13, color: "#475569" }}
           >
             الملف ملغى. السبب: {detail.cancel_reason ?? "-"}
+          </div>
+        )}
+
+        {detail.status === "reversed" && (
+          <div
+            className="rounded-xl px-4 py-3 bg-[#faf5ff] border border-[#e9d5ff]"
+            style={{ fontSize: 13, color: "#6b21a8" }}
+          >
+            الفرد أُعيد للخدمة{detail.reversed_at ? ` بتاريخ ${formatDate(detail.reversed_at)}` : ""} بعد إكمال
+            الملف. تفاصيل قرار الإعادة في صفحة أرشيف المنتهية خدمتهم (تاب سجل الإعادة للخدمة).
           </div>
         )}
       </div>

@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { CalendarDays, Megaphone, ChevronLeft } from "lucide-react";
+import {
+  CalendarDays,
+  Megaphone,
+  ChevronLeft,
+  ShieldCheck,
+  ArrowLeftRight,
+} from "lucide-react";
 import { supabase } from "../../../lib/supabase";
+import { usePermissions } from "../../../lib/usePermissions";
 
 // ⚠️ عدّل المسار ده لو صفحة النوبتجية عندك على رابط مختلف
 const BRANCH_DUTY_ROUTE = "/dashboard/branch-duty";
@@ -22,9 +29,16 @@ const toAr = (value: string | number): string =>
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-function todayIso(): string {
-  const d = new Date();
+function isoOf(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function todayIso(): string {
+  return isoOf(new Date());
+}
+
+function dutyPersonLabel(person: DutyPerson): string {
+  return [person.assigned_rank, person.assigned_name].filter(Boolean).join(" ") || "—";
 }
 
 function parseISO(value: string) {
@@ -52,8 +66,25 @@ type PublishAlert = {
   month: number;
   notificationIds: string[];
 };
-
 type MyRoster = { id: string; year: number; month: number };
+
+type SwapRow = {
+  id: string;
+  roster_id: string;
+  status: string;
+  to_user_id: string;
+};
+
+type DutyPerson = {
+  id: string;
+  roster_id: string;
+  start_date: string;
+  end_date: string;
+  assigned_user_id: string | null;
+  assigned_name: string | null;
+  assigned_rank: string | null;
+  assigned_office: string | null;
+};
 
 type MyShift = {
   id: string;
@@ -84,6 +115,10 @@ export function DutyDashboardSection() {
   const [alerts, setAlerts] = useState<PublishAlert[]>([]);
   const [myRoster, setMyRoster] = useState<MyRoster | null>(null);
   const [myShifts, setMyShifts] = useState<MyShift[]>([]);
+  const { hasPermission } = usePermissions();
+  const [swapRows, setSwapRows] = useState<SwapRow[]>([]);
+  const [todayDuty, setTodayDuty] = useState<DutyPerson | null>(null);
+  const [tomorrowDuty, setTomorrowDuty] = useState<DutyPerson | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -99,7 +134,12 @@ export function DutyDashboardSection() {
       if (!user) return;
 
       setUserId(user.id);
-      await Promise.all([loadPublishAlerts(user.id), loadMyShifts(user.id)]);
+      await Promise.all([
+        loadPublishAlerts(user.id),
+        loadMyShifts(user.id),
+        loadDutyOfficers(),
+        loadSwapAlerts(),
+      ]);
     } catch (error) {
       console.error("خطأ في تحميل بيانات النوبتجيات:", error);
     } finally {
@@ -192,6 +232,88 @@ export function DutyDashboardSection() {
     setMyShifts((shifts ?? []) as MyShift[]);
   }
 
+  // النوبتجي اليوم والغد (من النوبتجية المعتمدة والموقّعة من رئيس الفرع)
+  async function loadDutyOfficers() {
+    try {
+      const now = new Date();
+      const tomorrowDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+
+      const todayStr = isoOf(now);
+      const tomorrowStr = isoOf(tomorrowDate);
+
+      // لو بكرة في شهر تاني (آخر يوم في الشهر) نجيب نوبتجيته كمان
+      const wantedMonths = new Set([
+        `${now.getFullYear()}-${now.getMonth() + 1}`,
+        `${tomorrowDate.getFullYear()}-${tomorrowDate.getMonth() + 1}`,
+      ]);
+
+      const years = Array.from(new Set([now.getFullYear(), tomorrowDate.getFullYear()]));
+
+      const { data: rosters, error: rostersError } = await supabase
+        .from("duty_rosters")
+        .select("id, year, month")
+        .in("year", years)
+        .eq("status", "approved")
+        .not("head_signed_at", "is", null);
+
+      if (rostersError) throw rostersError;
+
+      const rosterIds = (rosters ?? [])
+        .filter((r: any) => wantedMonths.has(`${r.year}-${r.month}`))
+        .map((r: any) => r.id as string);
+
+      if (rosterIds.length === 0) {
+        setTodayDuty(null);
+        setTomorrowDuty(null);
+        return;
+      }
+
+      const { data: shifts, error: shiftsError } = await supabase
+        .from("duty_roster_shifts")
+        .select(
+          "id, roster_id, start_date, end_date, assigned_user_id, assigned_name, assigned_rank, assigned_office"
+        )
+        .in("roster_id", rosterIds)
+        .lte("start_date", tomorrowStr)
+        .gte("end_date", todayStr)
+        .order("start_date", { ascending: true });
+
+      if (shiftsError) throw shiftsError;
+
+      const list = (shifts ?? []) as DutyPerson[];
+
+      const todayShift =
+        list.find((s) => s.start_date <= todayStr && s.end_date >= todayStr) ?? null;
+
+      const tomorrowShift =
+        list.find((s) => s.start_date <= tomorrowStr && s.end_date >= tomorrowStr) ?? null;
+
+      setTodayDuty(todayShift);
+
+      // لو بكرة نفس الفترة (مثلًا الخميس والجمعة لنفس الفرد) مش هنكررها
+      setTomorrowDuty(
+        tomorrowShift && tomorrowShift.id !== todayShift?.id ? tomorrowShift : null
+      );
+    } catch (error) {
+      console.error("خطأ في تحميل النوبتجي اليوم:", error);
+    }
+  }
+
+  // طلبات التبديل المعلقة (الـ RLS بيرجّع اللي يخصني أو اللي المسؤول يشوفه)
+  async function loadSwapAlerts() {
+    const { data, error } = await supabase
+      .from("duty_swap_requests")
+      .select("id, roster_id, status, to_user_id")
+      .in("status", ["pending_peer", "pending_manager"]);
+
+    if (error) {
+      console.error("خطأ في تحميل طلبات التبديل:", error);
+      return;
+    }
+
+    setSwapRows((data ?? []) as SwapRow[]);
+  }
+
   async function handleOpenAlert(alert: PublishAlert) {
     // نخفيه فورًا
     setAlerts((prev) => prev.filter((a) => a.rosterId !== alert.rosterId));
@@ -220,7 +342,27 @@ export function DutyDashboardSection() {
     [myShifts, today]
   );
 
-  if (loading || (alerts.length === 0 && myShifts.length === 0)) {
+  const isManager = hasPermission("branch_duty:edit");
+
+  // طلبات موجّهة لي بانتظار ردي
+  const swapForMe = swapRows.filter(
+    (r) => r.status === "pending_peer" && r.to_user_id === userId
+  );
+
+  // طلبات وافق عليها الزميل وبانتظار قرار المسؤول
+  const swapForManager = isManager
+    ? swapRows.filter((r) => r.status === "pending_manager")
+    : [];
+
+  if (
+    loading ||
+    (alerts.length === 0 &&
+      myShifts.length === 0 &&
+      !todayDuty &&
+      !tomorrowDuty &&
+      swapForMe.length === 0 &&
+      swapForManager.length === 0)
+  ) {
     return null;
   }
 
@@ -238,6 +380,150 @@ export function DutyDashboardSection() {
       >
         النوبتجيات
       </p>
+
+      {/* النوبتجي اليوم والغد */}
+      {(todayDuty || tomorrowDuty) && (
+        <div className="bg-white rounded-2xl border border-[#eff0f6] overflow-hidden">
+          {todayDuty && (
+            <button
+              type="button"
+              onClick={() =>
+                navigate(BRANCH_DUTY_ROUTE, { state: { rosterId: todayDuty.roster_id } })
+              }
+              className="w-full px-4 sm:px-5 py-4 flex flex-wrap items-center justify-between gap-3 text-right hover:bg-[#fafbff] transition-colors"
+              style={{ background: todayDuty.assigned_user_id === userId ? "#f6fcf8" : undefined }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-[12px] bg-[#DCF4DF] flex items-center justify-center shrink-0">
+                  <ShieldCheck size={20} color="#00522e" />
+                </div>
+
+                <div className="flex flex-col">
+                  <span style={{ ...FONT, fontSize: 13, color: "#717d96" }}>
+                    ضابط الصف النوبتجي اليوم
+                  </span>
+                  <span style={{ ...FONT, fontWeight: 700, fontSize: 18, color: "#2d3648" }}>
+                    {dutyPersonLabel(todayDuty)}
+                  </span>
+                  <span style={{ ...FONT, fontSize: 13, color: "#717d96" }}>
+                    {[todayDuty.assigned_office, rangeLabel(todayDuty.start_date, todayDuty.end_date)]
+                      .filter(Boolean)
+                      .join(" • ")}
+                  </span>
+                </div>
+              </div>
+
+              {todayDuty.assigned_user_id === userId && (
+                <span
+                  className="px-3 py-1 rounded-full"
+                  style={{
+                    ...FONT,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    background: "#DCF4DF",
+                    color: "#00522E",
+                  }}
+                >
+                  أنت نوبتجي اليوم
+                </span>
+              )}
+            </button>
+          )}
+
+          {tomorrowDuty && (
+            <button
+              type="button"
+              onClick={() =>
+                navigate(BRANCH_DUTY_ROUTE, { state: { rosterId: tomorrowDuty.roster_id } })
+              }
+              className={`w-full px-4 sm:px-5 py-3 flex flex-wrap items-center gap-2 text-right hover:bg-[#fafbff] transition-colors ${
+                todayDuty ? "border-t border-[#eff0f6]" : ""
+              }`}
+              style={{ background: tomorrowDuty.assigned_user_id === userId ? "#f6fcf8" : undefined }}
+            >
+              <span style={{ ...FONT, fontSize: 13, color: "#717d96" }}>
+                نوبتجي الغد:
+              </span>
+              <span style={{ ...FONT, fontSize: 14, fontWeight: 700, color: "#2d3648" }}>
+                {dutyPersonLabel(tomorrowDuty)}
+              </span>
+              <span style={{ ...FONT, fontSize: 12, color: "#717d96" }}>
+                ({rangeLabel(tomorrowDuty.start_date, tomorrowDuty.end_date)})
+              </span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* طلبات تبديل بانتظار ردي */}
+      {swapForMe.length > 0 && (
+        <button
+          type="button"
+          onClick={() =>
+            navigate(BRANCH_DUTY_ROUTE, { state: { rosterId: swapForMe[0].roster_id } })
+          }
+          className="w-full rounded-[12px] px-4 sm:px-5 py-3 sm:py-4 flex flex-wrap items-center gap-2 sm:gap-3 text-right hover:opacity-80 transition-opacity"
+          style={{ background: "#fff8e8", border: "1px solid #f4d58d" }}
+        >
+          <ArrowLeftRight size={18} color="#8a6500" className="shrink-0" />
+
+          <span style={{ ...FONT, fontSize: 14, fontWeight: 700, color: "#8a6500" }}>
+            {swapForMe.length === 1
+              ? "عندك طلب تبديل نوبتجية بانتظار ردك"
+              : `عندك ${toAr(swapForMe.length)} طلبات تبديل نوبتجية بانتظار ردك`}
+          </span>
+
+          <span
+            className="flex items-center gap-1"
+            style={{
+              ...FONT,
+              fontSize: 12,
+              color: "#8a6500",
+              marginRight: "auto",
+              textDecoration: "underline",
+            }}
+          >
+            اضغط للعرض
+            <ChevronLeft size={14} />
+          </span>
+        </button>
+      )}
+
+      {/* طلبات تبديل بانتظار قرار المسؤول */}
+      {swapForManager.length > 0 && (
+        <button
+          type="button"
+          onClick={() =>
+            navigate(BRANCH_DUTY_ROUTE, {
+              state: { rosterId: swapForManager[0].roster_id },
+            })
+          }
+          className="w-full rounded-[12px] px-4 sm:px-5 py-3 sm:py-4 flex flex-wrap items-center gap-2 sm:gap-3 text-right hover:opacity-80 transition-opacity"
+          style={{ background: "#eef4ff", border: "1px solid #c7d7fe" }}
+        >
+          <ArrowLeftRight size={18} color="#172e78" className="shrink-0" />
+
+          <span style={{ ...FONT, fontSize: 14, fontWeight: 700, color: "#172e78" }}>
+            {swapForManager.length === 1
+              ? "طلب تبديل نوبتجية بانتظار قرارك"
+              : `${toAr(swapForManager.length)} طلبات تبديل نوبتجية بانتظار قرارك`}
+          </span>
+
+          <span
+            className="flex items-center gap-1"
+            style={{
+              ...FONT,
+              fontSize: 12,
+              color: "#172e78",
+              marginRight: "auto",
+              textDecoration: "underline",
+            }}
+          >
+            اضغط للعرض
+            <ChevronLeft size={14} />
+          </span>
+        </button>
+      )}
 
       {/* تنبيهات النشر */}
       {alerts.map((alert) => (

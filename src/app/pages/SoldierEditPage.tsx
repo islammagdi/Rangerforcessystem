@@ -83,8 +83,8 @@ type Soldier = {
   attachmentUnitId: string | null;
   // تاريخ التسريح الخام (YYYY-MM-DD) زي ما راجع من قاعدة البيانات
   dischargeDateRaw: string | null;
+  isActive: boolean;
 };
-
 // ─────────────────────────────────────────────────────────────
 // Floating position (Portal) helpers
 // ---------------------------------------------------------------
@@ -1210,8 +1210,10 @@ const filteredRankOptions = useMemo(() => {
 }, [rankOptions, isConscriptCategory]);
 
 // فرد خدمته منتهية: الموقف الخدمي مقفول (الرجوع للخدمة مش من هنا)
+// فرد خارج القوة (خدمته منتهية أو منقول خارج السلاح): الموقف الخدمي مقفول
 const isCurrentlyDischarged =
-  !!dischargedStatusId && soldier?.serviceStatusId === dischargedStatusId;
+  (!!dischargedStatusId && soldier?.serviceStatusId === dischargedStatusId) ||
+  soldier?.isActive === false;
   // ───────────────────────────────────────────────────────────
   // Load Dropdown Data
   // ───────────────────────────────────────────────────────────
@@ -1387,6 +1389,7 @@ const isCurrentlyDischarged =
           service_status_id,
           rank_id,
           discharge_date,
+          is_active,
                    administration_id,
           education_level_id,
                     job_id,
@@ -1490,6 +1493,8 @@ const isCurrentlyDischarged =
         attachmentUnitId: raw.attachment_unit_id ?? null,
 
         dischargeDateRaw: raw.discharge_date ?? null,
+
+        isActive: raw.is_active !== false,
       };
 
       setSoldier(mappedSoldier);
@@ -2112,7 +2117,7 @@ await createNotification({
                       value={isCurrentlyDischarged ? null : serviceStatusId}
                       onChange={handleServiceStatusChange}
                       disabled={isCurrentlyDischarged}
-                      placeholder={isCurrentlyDischarged ? "منتهي خدمته" : "اختر الموقف الخدمي"}
+placeholder={isCurrentlyDischarged ? soldier?.serviceStatus || "خارج القوة" : "اختر الموقف الخدمي"}
                     />
 
                     {isCurrentlyDischarged && (
@@ -2120,7 +2125,7 @@ await createNotification({
                         className="text-right mt-1"
                         style={{ ...FONT, fontSize: 12, color: "#717d96", lineHeight: 1.6 }}
                       >
-                        خدمة الفرد منتهية، والموقف الخدمي مش بيتعدل من هنا.
+                        الفرد خارج القوة، والموقف الخدمي مش بيتعدل من هنا. لإعادته استخدم صفحة "الأفراد خارج القوة".
                       </p>
                     )}
                   </div>

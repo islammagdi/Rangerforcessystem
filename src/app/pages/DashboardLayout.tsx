@@ -34,6 +34,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/letters-archive": "سجل الخطابات",
 
   "/dashboard/daily-reports": "اليوميات",
+  "/dashboard/daily-reports-archive": "أرشيف اليوميات",
 
   "/dashboard/reserve-batches": "دفعات الرديف",
 
@@ -63,12 +64,17 @@ const PAGE_TITLES: Record<string, string> = {
   "/dashboard/recruit-arrivals": "تسجيل وصول المجندين",
    "/dashboard/promotion-eligibility-report": "الأفراد المستحقين للترقية",
    "/dashboard/deficit-rate": "نسبة العجز",
-   "/dashboard/branch-duty": "نوبتجية الفرع",
+"/dashboard/branch-duty": "نوبتجية الفرع",
+   "/dashboard/daily-attendance": "تمام الحضور اليومي",
    "/dashboard/military-ceremonies": "المراسم العسكرية",
    "/dashboard/dashboard-settings": "إعدادات الموقف العام",
       "/dashboard/nco-discharges": "ملفات إنهاء الخدمة",
    "/dashboard/conscript-promotions": "ترقي المجندين",
-   "/dashboard/deleted-personnel": "الأفراد المحذوفين",
+"/dashboard/deleted-personnel": "الأفراد المحذوفين",
+"/dashboard/transfers-out": "النقل خارج السلاح",
+"/dashboard/absence-decisions": "قرارات الغياب والرجوع",
+   "/dashboard/data-quality": "استكمال بيانات الأفراد",
+"/dashboard/discharged-archive": "الأفراد خارج القوة",
 };
 // ============================================================
 // صلاحيات الوصول لكل مسار (بدل الأدوار الثابتة)
@@ -86,6 +92,7 @@ const PATH_PERMISSION_MAP: { prefix: string; permission: string }[] = [
   { prefix: "/dashboard/individual-query", permission: "individual_query:view" },
   { prefix: "/dashboard/units-report", permission: "units_report:view" },
   { prefix: "/dashboard/daily-reports", permission: "daily_reports:view" },
+  { prefix: "/dashboard/daily-reports-archive", permission: "daily_reports_archive:view" },
 
   { prefix: "/dashboard/add-soldier", permission: "add_soldier:view" },
   { prefix: "/dashboard/issue-letter", permission: "issue_letter:view" },
@@ -125,12 +132,17 @@ const PATH_PERMISSION_MAP: { prefix: string; permission: string }[] = [
        { prefix: "/dashboard/promotion-notifications", permission: "promotion_notifications:view" },
     { prefix: "/dashboard/recruit-arrivals", permission: "recruit_arrivals:view" },
     { prefix: "/dashboard/deficit-rate", permission: "deficit_rate:view" },
-    { prefix: "/dashboard/branch-duty", permission: "branch_duty:view" },
+{ prefix: "/dashboard/branch-duty", permission: "branch_duty:view" },
+    { prefix: "/dashboard/daily-attendance", permission: "daily_attendance:view" },
     { prefix: "/dashboard/military-ceremonies", permission: "military_ceremonies:view" },
     { prefix: "/dashboard/dashboard-settings", permission: "dashboard_settings:manage" },
     { prefix: "/dashboard/nco-discharges", permission: "nco_discharge:view" },
     { prefix: "/dashboard/conscript-promotions", permission: "conscript_promotion:view" },
-     { prefix: "/dashboard/deleted-personnel", permission: "personnel:restore" },
+{ prefix: "/dashboard/deleted-personnel", permission: "personnel:restore" },
+   { prefix: "/dashboard/transfers-out", permission: "transfer_out:view" },
+   { prefix: "/dashboard/absence-decisions", permission: "absence_decisions:view" },
+     { prefix: "/dashboard/data-quality", permission: "data_quality:view" },
+     { prefix: "/dashboard/discharged-archive", permission: "discharged_archive:view" },
 
 ];
 // قواعد خاصة بمسارات "التعديل" — بتتحقق قبل القاعدة العامة، عشان

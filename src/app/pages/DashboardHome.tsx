@@ -8,10 +8,12 @@ import { UnitBarChart } from "../components/dashboard/UnitBarChart";
 import { useDashboardStats } from "../../hooks/useDashboardStats";
 import { DutyDashboardSection } from "../components/dashboard/DutyDashboardSection";
 import { UpcomingVisitsSection } from "../components/dashboard/UpcomingVisitsSection";
+import { NcoDischargeTasksSection } from "../components/dashboard/NcoDischargeTasksSection";
+import { ACTIVE_STATUSES, STALE_DAYS } from "./NcoDischargesPage";
 import { useDashboardSections } from "../../lib/dashboardSections";
 import { usePermissions } from "../../lib/usePermissions";
 import { useNavigate } from "react-router";
-import { CircleCheckBig, CircleX, Inbox, Send, FileText, Users, UserCheck } from "lucide-react";
+import { CircleCheckBig, CircleX, Inbox, Send, FileText, Users, UserCheck, FileWarning, Hourglass } from "lucide-react";
 import { fetchSocialRecordUnitStats } from "../../lib/socialRecords";
 import {
   PHASE_STATUS_LABELS,
@@ -311,7 +313,7 @@ export function DashboardHome() {
   const navigate = useNavigate();
   const { loading: loadingSections, canSee } = useDashboardSections();
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const { roleNames } = usePermissions();
+  const { roleNames, hasPermission } = usePermissions();
   const currentUserRole = roleNames.length > 0 ? roleNames.join("، ") : null;
   const [socialStats, setSocialStats] = useState({
     total: 0,
@@ -338,6 +340,8 @@ export function DashboardHome() {
     outsideVolunteers: 0,
     outsideConscripts: 0,
     totalOutside: 0,
+    absentVolunteers: 0,
+    absentConscripts: 0,
   });
 
   const [loadingStats, setLoadingStats] = useState(true);
@@ -380,6 +384,55 @@ export function DashboardHome() {
     loadPendingLetters();
     loadTodayLettersCount();
   }, []);
+  // ==========================================================
+  // تنبيهات تحتاج متابعة (بيانات ناقصة + ملفات إنهاء خدمة متوقفة)
+  // ==========================================================
+
+  const canViewDataQuality = hasPermission("data_quality:view");
+  const canViewNcoDischarges = hasPermission("nco_discharge:view");
+
+  const [followUpAlerts, setFollowUpAlerts] = useState({
+    incompleteData: 0,
+    staleCases: 0,
+  });
+
+  useEffect(() => {
+    void loadFollowUpAlerts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canViewDataQuality, canViewNcoDischarges]);
+
+  async function loadFollowUpAlerts() {
+    const next = { incompleteData: 0, staleCases: 0 };
+
+    try {
+      if (canViewDataQuality) {
+        const { data } = await supabase.rpc("get_data_issue_summary", {
+          p_unit_id: null,
+          p_category_id: null,
+        });
+
+        const all = ((data ?? []) as any[]).find((r) => r.issue_code === "__ALL__");
+        next.incompleteData = Number(all?.issue_count ?? 0);
+      }
+
+      if (canViewNcoDischarges) {
+        const cutoff = new Date(Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+        const { count } = await supabase
+          .from("nco_discharge_cases")
+          .select("id", { count: "exact", head: true })
+          .in("status", ACTIVE_STATUSES)
+          .lt("updated_at", cutoff);
+
+        next.staleCases = count ?? 0;
+      }
+    } catch (error) {
+      console.error("خطأ في تحميل تنبيهات المتابعة:", error);
+    }
+
+    setFollowUpAlerts(next);
+  }
+
   const canViewSocialRecordStats = canSee("social_record_stats");
 
   useEffect(() => {
@@ -512,6 +565,8 @@ export function DashboardHome() {
         outsideVolunteers: n("outside_volunteers"),
         outsideConscripts: n("outside_conscripts"),
         totalOutside: n("outside_volunteers") + n("outside_conscripts"),
+        absentVolunteers: n("absent_volunteers"),
+        absentConscripts: n("absent_conscripts"),
       });
 
       setNextBatchDate(o.next_batch_date ? parseDbDateString(o.next_batch_date) : null);
@@ -826,6 +881,38 @@ export function DashboardHome() {
 
    
 
+      {(followUpAlerts.incompleteData > 0 || followUpAlerts.staleCases > 0) && (
+        <>
+          <SectionTitle>تنبيهات تحتاج متابعة</SectionTitle>
+
+          <div className="flex gap-3 sm:gap-4 flex-wrap">
+            {followUpAlerts.incompleteData > 0 && (
+              <StatCard
+                icon={<FileWarning size={20} color="#92400e" />}
+                value={formatNumber(followUpAlerts.incompleteData)}
+                label="أفراد بياناتهم ناقصة"
+                valueColor="#92400e"
+                onClick={() => navigate("/dashboard/data-quality")}
+              />
+            )}
+
+            {followUpAlerts.staleCases > 0 && (
+              <StatCard
+                icon={<Hourglass size={20} color="#9d2e15" />}
+                value={formatNumber(followUpAlerts.staleCases)}
+                label={`ملفات إنهاء خدمة متوقفة أكتر من ${STALE_DAYS} يوم`}
+                valueColor="#9d2e15"
+                onClick={() =>
+                  navigate("/dashboard/nco-discharges", {
+                    state: { staleOnly: true },
+                  })
+                }
+              />
+            )}
+          </div>
+        </>
+      )}
+
       {canSee("branch_duty") && <DutyDashboardSection />}
 
       {canSee("upcoming_visits") && <UpcomingVisitsSection />}
@@ -1000,6 +1087,15 @@ export function DashboardHome() {
         </div>
       )}
       </>
+      )}
+
+      {canSee("discharge_tasks") && hasPermission("nco_discharge:view") && (
+        <NcoDischargeTasksSection
+          dischargedTodayCount={
+            loadingTodayStats ? undefined : todayStats.dischargedList.length
+          }
+          onDischargedTodayClick={() => setOpenModal("discharged")}
+        />
       )}
 
       {canSee("mail_alerts") && (
@@ -1360,6 +1456,46 @@ export function DashboardHome() {
               valueColor="#2D3648"
             />
           </div>
+
+          {stats.absentVolunteers + stats.absentConscripts > 0 && (
+            <div className="flex gap-3 sm:gap-4 flex-wrap">
+              <StatCard
+                icon={<RankIcon />}
+                value={formatNumber(stats.absentVolunteers)}
+                label="غائبون من المتطوعين"
+                valueColor="#991b1b"
+                onClick={
+                  hasPermission("absence_decisions:view")
+                    ? () => navigate("/dashboard/absence-decisions")
+                    : undefined
+                }
+              />
+
+              <StatCard
+                icon={<SoldiersIcon />}
+                value={formatNumber(stats.absentConscripts)}
+                label="غائبون من المجندين"
+                valueColor="#991b1b"
+                onClick={
+                  hasPermission("absence_decisions:view")
+                    ? () => navigate("/dashboard/absence-decisions")
+                    : undefined
+                }
+              />
+
+              <StatCard
+                icon={<PeopleIcon />}
+                value={formatNumber(stats.absentVolunteers + stats.absentConscripts)}
+                label="إجمالي الغائبين (خارج القوة)"
+                valueColor="#991b1b"
+                onClick={
+                  hasPermission("absence_decisions:view")
+                    ? () => navigate("/dashboard/absence-decisions")
+                    : undefined
+                }
+              />
+            </div>
+          )}
         </>
       )}
 

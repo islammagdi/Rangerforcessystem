@@ -962,8 +962,35 @@ export function LetterReviewPage() {
         throw new Error("جلسة تسجيل الدخول غير موجودة. من فضلك سجل الدخول مرة أخرى.");
       }
 
-      const userId = session.user.id;
+      const userId = session.user.id;     
 
+      /* -----------------------------------------------
+         منع إصدار خطاب لفرد غائب
+      ----------------------------------------------- */
+
+      const registeredIds = soldiers.filter((s) => !s.isManual).map((s) => s.id);
+
+      if (registeredIds.length > 0) {
+        const { data: absentRows, error: absentError } = await supabase
+          .from("personnel")
+          .select("military_number, full_name, service_statuses!inner(code)")
+          .in("id", registeredIds)
+          .eq("service_statuses.code", "ABSENT");
+
+        if (absentError) {
+          throw new Error(`تعذر التحقق من حالة الأفراد: ${absentError.message}`);
+        }
+
+        if ((absentRows ?? []).length > 0) {
+          throw new Error(
+            "لا يمكن إصدار الخطاب: الأفراد دول مسجلين غائبين:\n" +
+              (absentRows ?? [])
+                .map((p: any) => `- ${p.full_name} (${p.military_number})`)
+                .join("\n") +
+              "\nشيلهم من الخطاب أو سجّل لهم قرار ضم الأول."
+          );
+        }
+      }
       /* -----------------------------------------------
          Letter Type (نجيبها fresh وقت الحفظ للأمان)
       ----------------------------------------------- */

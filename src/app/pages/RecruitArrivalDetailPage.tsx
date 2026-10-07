@@ -244,8 +244,6 @@ export function RecruitArrivalDetailPage() {
     [arrivals]
   );
 
-  // آخر يوم مسجل في الشيت (التواريخ مرتبة تصاعديًا)
-  const lastDate = dates.length > 0 ? dates[dates.length - 1] : null;
 
   function targetStr(ck: string): string {
     if (ck in targetDraft) return targetDraft[ck];
@@ -260,6 +258,16 @@ export function RecruitArrivalDetailPage() {
 
   const targetNum = (ck: string) => Number(targetStr(ck)) || 0;
   const arrivalNum = (date: string, ck: string) => Number(arrivalStr(date, ck)) || 0;
+
+  // آخر يوم فيه أرقام فعلية (مجموعه أكبر من صفر). الأيام اللي كلها أصفار بتتجاهل
+  const lastDate = useMemo(() => {
+    for (let i = dates.length - 1; i >= 0; i--) {
+      const hasData = columns.some((c) => arrivalNum(dates[i], c.key) > 0);
+      if (hasData) return dates[i];
+    }
+    return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dates, columns, arrivals, arrivalDraft]);
 
   function columnArrived(ck: string): number {
     return dates.reduce((sum, d) => sum + arrivalNum(d, ck), 0);
@@ -629,7 +637,7 @@ export function RecruitArrivalDetailPage() {
       <html lang="ar" dir="rtl">
         <head>
           <meta charset="UTF-8" />
-             <title>تسجيل وصول المرحلة التجنيدية - ${esc(ar(phase.name))}</title>
+             <title>تسجيل وصول افراد المرحلة التجنيدية - ${esc(ar(phase.name))}</title>
 
           <style>
               @page {
@@ -826,7 +834,7 @@ export function RecruitArrivalDetailPage() {
               </div>
 
               <div class="header-title-box">
-                <div class="header-title-main">تسجيل وصول المرحلة التجنيدية</div>
+                <div class="header-title-main">تسجيل وصول افراد المرحلة التجنيدية</div>
                 <div class="header-title-phase">${esc(ar(phase.name))}</div>
               </div>
 

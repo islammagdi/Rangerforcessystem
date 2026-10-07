@@ -12,6 +12,7 @@ import { supabase } from "../../../lib/supabase";
 import imgAvatar from "../../../assets/avatar.png";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { NotificationBell } from "./NotificationBell";
+import { GlobalSearch } from "./GlobalSearch";
 
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
@@ -798,6 +799,7 @@ export function DashboardHeader({
         ====================================================== */}
 
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <GlobalSearch />
           <NotificationBell />
                   {/* ====================================================
               بلوك المستخدم كامل (الأفاتار + الاسم + السهم)

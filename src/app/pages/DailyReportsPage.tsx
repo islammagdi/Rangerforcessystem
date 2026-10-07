@@ -7,7 +7,8 @@ import {
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { fetchAllRows } from "../../lib/supabase";
-
+import { archiveDailyReport, buildDailyReportSnapshot } from "../../lib/dailyReportArchive";
+import logoImg from "../../assets/af406d517dfa4e5b22e9993bd61d8e4e002646b6.png";
 const F: React.CSSProperties = {
   fontFamily: "'Almarai', sans-serif",
 };
@@ -1382,6 +1383,39 @@ function Step2({
     </div>
   );
 }
+// ============================================================
+// دباجة الطباعة (بتظهر في الورقة المطبوعة بس، مش على الشاشة)
+// ============================================================
+
+function PrintLetterhead() {
+  return (
+    <div
+      className="daily-print-letterhead"
+      dir="rtl"
+      style={{
+        alignItems: "center",
+        justifyContent: "space-between",
+        borderBottom: "1px solid #cbd2e0",
+        paddingBottom: 10,
+      }}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <span style={{ ...F, fontSize: 16, fontWeight: 700, color: "#2d3648" }}>
+          قيــادة قوات الصـاعقة
+        </span>
+        <span style={{ ...F, fontSize: 16, fontWeight: 700, color: "#2d3648" }}>
+          فـرع التنظيــــم والإدارة
+        </span>
+        <span style={{ ...F, fontSize: 14, color: "#717d96" }}>
+          المنظومة الالكترونية للفرع
+        </span>
+      </div>
+
+      <img src={logoImg} alt="" style={{ width: 64, height: 64, objectFit: "contain" }} />
+    </div>
+  );
+}
+
 // ============================================================
 // Report Header
 // ============================================================
@@ -4146,6 +4180,39 @@ function Step3({
   units: Unit[];
   people: Personnel[];
 }) {
+  const [archiving, setArchiving] = useState(false);
+  const [archiveError, setArchiveError] = useState("");
+
+  // ✅ قبل الطباعة: نسخة من اليومية زي ما هي بتتحفظ في الأرشيف.
+  // لو الحفظ فشل، اليومية بتتطبع برضو وبتظهر رسالة.
+  async function handlePrint() {
+    setArchiving(true);
+    setArchiveError("");
+
+    try {
+      const html = buildDailyReportSnapshot("daily-report-print-area", reportTitle);
+
+      await archiveDailyReport(
+        {
+          reportType: config.reportType ?? "",
+          reportTitle,
+          unitId: config.unitId || null,
+          unitName: config.unitName,
+          category: config.category,
+          excludeBatch: config.excludeBatch,
+          dischargeDate: config.excludeBatch && config.dischargeDate ? config.dischargeDate : null,
+        },
+        html
+      );
+    } catch (err: any) {
+      setArchiveError("اليومية اتطبعت بس متحفظتش في الأرشيف: " + (err?.message ?? ""));
+    } finally {
+      setArchiving(false);
+    }
+
+    window.print();
+  }
+
   function renderReport() {
     switch (config.reportType) {
       case "unit-force":
@@ -4251,6 +4318,8 @@ function Step3({
       className="flex flex-col gap-5 w-full"
       dir="rtl"
     >
+      <PrintLetterhead />
+
       <ReportHeader
         title={reportTitle}
         config={config}
@@ -4260,7 +4329,8 @@ function Step3({
 
       <button
         type="button"
-        onClick={() => window.print()}
+        onClick={() => void handlePrint()}
+        disabled={archiving}
         className="w-full h-[52px] rounded-[8px] flex items-center justify-center gap-2 transition-opacity hover:opacity-90 no-print"
         style={{
           background:
@@ -4279,9 +4349,18 @@ function Step3({
             color: "#fff",
           }}
         >
-          طباعة اليومية
+          {archiving ? "جاري الحفظ في الأرشيف..." : "طباعة اليومية"}
         </span>
       </button>
+
+      {archiveError && (
+        <p
+          className="no-print text-center"
+          style={{ ...F, fontSize: 13, color: "#991b1b", fontWeight: 700 }}
+        >
+          {archiveError}
+        </p>
+      )}
     </div>
   );
 }
@@ -4599,7 +4678,15 @@ export function DailyReportsPage() {
     >
       <style>
         {`
+          .daily-print-letterhead {
+            display: none;
+          }
+
           @media print {
+            .daily-print-letterhead {
+              display: flex !important;
+            }
+
             body * {
               visibility: hidden !important;
             }

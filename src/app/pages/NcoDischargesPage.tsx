@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { Plus, Loader2, X, Search, ChevronLeft, UserMinus } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { usePermissions } from "../../lib/usePermissions";
@@ -14,16 +14,28 @@ export type CaseStatus =
   | "in_progress"
   | "submitted"
   | "completed"
-  | "cancelled";
+  | "cancelled"
+  | "reversed";
 
 export const ACTIVE_STATUSES: CaseStatus[] = ["awaiting_notification", "in_progress", "submitted"];
 
+// الملف الجاري اللي محدش حدّثه من المدة دي بيتعتبر متوقف
+export const STALE_DAYS = 14;
+
+export function daysSince(value: string | null | undefined): number {
+  if (!value) return 0;
+  return Math.floor((Date.now() - new Date(value).getTime()) / (24 * 60 * 60 * 1000));
+}
+
+export const isStaleCase = (status: CaseStatus, updatedAt: string | null) =>
+  ACTIVE_STATUSES.includes(status) && daysSince(updatedAt) >= STALE_DAYS;
 export const CASE_STATUS_META: Record<CaseStatus, { label: string; bg: string; color: string }> = {
   awaiting_notification: { label: "بانتظار إخطار الوحدة", bg: "#fff8e8", color: "#8a6500" },
   in_progress: { label: "جاري استيفاء الإجراءات", bg: "#e0f2fe", color: "#075985" },
   submitted: { label: "مرفوع للجهة الأعلى - بانتظار الشهادة", bg: "#e8f0fe", color: "#172e78" },
   completed: { label: "مكتمل", bg: "#DCF4DF", color: "#00522E" },
   cancelled: { label: "ملغى", bg: "#f1f5f9", color: "#64748b" },
+  reversed: { label: "أُعيد للخدمة", bg: "#f3e8ff", color: "#6b21a8" },
 };
 
 export const DECISION_AUTHORITY_SUGGESTIONS = ["السجلات العسكرية", "هيئة التنظيم والإدارة"];
@@ -104,6 +116,7 @@ type CaseRow = {
   military_number: string;
   docs_count: number;
   personnel_category: string | null;
+  updated_at: string | null;
 };
 
 type Reason = { id: string; code: string; name: string; applies_to: string[] };
@@ -116,8 +129,7 @@ type PersonOption = {
   primary_unit_name: string | null;
   category_code: string;
 };
-
-type FilterTab = "active" | "completed" | "cancelled";
+type FilterTab = "active" | "completed" | "cancelled" | "reversed";
 type CategoryFilter = "all" | "VOLUNTEER" | "CONSCRIPT";
 
 // =====================================================
@@ -137,6 +149,12 @@ export function NcoDischargesPage() {
   const [error, setError] = useState("");
   const [tab, setTab] = useState<FilterTab>("active");
   const [search, setSearch] = useState("");
+
+  // ✅ الجاي من كارت "ملفات متوقفة" في الموقف العام بيفتح على المتأخرة بس
+  const location = useLocation();
+  const [staleOnly, setStaleOnly] = useState<boolean>(
+    Boolean((location.state as any)?.staleOnly)
+  );
 
   // فتح ملف جديد
   const [showCreate, setShowCreate] = useState(false);
@@ -164,7 +182,7 @@ export function NcoDischargesPage() {
       supabase
         .from("nco_discharge_cases")
         .select(
-          `id, case_year, case_seq, status, decision_number, created_at, personnel_category,
+          `id, case_year, case_seq,status, decision_number, created_at, updated_at, personnel_category,
            reason:reason_id(name),
            personnel:personnel_id(full_name, military_number, rank:ranks(name)),
            docs:nco_discharge_case_documents(id)`
@@ -201,6 +219,7 @@ export function NcoDischargesPage() {
           military_number: person?.military_number ?? "",
                 docs_count: (row.docs ?? []).length,
           personnel_category: row.personnel_category ?? null,
+          updated_at: row.updated_at ?? null,
         };
       })
     );
@@ -361,25 +380,27 @@ export function NcoDischargesPage() {
       active: categoryCases.filter((c) => ACTIVE_STATUSES.includes(c.status)).length,
       completed: categoryCases.filter((c) => c.status === "completed").length,
       cancelled: categoryCases.filter((c) => c.status === "cancelled").length,
+      reversed: categoryCases.filter((c) => c.status === "reversed").length,
     }),
     [categoryCases]
   );
 
   const filtered = useMemo(() => {
     const q = toEnglishDigits(search.trim());
-
     return categoryCases.filter((c) => {
       const inTab = tab === "active" ? ACTIVE_STATUSES.includes(c.status) : c.status === tab;
       if (!inTab) return false;
+      if (staleOnly && !isStaleCase(c.status, c.updated_at)) return false;
       if (!q) return true;
       return c.person_name.includes(q) || c.military_number.includes(q);
     });
-  }, [categoryCases, tab, search]);
+  }, [categoryCases, tab, search, staleOnly]);
 
   const tabs: { id: FilterTab; label: string }[] = [
     { id: "active", label: "الملفات الجارية" },
     { id: "completed", label: "مكتملة" },
     { id: "cancelled", label: "ملغاة" },
+    { id: "reversed", label: "أُعيد للخدمة" },
   ];
 
   const inputClass =
@@ -418,6 +439,25 @@ export function NcoDischargesPage() {
           <option value="VOLUNTEER">ضباط الصف</option>
           <option value="CONSCRIPT">المجندين</option>
         </select>
+
+        <label
+          className={[
+            "flex items-center gap-2 px-3 h-[42px] rounded-lg border cursor-pointer select-none",
+            staleOnly ? "border-[#fecaca] bg-[#fef2f2]" : "border-[#cbd5e1] bg-white",
+          ].join(" ")}
+          style={{ fontSize: 14, color: staleOnly ? "#991b1b" : "#475569", fontWeight: 700 }}
+        >
+          <input
+            type="checkbox"
+            checked={staleOnly}
+            onChange={(e) => {
+              setStaleOnly(e.target.checked);
+              if (e.target.checked) setTab("active");
+            }}
+            className="w-4 h-4 accent-[#991b1b]"
+          />
+          المتوقفة أكتر من {toAr(STALE_DAYS)} يوم
+        </label>
 
         {canEdit && (
           <button
@@ -725,6 +765,14 @@ export function NcoDischargesPage() {
                         >
                           {meta.label}
                         </span>
+                        {isStaleCase(c.status, c.updated_at) && (
+                          <span
+                            className="block mt-1 w-fit px-2 py-0.5 rounded-full"
+                            style={{ fontSize: 11, fontWeight: 700, background: "#fef2f2", color: "#991b1b" }}
+                          >
+                            متوقف من {toAr(daysSince(c.updated_at))} يوم
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-left">
                         <ChevronLeft size={16} className="text-[#94a3b8] inline" />

@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   FileText,
   ChevronsUp,
+  UserX,
 } from "lucide-react";
 import { CASE_STATUS_META, caseNumber, type CaseStatus } from "./NcoDischargesPage";
 import { SoftDeleteDialog } from "../components/dashboard/SoftDeleteDialog";
@@ -54,6 +55,24 @@ type Soldier = {
   transfers: TransferItem[];
   serviceEnd: ServiceEndSummary | null;
   rankHistory: RankMovement[];
+  absences: AbsenceItem[];
+};
+
+type AbsenceItem = {
+  id: string;
+  absenceDecisionNumber: string;
+  absenceDecisionDate: string;
+  absenceStartDate: string;
+  returnDecisionNumber: string | null;
+  returnDecisionDate: string | null;
+  exemptDays: number;
+  absenceDays: number | null;
+  previousDischargeDate: string | null;
+  newDischargeDate: string | null;
+  returnedAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  previousStatus: string | null;
 };
 
 type RankMovement = {
@@ -540,6 +559,138 @@ function RankHistoryTable({
 /* =========================================================
    Transfers Table
 ========================================================= */
+
+function absenceDaysUntilToday(startIso: string): number {
+  const [y, m, d] = startIso.split("-").map(Number);
+  const start = new Date(y, m - 1, d).getTime();
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return Math.max(0, Math.round((today - start) / 86400000));
+}
+
+function AbsenceTable({ rows }: { rows: AbsenceItem[] }) {
+  const thClass =
+    "px-4 py-3 text-right border-b-2 border-[#d4d8fa] whitespace-nowrap bg-white";
+  const tdClass = "px-4 py-3 text-right border-b border-[#eaecf0] align-top";
+
+  const headers = [
+    "قرار الغياب",
+    "بداية الغياب",
+    "المدة",
+    "قرار الضم",
+    "التسريح (قبل ← بعد)",
+    "الحالة",
+  ];
+
+  const totalDays = rows
+    .filter((r) => !r.cancelledAt && r.absenceDays !== null)
+    .reduce((sum, r) => sum + (r.absenceDays ?? 0), 0);
+
+  return (
+    <div className="w-full overflow-x-auto">
+      <table className="w-full min-w-[900px]" dir="rtl">
+        <thead>
+          <tr>
+            {headers.map((h) => (
+              <th key={h} className={thClass}>
+                <span style={{ ...FONT, fontSize: 16, color: "#717d96" }}>{h}</span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+
+        <tbody>
+          {rows.map((r) => {
+            const open = !r.cancelledAt && !r.returnedAt;
+
+            return (
+              <tr key={r.id} className="hover:bg-[#fafafa] transition-colors">
+                <td className={tdClass}>
+                  <div className="flex flex-col">
+                    <span style={{ ...FONT, fontSize: 15, fontWeight: 700, color: "#2d3648" }}>
+                      رقم {r.absenceDecisionNumber}
+                    </span>
+                    <span style={{ ...FONT, fontSize: 13, color: "#717d96" }}>
+                      {formatDate(r.absenceDecisionDate)}
+                    </span>
+                    {r.previousStatus && (
+                      <span style={{ ...FONT, fontSize: 12, color: "#94a3b8" }}>
+                        كان: {r.previousStatus}
+                      </span>
+                    )}
+                  </div>
+                </td>
+
+                <td className={tdClass}>
+                  <span className="whitespace-nowrap" style={{ ...FONT, fontSize: 15, color: "#2d3648" }}>
+                    {formatDate(r.absenceStartDate)}
+                  </span>
+                </td>
+
+                <td className={tdClass}>
+                  <span style={{ ...FONT, fontSize: 15, color: "#2d3648", fontWeight: 700 }}>
+                    {open
+                      ? `${absenceDaysUntilToday(r.absenceStartDate).toLocaleString("ar-EG")} يوم (حتى اليوم)`
+                      : r.absenceDays !== null
+                      ? `${r.absenceDays.toLocaleString("ar-EG")} يوم${
+                          r.exemptDays > 0 ? ` (بعد إعفاء ${r.exemptDays.toLocaleString("ar-EG")})` : ""
+                        }`
+                      : "-"}
+                  </span>
+                </td>
+
+                <td className={tdClass}>
+                  <span style={{ ...FONT, fontSize: 15, color: "#2d3648" }}>
+                    {r.returnDecisionNumber
+                      ? `رقم ${r.returnDecisionNumber}${
+                          r.returnDecisionDate ? ` / ${formatDate(r.returnDecisionDate)}` : ""
+                        }`
+                      : "-"}
+                  </span>
+                </td>
+
+                <td className={tdClass}>
+                  <span style={{ ...FONT, fontSize: 15, color: "#2d3648" }}>
+                    {r.previousDischargeDate
+                      ? `${formatDate(r.previousDischargeDate)} ← ${
+                          r.newDischargeDate ? formatDate(r.newDischargeDate) : "-"
+                        }`
+                      : "-"}
+                  </span>
+                </td>
+
+                <td className={tdClass}>
+                  <div className="flex flex-col gap-1">
+                    <span
+                      className="inline-flex w-fit px-2.5 py-0.5 rounded-full whitespace-nowrap"
+                      style={{
+                        ...FONT,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        background: r.cancelledAt ? "#f1f5f9" : r.returnedAt ? "#DCF4DF" : "#fef2f2",
+                        color: r.cancelledAt ? "#64748b" : r.returnedAt ? "#00522E" : "#991b1b",
+                      }}
+                    >
+                      {r.cancelledAt ? "ملغى" : r.returnedAt ? "عاد" : "غائب حاليًا"}
+                    </span>
+                    {r.cancelledAt && r.cancelReason && (
+                      <span style={{ ...FONT, fontSize: 12, color: "#64748b" }}>السبب: {r.cancelReason}</span>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      <div className="px-4 py-3" style={{ ...FONT, fontSize: 14, color: "#717d96" }}>
+        إجمالي أيام الغياب المحتسبة (للحالات المنتهية):{" "}
+        <strong style={{ color: "#2d3648" }}>{totalDays.toLocaleString("ar-EG")} يوم</strong>
+      </div>
+    </div>
+  );
+}
 
 function batchText(name: string | null, date: string) {
   return name ? `${name} (${formatDate(date)})` : formatDate(date);
@@ -1433,6 +1584,48 @@ const { hasPermission } = usePermissions();
          7. إنشاء بيانات الفرد النهائية
       --------------------------------------------------- */
 
+      /* ---------------------------------------------------
+         سجل الغياب (بيرجع فاضي لو المستخدم معندوش صلاحية العرض)
+      --------------------------------------------------- */
+
+      const { data: absenceData, error: absenceError } = await supabase
+        .from("absence_decisions")
+        .select(
+          `id, absence_decision_number, absence_decision_date, absence_start_date,
+           return_decision_number, return_decision_date, exempt_days, absence_days,
+           previous_discharge_date, new_discharge_date, returned_at, cancelled_at, cancel_reason,
+           previous_status:service_statuses!previous_service_status_id(name)`
+        )
+        .eq("personnel_id", id)
+        .order("created_at", { ascending: false });
+
+      if (absenceError) {
+        console.error("Error loading absences:", absenceError);
+      }
+
+      const mappedAbsences: AbsenceItem[] = (absenceData ?? []).map((a: any) => {
+        const prev = Array.isArray(a.previous_status) ? a.previous_status[0] : a.previous_status;
+
+        return {
+          id: a.id,
+          absenceDecisionNumber: a.absence_decision_number,
+          absenceDecisionDate: a.absence_decision_date,
+          absenceStartDate: a.absence_start_date,
+          returnDecisionNumber: a.return_decision_number,
+          returnDecisionDate: a.return_decision_date,
+          exemptDays: a.exempt_days ?? 0,
+          absenceDays: a.absence_days,
+          previousDischargeDate: a.previous_discharge_date,
+          newDischargeDate: a.new_discharge_date,
+          returnedAt: a.returned_at,
+          cancelledAt: a.cancelled_at,
+          cancelReason: a.cancel_reason,
+          previousStatus: prev?.name ?? null,
+        };
+      });
+
+      const openAbsence = mappedAbsences.find((a) => !a.returnedAt && !a.cancelledAt) ?? null;
+
       const mappedSoldier: Soldier = {
         id: raw.id,
 
@@ -1452,7 +1645,8 @@ const { hasPermission } = usePermissions();
           raw.primary_unit?.name ?? "-",
 
         serviceStatus:
-          raw.service_statuses?.name ?? "-",
+(raw.service_statuses?.name ?? "-") +
+          (openAbsence?.previousStatus ? ` (كان ${openAbsence.previousStatus})` : ""),
 
         dischargeDate:
           raw.discharge_date
@@ -1475,6 +1669,7 @@ const { hasPermission } = usePermissions();
         transfers: mappedTransfers,
         serviceEnd: mappedServiceEnd,
         rankHistory: mappedRankHistory,
+        absences: mappedAbsences,
       };
 
       console.log(
@@ -1969,6 +2164,39 @@ const { hasPermission } = usePermissions();
       {/* ===================================================
           Transfers (للمجندين دايمًا، ولغيرهم لو ليهم ترحيلات)
       =================================================== */}
+
+      {/* ===================================================
+          سجل الغياب (بيظهر لو للفرد غياب سابق أو حالي)
+      =================================================== */}
+
+      {soldier.absences.length > 0 && (
+        <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full overflow-hidden">
+          <div className="flex flex-wrap items-center justify-end gap-3 px-4 sm:px-6 py-4 border-b border-[#cbd2e0]">
+            <UserX size={18} style={{ color: "#4a5468" }} />
+            <SectionTitle>سجل الغياب</SectionTitle>
+
+            <div className="flex-1" />
+
+            {soldier.absences.some((a) => !a.returnedAt && !a.cancelledAt) && (
+              <span
+                className="px-3 py-1 rounded-full"
+                style={{ ...FONT, fontSize: 13, fontWeight: 700, background: "#fef2f2", color: "#991b1b" }}
+              >
+                غائب حاليًا
+              </span>
+            )}
+
+            <span
+              className="px-3 py-1 rounded-full"
+              style={{ ...FONT, fontSize: 13, background: "#f7f9fc", color: "#717d96" }}
+            >
+              {soldier.absences.length.toLocaleString("ar-EG")} واقعة
+            </span>
+          </div>
+
+          <AbsenceTable rows={soldier.absences} />
+        </div>
+      )}
 
       {(!soldier.isVolunteer || soldier.transfers.length > 0) && (
         <div className="bg-white rounded-[20px] border border-[#eff0f6] w-full overflow-hidden">

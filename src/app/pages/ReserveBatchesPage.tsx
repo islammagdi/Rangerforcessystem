@@ -1748,7 +1748,14 @@ export function ReserveBatchesPage() {
     }
     
 
-    const personnel = data ?? [];
+    // الغائبون لا يُحسبون ضمن الدفعة حتى تسجيل عودتهم
+    const personnel = (data ?? []).filter((person: any) => {
+      const statusCode = Array.isArray(person.service_status)
+        ? person.service_status[0]?.code
+        : person.service_status?.code;
+
+      return statusCode !== "ABSENT";
+    });
 
     if (personnel.length === 0) {
       setSoldierData([]);

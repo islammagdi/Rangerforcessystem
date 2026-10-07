@@ -47,12 +47,14 @@ function normalizeDigits(value: string): string {
 type DistributionStatus =
   | "ملحق"
   | "منتهي خدمته"
-  | "علي القوة";
+  | "علي القوة"
+  | "غائب";
 
 type StatusFilter =
   | "الكل"
   | "علي القوة"
-  | "ملحق";
+  | "ملحق"
+  | "غائب";
 
 interface RankRow {
   id: string;
@@ -146,6 +148,7 @@ const STATUS_FILTER_OPTIONS: StatusFilter[] = [
   "الكل",
   "علي القوة",
   "ملحق",
+  "غائب",
 ];
 
 const RANK_OPTIONS = [
@@ -184,6 +187,12 @@ const STATUS_STYLES: Record<
     text: "#146d7c",
     dot: "#29BBD4",
   },
+
+  غائب: {
+    bg: "#fef2f2",
+    text: "#991b1b",
+    dot: "#e3282c",
+  },
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -212,6 +221,10 @@ function normalizeStatus(
     normalized === "منتهى خدمته"
   ) {
     return "منتهي خدمته";
+  }
+
+  if (normalized === "غائب" || normalized === "ABSENT") {
+    return "غائب";
   }
 
   return "علي القوة";

@@ -263,8 +263,8 @@ export function PromotionNotificationDetailPage() {
                   <tr>
                     <th>الرقم العسكري</th>
                     <th>الاسم</th>
-                    <th>الدرجة الجديدة</th>
-                    <th>الوحدة الجديدة</th>
+                    <th>الدرجة</th>
+                    <th>الوحدة</th>
                   </tr>
                 </thead>
                 <tbody>${rowsHtml}</tbody>

@@ -8,6 +8,7 @@ export type DashboardSectionKey =
   | "branch_duty"
   | "upcoming_visits"
   | "pending_tasks"
+  | "discharge_tasks"
   | "mail_alerts"
   | "social_record_stats"
   | "recruit_arrivals"

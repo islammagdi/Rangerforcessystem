@@ -552,6 +552,20 @@ useEffect(() => {
       return;
     }
 
+    // الفرد الغائب is_active عنده false، فلازم نفحصه قبل شرط "غير موجود"
+    // عشان الرسالة تكون واضحة ومش "رقم عسكري غير موجود"
+    const absentStatus = Array.isArray(data.service_status)
+      ? data.service_status[0]
+      : data.service_status;
+
+    if (absentStatus?.code === "ABSENT") {
+      setErrorType("eligibility");
+      setEligibilityMessage(
+        "الفرد ده مسجل غائب، ومينفعش يتصدر له خطاب. سجّل له قرار ضم الأول."
+      );
+      return;
+    }
+
     if (data.is_active === false) {
       setErrorType("not-found");
       return;
