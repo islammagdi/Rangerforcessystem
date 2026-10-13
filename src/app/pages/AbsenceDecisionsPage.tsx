@@ -25,7 +25,7 @@ import imgEagle from "figma:asset/af406d517dfa4e5b22e9993bd61d8e4e002646b6.png";
 const EDIT_PERMISSION = "absence_decisions:edit";
 const DOCS_BUCKET = "absence-decision-documents";
 const MAX_FILE_MB = 10;
-
+  //added
 type Mode = "absence" | "return";
 
 type Candidate = {
